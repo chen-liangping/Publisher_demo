@@ -12,7 +12,9 @@ import {
   Input,
   message,
   Upload,
-  Divider
+  Divider,
+  Select,
+  Tag
 } from 'antd'
 import { 
   PlusOutlined, 
@@ -20,12 +22,22 @@ import {
   CopyOutlined,
   UploadOutlined,
   DownloadOutlined,
-  EyeInvisibleOutlined
+  EyeInvisibleOutlined,
+  LinkOutlined,
+  DisconnectOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd'
 
 const { Title } = Typography
 const { TextArea } = Input
+
+// 虚拟机数据类型定义（用于下拉选择）
+interface VirtualMachine {
+  id: string
+  name: string
+  alias: string
+  status: 'running' | 'stopped' | 'starting' | 'stopping'
+}
 
 // SSH秘钥数据类型定义
 interface SSHKey {
@@ -35,7 +47,30 @@ interface SSHKey {
   createTime: string
   publicKey: string
   isImported: boolean
+  boundVMs?: VirtualMachine[] // 绑定的虚拟机列表
 }
+
+// 模拟虚拟机数据（用于下拉选择）
+const mockVMData: VirtualMachine[] = [
+  {
+    id: 'i-bp1234567890abcdef',
+    name: 'web-server-01',
+    alias: 'Web服务器1',
+    status: 'running'
+  },
+  {
+    id: 'i-bp0987654321fedcba',
+    name: 'db-server-01',
+    alias: '数据库服务器',
+    status: 'stopped'
+  },
+  {
+    id: 'i-bp1111222233334444',
+    name: 'app-server-01',
+    alias: '应用服务器',
+    status: 'running'
+  }
+]
 
 // 模拟秘钥数据
 const mockKeyData: SSHKey[] = [
@@ -45,7 +80,8 @@ const mockKeyData: SSHKey[] = [
     fingerprint: 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8',
     createTime: '2024-01-15 10:30:00',
     publicKey: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajDw...',
-    isImported: false
+    isImported: false,
+    boundVMs: [mockVMData[0]] // 预绑定第一台虚机
   },
   {
     id: 'key-002', 
@@ -53,7 +89,8 @@ const mockKeyData: SSHKey[] = [
     fingerprint: 'SHA256:bXhbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY9',
     createTime: '2024-01-14 15:20:00',
     publicKey: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD8vbqajDw...',
-    isImported: true
+    isImported: true,
+    boundVMs: [] // 无绑定虚机
   }
 ]
 
@@ -62,7 +99,12 @@ export default function KeyManagement() {
   const [loading, setLoading] = useState<boolean>(false)
   const [createModalVisible, setCreateModalVisible] = useState<boolean>(false)
   const [importModalVisible, setImportModalVisible] = useState<boolean>(false)
+  const [bindModalVisible, setBindModalVisible] = useState<boolean>(false)
+  const [unbindModalVisible, setUnbindModalVisible] = useState<boolean>(false)
+  const [currentKey, setCurrentKey] = useState<SSHKey | null>(null)
   const [form] = Form.useForm()
+  const [bindForm] = Form.useForm()
+  const [unbindForm] = Form.useForm()
 
   // 复制公钥到剪贴板
   const handleCopyPublicKey = async (publicKey: string): Promise<void> => {
@@ -101,7 +143,8 @@ export default function KeyManagement() {
         fingerprint: `SHA256:${Math.random().toString(36).substr(2, 43)}`,
         createTime: new Date().toLocaleString('zh-CN'),
         publicKey: `ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC${Math.random().toString(36)}...`,
-        isImported: false
+        isImported: false,
+        boundVMs: []
       }
       
       setKeyList([newKey, ...keyList])
@@ -135,7 +178,8 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
         fingerprint: `SHA256:${Math.random().toString(36).substr(2, 43)}`,
         createTime: new Date().toLocaleString('zh-CN'),
         publicKey: values.publicKey,
-        isImported: true
+        isImported: true,
+        boundVMs: []
       }
       
       setKeyList([newKey, ...keyList])
@@ -144,6 +188,76 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
       form.resetFields()
       message.success('秘钥导入成功')
     }, 1000)
+  }
+
+  // 绑定虚机
+  const handleBindVM = async (values: { vmIds: string[] }): Promise<void> => {
+    if (!currentKey) return
+    
+    setLoading(true)
+    
+    // 模拟API调用
+    setTimeout(() => {
+      const selectedVMs = mockVMData.filter(vm => values.vmIds.includes(vm.id))
+      const updatedKeyList = keyList.map(key => {
+        if (key.id === currentKey.id) {
+          // 合并已绑定的虚机和新选择的虚机，去重
+          const existingVMIds = (key.boundVMs || []).map(vm => vm.id)
+          const newVMs = selectedVMs.filter(vm => !existingVMIds.includes(vm.id))
+          return {
+            ...key,
+            boundVMs: [...(key.boundVMs || []), ...newVMs]
+          }
+        }
+        return key
+      })
+      
+      setKeyList(updatedKeyList)
+      setBindModalVisible(false)
+      setCurrentKey(null)
+      setLoading(false)
+      bindForm.resetFields()
+      message.success(`成功绑定 ${selectedVMs.length} 台虚拟机`)
+    }, 1000)
+  }
+
+  // 解绑虚机
+  const handleUnbindVM = async (values: { vmIds: string[] }): Promise<void> => {
+    if (!currentKey) return
+    
+    setLoading(true)
+    
+    // 模拟API调用
+    setTimeout(() => {
+      const updatedKeyList = keyList.map(key => {
+        if (key.id === currentKey.id) {
+          return {
+            ...key,
+            boundVMs: (key.boundVMs || []).filter(vm => !values.vmIds.includes(vm.id))
+          }
+        }
+        return key
+      })
+      
+      setKeyList(updatedKeyList)
+      setUnbindModalVisible(false)
+      setCurrentKey(null)
+      setLoading(false)
+      unbindForm.resetFields()
+      message.success(`成功解绑 ${values.vmIds.length} 台虚拟机`)
+    }, 1000)
+  }
+
+  // 打开绑定虚机弹窗
+  const openBindModal = (key: SSHKey): void => {
+    setCurrentKey(key)
+    setBindModalVisible(true)
+  }
+
+  // 打开解绑虚机弹窗
+  const openUnbindModal = (key: SSHKey): void => {
+    setCurrentKey(key)
+    setUnbindModalVisible(true)
   }
 
   // 表格列配置
@@ -156,6 +270,16 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
         <div>
           <div style={{ fontWeight: 500 }}>{name}</div>
           {record.isImported && <div style={{ color: '#1890ff', fontSize: '12px' }}>已导入</div>}
+          {/* 显示绑定的虚机信息 */}
+          {record.boundVMs && record.boundVMs.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              {record.boundVMs.map(vm => (
+                <Tag key={vm.id} size="small" color="blue" style={{ marginBottom: 2 }}>
+                  {vm.alias}
+                </Tag>
+              ))}
+            </div>
+          )}
         </div>
       )
     },
@@ -208,6 +332,22 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
         <Space>
           <Button
             size="small"
+            icon={<LinkOutlined />}
+            onClick={() => openBindModal(record)}
+          >
+            绑定虚机
+          </Button>
+          {record.boundVMs && record.boundVMs.length > 0 && (
+            <Button
+              size="small"
+              icon={<DisconnectOutlined />}
+              onClick={() => openUnbindModal(record)}
+            >
+              解绑虚机
+            </Button>
+          )}
+          <Button
+            size="small"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDeleteKey(record)}
@@ -228,13 +368,6 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
         <Space>
           <Button 
             icon={<UploadOutlined />}
-            onClick={() => setImportModalVisible(true)}
-          >
-            导入秘钥
-          </Button>
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />}
             onClick={() => setCreateModalVisible(true)}
           >
             创建秘钥
@@ -306,65 +439,151 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
         </Form>
       </Modal>
 
-      {/* 导入秘钥弹窗 */}
+      
+
+      {/* 绑定虚机弹窗 */}
       <Modal
-        title="导入SSH秘钥"
-        open={importModalVisible}
+        title="绑定虚拟机"
+        open={bindModalVisible}
         onCancel={() => {
-          setImportModalVisible(false)
-          form.resetFields()
+          setBindModalVisible(false)
+          setCurrentKey(null)
+          bindForm.resetFields()
         }}
         footer={null}
-        width={600}
+        width={500}
       >
         <Form
-          form={form}
+          form={bindForm}
           layout="vertical"
-          onFinish={handleImportKey}
+          onFinish={handleBindVM}
         >
           <Form.Item
-            label="秘钥名称"
-            name="name"
+            label="选择虚拟机"
+            name="vmIds"
             rules={[
-              { required: true, message: '请输入秘钥名称' },
-              { min: 2, max: 128, message: '秘钥名称长度为2-128字符' }
+              { required: true, message: '请选择要绑定的虚拟机' }
             ]}
           >
-            <Input placeholder="请输入秘钥名称" />
-          </Form.Item>
-          
-          <Form.Item
-            label="公钥内容"
-            name="publicKey"
-            rules={[
-              { required: true, message: '请输入公钥内容' },
-              { pattern: /^ssh-(rsa|dss|ed25519|ecdsa)/, message: '请输入有效的SSH公钥' }
-            ]}
-          >
-            <TextArea
-              rows={6}
-              placeholder="请粘贴SSH公钥内容，格式如：ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC..."
+            <Select
+              mode="multiple"
+              placeholder="请选择虚拟机"
+              style={{ width: '100%' }}
+              options={mockVMData
+                .filter(vm => {
+                  // 过滤掉已经绑定的虚机
+                  const boundVMIds = currentKey?.boundVMs?.map(boundVM => boundVM.id) || []
+                  return !boundVMIds.includes(vm.id)
+                })
+                .map(vm => ({
+                  label: (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{vm.alias}</span>
+                      <Tag size="small" color={vm.status === 'running' ? 'green' : 'default'}>
+                        {vm.status === 'running' ? '运行中' : '已停止'}
+                      </Tag>
+                    </div>
+                  ),
+                  value: vm.id
+                }))
+              }
+              filterOption={(input, option) => {
+                const vm = mockVMData.find(v => v.id === option?.value)
+                return vm ? vm.alias.toLowerCase().includes(input.toLowerCase()) : false
+              }}
             />
           </Form.Item>
           
           <div style={{ color: '#666', fontSize: '14px', marginBottom: 16 }}>
-            <p>支持的公钥格式：</p>
+            <p>绑定说明：</p>
             <ul style={{ margin: 0, paddingLeft: 20 }}>
-              <li>ssh-rsa (RSA keys)</li>
-              <li>ssh-dss (DSA keys)</li>
-              <li>ssh-ed25519 (Ed25519 keys)</li>
-              <li>ssh-ecdsa (ECDSA keys)</li>
+              <li>绑定后，该秘钥可用于SSH连接对应的虚拟机</li>
+              <li>一个秘钥可以绑定多台虚拟机</li>
+              <li>一台虚拟机也可以绑定多个秘钥</li>
             </ul>
           </div>
           
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
               <Button type="primary" htmlType="submit" loading={loading}>
-                导入秘钥
+                确认绑定
               </Button>
               <Button onClick={() => {
-                setImportModalVisible(false)
-                form.resetFields()
+                setBindModalVisible(false)
+                setCurrentKey(null)
+                bindForm.resetFields()
+              }}>
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 解绑虚机弹窗 */}
+      <Modal
+        title="解绑虚拟机"
+        open={unbindModalVisible}
+        onCancel={() => {
+          setUnbindModalVisible(false)
+          setCurrentKey(null)
+          unbindForm.resetFields()
+        }}
+        footer={null}
+        width={500}
+      >
+        <Form
+          form={unbindForm}
+          layout="vertical"
+          onFinish={handleUnbindVM}
+        >
+          <Form.Item
+            label="选择要解绑的虚拟机"
+            name="vmIds"
+            rules={[
+              { required: true, message: '请选择要解绑的虚拟机' }
+            ]}
+          >
+            <Select
+              mode="multiple"
+              placeholder="请选择要解绑的虚拟机"
+              style={{ width: '100%' }}
+              options={(currentKey?.boundVMs || []).map(vm => ({
+                label: (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{vm.alias}</span>
+                    <Tag size="small" color={vm.status === 'running' ? 'green' : 'default'}>
+                      {vm.status === 'running' ? '运行中' : '已停止'}
+                    </Tag>
+                  </div>
+                ),
+                value: vm.id
+              }))}
+              filterOption={(input, option) => {
+                const vm = currentKey?.boundVMs?.find(v => v.id === option?.value)
+                return vm ? vm.alias.toLowerCase().includes(input.toLowerCase()) : false
+              }}
+            />
+          </Form.Item>
+          
+          <div style={{ color: '#666', fontSize: '14px', marginBottom: 16 }}>
+            <p>解绑说明：</p>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              <li>解绑后，该秘钥将无法用于SSH连接对应的虚拟机</li>
+              <li>解绑操作不会影响虚拟机的运行状态</li>
+              <li>如需重新绑定，可通过"绑定虚机"功能重新关联</li>
+            </ul>
+          </div>
+          
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={loading} danger>
+                确认解绑
+              </Button>
+              <Button onClick={() => {
+                setUnbindModalVisible(false)
+                setCurrentKey(null)
+                unbindForm.resetFields()
               }}>
                 取消
               </Button>
