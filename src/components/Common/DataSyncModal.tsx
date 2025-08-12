@@ -119,7 +119,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
   }
 
   // 处理应用选择变化，自动关联镜像和共享文件
-  const handleAppSelection = (appId: string, checked: boolean, app: any) => {
+  const handleAppSelection = (appId: string, checked: boolean, app: unknown) => {
     if (checked) {
       // 选择应用
       setSelectedApps([...selectedApps, appId])
@@ -414,7 +414,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
           setTimeout(syncNext, 500)
         } else {
           // 检查整体是否有失败
-          const allLogs = Object.values(syncLogs)
+          // const allLogs = Object.values(syncLogs)
           const overallHasFailures = Object.values(syncProgress).some(status => status === 'failed') || hasFailures
           
           if (overallHasFailures) {
@@ -502,7 +502,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
 
   // 渲染迁移对比表格
   const renderMigrationComparisonTable = () => {
-    const comparisonData: any[] = []
+    const comparisonData: unknown[] = []
 
     // 应用对比数据
     selectedApps.forEach(appId => {
@@ -596,7 +596,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
         title: '生产环境（迁移后）',
         dataIndex: 'prodEnv',
         key: 'prodEnv',
-        render: (text: string, record: any) => {
+        render: (text: string, record: unknown) => {
           const isChanged = text !== record.testEnv
           return (
             <Text code style={{ color: isChanged ? '#52c41a' : 'inherit' }}>
@@ -864,7 +864,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
 
   // 渲染确认页面
   const renderConfirmation = () => {
-    const hasSelections = syncType === 'full' || 
+    // const hasSelections = syncType === 'full' || 
       selectedVersionFiles.length > 0 || 
       selectedConfigFiles.length > 0 ||
       cdnSourceConfig || cdnCacheConfig || corsConfig ||

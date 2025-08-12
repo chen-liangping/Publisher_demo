@@ -34,7 +34,6 @@ interface VMFormData {
   storage: number
   needDataDisk: string
   dataDiskSize?: number
-  keyPair: string
   loginMethod: string
   password?: string
   confirmPassword?: string
@@ -109,10 +108,10 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
           form={form}
           layout="vertical"
           initialValues={{
-            storage: 40,
+            storage: 50,
             needDataDisk: 'no',
-            loginMethod: 'keypair',
-            keyPair: 'my-keypair'
+            loginMethod: 'password',
+            username: 'appid'
           }}
         >
           <Row gutter={24}>
@@ -167,13 +166,11 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="storage"
                 label="系统盘大小(GB)"
-                rules={[{ required: true, message: '请设置系统盘大小' }]}
               >
                 <InputNumber 
-                  min={20} 
-                  max={500} 
+                  disabled
                   style={{ width: '100%' }}
-                  placeholder="系统盘大小"
+                  addonAfter="GB"
                 />
               </Form.Item>
             </Col>
@@ -226,7 +223,6 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="loginMethod"
                 label="登录方式"
-                initialValue="password"
               >
                 <Select disabled>
                   <Option value="password">账号密码</Option>
@@ -238,9 +234,8 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="username"
                 label="用户名"
-                initialValue="appid"
               >
-                <Input disabled value="appid" />
+                <Input disabled />
               </Form.Item>
             </Col>
             
