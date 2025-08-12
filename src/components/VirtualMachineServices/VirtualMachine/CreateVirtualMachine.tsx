@@ -12,6 +12,7 @@ import {
   Row,
   Col,
   InputNumber,
+  Switch,
   message
 } from 'antd'
 import { 
@@ -225,76 +226,87 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="loginMethod"
                 label="登录方式"
-                rules={[{ required: true, message: '请选择登录方式' }]}
+                initialValue="password"
               >
-                <Select>
-                  <Option value="keypair">密钥对</Option>
-                  <Option value="password">密码</Option>
+                <Select disabled>
+                  <Option value="password">账号密码</Option>
                 </Select>
               </Form.Item>
             </Col>
+
+            <Col span={12}>
+              <Form.Item
+                name="username"
+                label="用户名"
+                initialValue="appid"
+              >
+                <Input disabled value="appid" />
+              </Form.Item>
+            </Col>
             
-            <Form.Item noStyle dependencies={['loginMethod']}>
-              {({ getFieldValue }) => {
-                const loginMethod = getFieldValue('loginMethod')
-                
-                if (loginMethod === 'keypair') {
-                  return (
-                    <Col span={12}>
-                      <Form.Item
-                        name="keyPair"
-                        label="密钥对"
-                        rules={[{ required: true, message: '请选择密钥对' }]}
-                      >
-                        <Select>
-                          <Option value="my-keypair">my-keypair</Option>
-                          <Option value="web-keypair">web-keypair</Option>
-                          <Option value="db-keypair">db-keypair</Option>
-                        </Select>
-                      </Form.Item>
-                    </Col>
-                  )
-                } else if (loginMethod === 'password') {
-                  return (
-                    <>
-                      <Col span={12}>
-                        <Form.Item
-                          name="password"
-                          label="密码"
-                          rules={[
-                            { required: true, message: '请输入密码' },
-                            { min: 8, message: '密码至少8位' }
-                          ]}
-                        >
-                          <Input.Password placeholder="请输入密码" />
-                        </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Form.Item
-                          name="confirmPassword"
-                          label="确认密码"
-                          dependencies={['password']}
-                          rules={[
-                            { required: true, message: '请确认密码' },
-                            ({ getFieldValue }) => ({
-                              validator(_, value) {
-                                if (!value || getFieldValue('password') === value) {
-                                  return Promise.resolve()
-                                }
-                                return Promise.reject(new Error('两次输入的密码不一致'))
-                              },
-                            }),
-                          ]}
-                        >
-                          <Input.Password placeholder="请再次输入密码" />
-                        </Form.Item>
-                      </Col>
-                    </>
-                  )
-                }
-                return null
-              }}
-            </Form.Item>
+            <Col span={12}>
+              <Form.Item
+                name="password"
+                label="密码"
+                rules={[
+                  { required: true, message: '请输入密码' },
+                  { min: 8, message: '密码至少8位' }
+                ]}
+              >
+                <Input.Password placeholder="请输入密码" />
+              </Form.Item>
+            </Col>
+            
+            <Col span={12}>
+              <Form.Item
+                name="confirmPassword"
+                label="确认密码"
+                dependencies={['password']}
+                rules={[
+                  { required: true, message: '请确认密码' },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value || getFieldValue('password') === value) {
+                        return Promise.resolve()
+                      }
+                      return Promise.reject(new Error('两次输入的密码不一致'))
+                    },
+                  }),
+                ]}
+              >
+                <Input.Password placeholder="请再次输入密码" />
+              </Form.Item>
+            </Col>
+
+            <Col span={24}>
+              <Title level={4} style={{ marginTop: 24 }}>网络配置</Title>
+            </Col>
+
+            <Col span={12}>
+              <Form.Item
+                name="securityGroup"
+                label="安全组"
+                rules={[{ required: true, message: '请选择安全组' }]}
+                extra="选择安全组控制虚拟机的网络访问规则"
+              >
+                <Select placeholder="请选择安全组">
+                  <Option value="sg-001">default-web (默认Web服务器安全组)</Option>
+                  <Option value="sg-002">database-group (数据库服务器安全组)</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+
+            <Col span={12}>
+              <Form.Item
+                name="enablePublicNetwork"
+                label="开启公网连接"
+                valuePropName="checked"
+                initialValue={false}
+                extra="开启后虚拟机将分配公网IP地址"
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
           </Row>
           
           {/* 操作按钮 */}

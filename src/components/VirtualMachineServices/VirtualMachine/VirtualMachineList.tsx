@@ -8,7 +8,6 @@ import {
   Tag, 
   Typography, 
   Card,
-  Dropdown,
   Modal,
   message
 } from 'antd'
@@ -17,12 +16,11 @@ import {
   PoweroffOutlined, 
   ReloadOutlined, 
   DeleteOutlined,
-  MoreOutlined,
   PlayCircleOutlined,
   GlobalOutlined,
-  LinkOutlined
+  DesktopOutlined
 } from '@ant-design/icons'
-import type { TableColumnsType, MenuProps } from 'antd'
+import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
 
 const { Title, Link } = Typography
@@ -46,8 +44,9 @@ interface VirtualMachine {
   domain: string
   systemDiskSize?: number
   dataDiskSize?: number
-  keyPair?: string
   loginUser?: string
+  securityGroup?: string
+  securityGroupName?: string
 }
 
 // 模拟虚拟机数据
@@ -65,8 +64,9 @@ const mockVMData: VirtualMachine[] = [
     domain: 'g123-web01.com',
     systemDiskSize: 40,
     dataDiskSize: 100,
-    keyPair: 'web-keypair',
-    loginUser: 'centos'
+    loginUser: 'appid',
+    securityGroup: 'sg-001',
+    securityGroupName: 'default-web'
   },
   {
     id: 'i-bp0987654321fedcba',
@@ -79,8 +79,9 @@ const mockVMData: VirtualMachine[] = [
     createTime: '2024-01-14 15:20:00',
     domain: 'g123-db01.com',
     systemDiskSize: 60,
-    keyPair: 'db-keypair',
-    loginUser: 'ubuntu'
+    loginUser: 'appid',
+    securityGroup: 'sg-002',
+    securityGroupName: 'database-group'
   }
 ]
 
@@ -144,14 +145,7 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
     })
   }
 
-  // 操作菜单配置
-  const getActionMenu = (vm: VirtualMachine): MenuProps['items'] => [
-    {
-      key: 'ssh',
-      label: 'SSH连接',
-      icon: <LinkOutlined />
-    }
-  ]
+
 
   // 表格列配置
   const columns: TableColumnsType<VirtualMachine> = [
@@ -233,21 +227,22 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
           
           <Button
             size="small"
+            icon={<DesktopOutlined />}
+            onClick={() => handleRemoteConnect(vm)}
+            disabled={vm.status !== 'running'}
+            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : ''}
+          >
+            远程连接
+          </Button>
+          
+          <Button
+            size="small"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDelete(vm)}
           >
             删除
           </Button>
-          
-          <Dropdown 
-            menu={{ 
-              items: getActionMenu(vm),
-              onClick: ({ key }) => message.info(`执行操作: ${key}`)
-            }}
-          >
-            <Button size="small" icon={<MoreOutlined />} />
-          </Dropdown>
         </Space>
       )
     }
@@ -262,6 +257,33 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
   // 返回列表
   const handleBackToList = () => {
     setShowCreateForm(false)
+  }
+
+  // 处理远程连接
+  const handleRemoteConnect = (vm: VirtualMachine) => {
+    if (vm.status !== 'running') {
+      message.warning('虚机需要处于运行状态才能远程连接')
+      return
+    }
+    
+    // 模拟远程连接逻辑
+    Modal.info({
+      title: '远程连接',
+      content: (
+        <div>
+          <p><strong>虚机名称：</strong>{vm.alias}</p>
+          <p><strong>IP地址：</strong>{vm.publicIp}</p>
+          <p><strong>连接方式：</strong>RDP (Windows) / SSH (Linux)</p>
+          <p><strong>用户名：</strong>{vm.loginUser}</p>
+          <p style={{ color: '#666', fontSize: '12px' }}>
+            正在启动远程连接客户端...
+          </p>
+        </div>
+      ),
+      onOk() {
+        message.success('远程连接已启动')
+      },
+    })
   }
 
   if (showCreateForm) {

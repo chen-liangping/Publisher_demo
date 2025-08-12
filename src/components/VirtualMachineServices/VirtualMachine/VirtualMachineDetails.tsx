@@ -11,7 +11,8 @@ import {
   Row,
   Col,
   Divider,
-  message
+  message,
+  Modal
 } from 'antd'
 import { 
   ArrowLeftOutlined,
@@ -20,7 +21,7 @@ import {
   DeleteOutlined,
   PlayCircleOutlined,
   GlobalOutlined,
-  LinkOutlined
+  DesktopOutlined
 } from '@ant-design/icons'
 
 const { Title } = Typography
@@ -38,8 +39,9 @@ interface VirtualMachine {
   domain: string
   systemDiskSize?: number
   dataDiskSize?: number
-  keyPair?: string
   loginUser?: string
+  securityGroup?: string
+  securityGroupName?: string
 }
 
 interface VirtualMachineDetailsProps {
@@ -63,6 +65,33 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
 
   const handleOperation = (operation: string) => {
     onOperation(vm.id, operation)
+  }
+
+  // 处理远程连接
+  const handleRemoteConnect = () => {
+    if (vm.status !== 'running') {
+      message.warning('虚机需要处于运行状态才能远程连接')
+      return
+    }
+    
+    // 模拟远程连接逻辑
+    Modal.info({
+      title: '远程连接',
+      content: (
+        <div>
+          <p><strong>虚机名称：</strong>{vm.alias}</p>
+          <p><strong>IP地址：</strong>{vm.publicIp}</p>
+          <p><strong>连接方式：</strong>RDP (Windows) / SSH (Linux)</p>
+          <p><strong>用户名：</strong>{vm.loginUser}</p>
+          <p style={{ color: '#666', fontSize: '12px' }}>
+            正在启动远程连接客户端...
+          </p>
+        </div>
+      ),
+      onOk() {
+        message.success('远程连接已启动')
+      },
+    })
   }
 
   return (
@@ -114,20 +143,22 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
             disabled={vm.status === 'stopped'}
           >
             重启实例
-          </Button>
-          
-          <Button
-            icon={<LinkOutlined />}
-            onClick={() => message.info('SSH连接功能开发中')}
-          >
-            SSH连接
-          </Button>
+          </Button> 
           
           <Button
             icon={<GlobalOutlined />}
             onClick={() => message.info(vm.publicIp ? '关闭公网IP' : '分配公网IP')}
           >
-            {vm.publicIp ? '释放公网IP' : '分配公网IP'}
+            {vm.publicIp ? '关闭公网IP' : '分配公网IP'}
+          </Button>
+          
+          <Button
+            icon={<DesktopOutlined />}
+            onClick={() => handleRemoteConnect()}
+            disabled={vm.status !== 'running'}
+            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : ''}
+          >
+            远程连接
           </Button>
           
           <Button
@@ -198,13 +229,15 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
               <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>数据盘</div>
               <div style={{ fontSize: '14px' }}>{vm.dataDiskSize ? `${vm.dataDiskSize}GB` : '未配置'}</div>
             </div>
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>密钥名称</div>
-              <div style={{ fontSize: '14px' }}>{vm.keyPair || '未配置'}</div>
-            </div>
+           
+           
             <div style={{ marginBottom: '16px' }}>
               <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>登录用户</div>
               <div style={{ fontSize: '14px' }}>{vm.loginUser || 'root'}</div>
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>安全组</div>
+              <div style={{ fontSize: '14px' }}>{vm.securityGroupName || '未配置'}</div>
             </div>
           </Col>
         </Row>
