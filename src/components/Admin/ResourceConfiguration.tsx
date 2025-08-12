@@ -92,7 +92,7 @@ export default function ResourceConfiguration() {
   }
 
   // 表单提交处理
-  const handleUpdateQuota = async (values: any): Promise<void> => {
+  const handleUpdateQuota = async (values: unknown): Promise<void> => {
     if (!currentResource) return
 
     // 前端校验
@@ -142,7 +142,7 @@ export default function ResourceConfiguration() {
   }
 
   // 提交更新
-  const submitUpdate = async (values: any): Promise<void> => {
+  const submitUpdate = async (values: unknown): Promise<void> => {
     setLoading(true)
 
     // 模拟API调用
@@ -219,7 +219,7 @@ export default function ResourceConfiguration() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: ResourceQuota) => (
+      render: (_: unknown, record: ResourceQuota) => (
         <Button
           size="small"
           icon={<EditOutlined />}

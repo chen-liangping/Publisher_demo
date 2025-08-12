@@ -181,7 +181,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   }
 
   // 创建安全组
-  const handleCreateGroup = async (values: any) => {
+  const handleCreateGroup = async (values: unknown) => {
     setLoading(true)
     
     // 模拟API调用
@@ -232,7 +232,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   }
 
   // 添加规则
-  const handleAddRule = async (values: any) => {
+  const handleAddRule = async (values: unknown) => {
     if (!currentGroup) return
     
     const newRule: SecurityRule = {
@@ -329,7 +329,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: SecurityGroup) => (
+      render: (_: unknown, record: SecurityGroup) => (
         <Space>
           <Button
             size="small"
@@ -408,7 +408,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: SecurityRule) => (
+      render: (_: unknown, record: SecurityRule) => (
         <Popconfirm
           title="确定要删除这条规则吗？"
           onConfirm={() => handleDeleteRule(record.id)}

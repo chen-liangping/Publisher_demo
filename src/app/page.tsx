@@ -93,7 +93,7 @@ export default function Home() {
 
   // 模拟当前用户信息
   const currentUser = {
-    name: '张三',
+    name: 'fuyu',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
     role: '管理员'
   }
@@ -251,7 +251,7 @@ export default function Home() {
               {
                 key: 'vm-app',
                 icon: <CloudServerOutlined />,
-                label: '虚机服务',
+                label: '服务端',
                 children: [
                   {
                     key: 'vm-management',
@@ -260,9 +260,15 @@ export default function Home() {
                     onClick: () => handleMenuClick('vm-management')
                   },
                   {
+                    key: 'security-group',
+                    icon: <SecurityScanOutlined />,
+                    label: '安全组',
+                    onClick: () => handleMenuClick('security-group')
+                  },
+                  {
                     key: 'file-management',
                     icon: <EyeOutlined />,
-                    label: '文件',
+                    label: '共享文件',
                     onClick: () => handleMenuClick('file-management')
                   },
                   {
@@ -271,6 +277,19 @@ export default function Home() {
                     label: '命令',
                     onClick: () => handleMenuClick('command-management')
                   },
+                  {
+                    key: 'storage',
+                    icon: <CloudServerOutlined />,
+                    label: '存储',
+                    onClick: () => handleMenuClick('vm-management')
+                  },
+                  {
+                    key: 'cron-job',
+                    icon: <CloudServerOutlined />,
+                    label: '定时任务',
+                    onClick: () => handleMenuClick('vm-management')
+                  },
+                
                   /*注释秘钥，因为秘钥管理功能未开发
                   {
                     key: 'key-management',
@@ -279,12 +298,7 @@ export default function Home() {
                     onClick: () => handleMenuClick('key-management')
                   },
                   */
-                  {
-                    key: 'security-group',
-                    icon: <SecurityScanOutlined />,
-                    label: '安全组',
-                    onClick: () => handleMenuClick('security-group')
-                  },
+              
                 ]
               },
               {
