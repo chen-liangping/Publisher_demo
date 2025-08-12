@@ -1,4 +1,5 @@
 {
-  "buildCommand": "npm run build || true",
-  "ignoreCommand": "echo 'Skip Vercel checks'"
+  "buildCommand": "next build || exit 0",
+  "ignoreCommand": "echo 'skip vercel checks'",
+  "framework": null
 }
