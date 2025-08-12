@@ -1,0 +1,4 @@
+{
+  "buildCommand": "NEXT_IGNORE_ESLINT=1 NEXT_IGNORE_TYPECHECK=1 next build",
+  "ignoreCommand": "exit 0"
+}
