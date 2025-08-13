@@ -9,7 +9,8 @@ import {
   DatabaseOutlined,
   EyeOutlined,
   ContainerOutlined,
-  SecurityScanOutlined
+  SecurityScanOutlined,
+  MobileOutlined
 } from '@ant-design/icons'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
 import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
@@ -22,11 +23,13 @@ import SecurityGroupManagement from '../components/VirtualMachineServices/Securi
 import SecurityGroupDetails from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupDetails'
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
 import ContainerDatabase from '../components/ContainerServices/Database/ContainerDatabase'
+import ClientPage from '../components/Client/ClientPage'
+import ClientVersionPage from '../components/Client/ClientVersionPage'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version'
 
 // 虚拟机数据类型定义
 interface VirtualMachine {
@@ -213,6 +216,10 @@ export default function Home() {
         return <ContainerApplication />
       case 'container-database':
         return <ContainerDatabase />
+      case 'client-page':
+        return <ClientPage />
+      case 'client-version':
+        return <ClientVersionPage />
       default:
         return <VirtualMachineList />
     }
@@ -297,6 +304,25 @@ export default function Home() {
                   },
                   */
               
+                ]
+              },
+              {
+                key: 'client',
+                icon: <MobileOutlined />,
+                label: '客户端',
+                children: [
+                  {
+                    key: 'client-version',
+                    icon: <MobileOutlined />,
+                    label: '版本',
+                    onClick: () => handleMenuClick('client-version')
+                  },
+                  {
+                    key: 'client-page',
+                    icon: <MobileOutlined />,
+                    label: 'CDN',
+                    onClick: () => handleMenuClick('client-page')
+                  }
                 ]
               },
               {

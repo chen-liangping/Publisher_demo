@@ -1,0 +1,320 @@
+'use client'
+
+import React, { useState } from 'react'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert } from 'antd'
+import type { TableColumnsType } from 'antd'
+import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined } from '@ant-design/icons'
+import { useRouter } from 'next/navigation'
+
+const { Title, Paragraph, Text } = Typography
+
+interface VersionRow {
+  version: string
+  details: string
+  createdAt: string
+  isCurrent?: boolean
+  translationStatus?: 'syncing' | 'done'
+}
+
+// 文件/文件夹数据类型
+interface FileEntry {
+  name: string
+  path: string // 形如 "/"、"/assets"、"/assets/images"
+  type: 'folder' | 'file'
+  sizeKB?: number
+  updatedAt: string
+}
+
+const versionData: VersionRow[] = [
+  {
+    version: 'v1.0.1',
+    details: '初始化部署；1.先切换版本然后再进行这个配置以及那个配置反正字数上限大概就是这样了我觉得...',
+    createdAt: '2024/07/22  23:56:08',
+    isCurrent: true,
+    translationStatus: 'done'
+  },
+  { version: 'v1.0.2', details: '8/28上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing' },
+  { version: 'v1.0.3', details: '9/02上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'done' },
+  { version: 'v1.0.2_test', details: 'test', createdAt: '2024/07/22  23:56:08', translationStatus: 'done' },
+  { version: 'v1.0.3_test', details: '测试用，请勿删除该版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing' }
+]
+
+export default function ClientVersionPage() {
+  const router = useRouter()
+  const [versions, setVersions] = useState<VersionRow[]>(versionData)
+  const [browsingVersion, setBrowsingVersion] = useState<string | null>(null)
+  const [currentPath, setCurrentPath] = useState<string>('/')
+  const [switchModalVisible, setSwitchModalVisible] = useState<boolean>(false)
+  const [selectedVersion, setSelectedVersion] = useState<VersionRow | null>(null)
+  const [form] = Form.useForm()
+
+  const openSwitchModal = (record: VersionRow): void => {
+    setSelectedVersion(record)
+    setSwitchModalVisible(true)
+    form.setFieldsValue({ version: record.version, details: record.details })
+  }
+
+  const handleConfirmSwitch = async (): Promise<void> => {
+    try {
+      const values = await form.validateFields()
+      if (!selectedVersion) return
+      const updated = versions.map(v => ({
+        ...v,
+        isCurrent: v.version === selectedVersion.version
+      }))
+      setVersions(updated)
+      setSwitchModalVisible(false)
+      message.success(`已切换到版本：${values.version}`)
+    } catch {
+      // 校验失败时不处理
+    }
+  }
+
+  const handleDeleteVersion = (version: string): void => {
+    Modal.confirm({
+      title: '删除确认',
+      content: `确定要删除版本 ${version} 吗？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => {
+        const updated = versions.filter(v => v.version !== version)
+        setVersions(updated)
+        message.success('已删除')
+      }
+    })
+  }
+
+  const handleEnterVersion = (version: string): void => {
+    // 进入某个版本的“根目录”
+    setBrowsingVersion(version)
+    setCurrentPath('/')
+    message.info(`进入版本 ${version}（示例）`)
+  }
+
+  const handleBackToParent = (): void => {
+    // 返回上级目录或返回到版本列表
+    if (!browsingVersion) return
+    if (currentPath === '/') {
+      // 已经在根目录，再返回版本列表
+      setBrowsingVersion(null)
+      return
+    }
+    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+    setCurrentPath(parentPath)
+  }
+
+  // 模拟：每个版本的文件树
+  const mockFilesByVersion: Record<string, FileEntry[]> = {
+    'v1.0.1': [
+      { name: 'assets', path: '/assets', type: 'folder', updatedAt: '2024/07/22 23:56:08' },
+      { name: 'config', path: '/config', type: 'folder', updatedAt: '2024/07/22 23:56:08' },
+      { name: 'index.html', path: '/index.html', type: 'file', sizeKB: 12, updatedAt: '2024/07/22 23:56:08' },
+      { name: 'README.md', path: '/README.md', type: 'file', sizeKB: 3, updatedAt: '2024/07/22 23:56:08' },
+      { name: 'images', path: '/assets/images', type: 'folder', updatedAt: '2024/07/22 23:56:08' },
+      { name: 'logo.png', path: '/assets/images/logo.png', type: 'file', sizeKB: 45, updatedAt: '2024/07/22 23:56:08' }
+    ],
+    'v1.0.2': [
+      { name: 'assets', path: '/assets', type: 'folder', updatedAt: '2024/08/28 09:00:00' },
+      { name: 'index.html', path: '/index.html', type: 'file', sizeKB: 14, updatedAt: '2024/08/28 09:00:00' }
+    ],
+    'v1.0.3': [
+      { name: 'assets', path: '/assets', type: 'folder', updatedAt: '2024/09/02 09:00:00' }
+    ],
+    'v1.0.2_test': [
+      { name: 'test.txt', path: '/test.txt', type: 'file', sizeKB: 1, updatedAt: '2024/07/22 23:56:08' }
+    ],
+    'v1.0.3_test': [
+      { name: 'assets', path: '/assets', type: 'folder', updatedAt: '2024/07/22 23:56:08' }
+    ]
+  }
+
+  // 计算父目录是否匹配当前目录
+  const getParentDir = (fullPath: string): string => {
+    const idx = fullPath.lastIndexOf('/')
+    if (idx <= 0) return '/'
+    return fullPath.substring(0, idx)
+  }
+
+  const getCurrentEntries = (): FileEntry[] => {
+    if (!browsingVersion) return []
+    const all = mockFilesByVersion[browsingVersion] || []
+    return all.filter(entry => getParentDir(entry.path) === currentPath)
+  }
+
+  // 进入文件夹
+  const handleEnterFolder = (folderPath: string): void => {
+    setCurrentPath(folderPath)
+  }
+
+  // 点击文件
+  const handleOpenFile = (file: FileEntry): void => {
+    message.info(`预览文件：${file.name}（示例）`)
+  }
+
+  // 文件/文件夹视图列定义
+  const fileColumns: TableColumnsType<FileEntry> = [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (_: string, record: FileEntry) => (
+        record.type === 'folder' ? (
+          <Button type="link" onClick={() => handleEnterFolder(record.path)}>{record.name}</Button>
+        ) : (
+          <Button type="link" onClick={() => handleOpenFile(record)}>{record.name}</Button>
+        )
+      )
+    },
+    { title: '类型', dataIndex: 'type', key: 'type', width: 120, render: (t: string) => (t === 'folder' ? <Tag>文件夹</Tag> : <Tag color="processing">文件</Tag>) },
+    { title: '大小(KB)', dataIndex: 'sizeKB', key: 'sizeKB', width: 120, render: (v?: number) => (v ? v : '-') },
+    { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 200 }
+  ]
+
+
+  const columns: TableColumnsType<VersionRow> = [
+    {
+      title: '游戏版本',
+      dataIndex: 'version',
+      key: 'version',
+      width: 320,
+      render: (v: string, record) => (
+        <Space size={8}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Button type="link" onClick={() => handleEnterVersion(record.version)}>
+              <Text strong>{v}</Text>
+            </Button>
+            {record.translationStatus === 'done' && (
+              <Tooltip title="翻译完成，文本生效需要1-2分钟" placement="right" trigger={["click"]}>
+                <Text style={{ marginLeft: 20, color: '#52c41a', cursor: 'pointer' }}>翻译完成</Text>
+              </Tooltip>
+            )}
+          </span>
+          {record.translationStatus === 'syncing' && (
+            <Tag color="gold">翻译同步中</Tag>
+          )}
+          {record.isCurrent && <Tag color="blue">当前版本</Tag>}
+        </Space>
+      )
+    },
+    { title: '发版详情', dataIndex: 'details', key: 'details' },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 200 },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 200,
+      render: (_: unknown, record: VersionRow) => (
+        <Space size={8}>
+          <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
+          <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
+        </Space>
+      )
+    }
+  ]
+
+  return (
+    <div>
+      {/* 顶部说明 */}
+      <Card styles={{ body: { padding: 16 } }} style={{ marginBottom: 16 }}>
+        <Title level={3} style={{ margin: 0 }}>客户端</Title>
+        <Paragraph style={{ color: '#666', marginTop: 8, marginBottom: 0 }}>
+          客户端用于存储不同游戏版本的图片以及文本等静态资源进行配置信息，您可以在此页面进行版本管理。
+          <Button type="link" style={{ paddingLeft: 4 }} onClick={() => message.info('打开帮助（示例）')}>了解更多</Button>
+        </Paragraph>
+      </Card>
+
+      {/* Tabs 路由切换 */}
+      <Card style={{ marginBottom: 16 }}>
+        <Tabs
+          activeKey="version"
+          onChange={(key) => {
+            if (key === 'cdn') router.push('/client/cdn')
+            if (key === 'version') router.push('/client/version')
+          }}
+          items={[
+            { key: 'version', label: '版本' },
+            { key: 'config', label: '配置文件' },
+            { key: 'cdn', label: 'CDN' },
+            { key: 'cors', label: '跨域配置' }
+          ]}
+        />
+      </Card>
+
+      {/* 版本区块 或 版本内文件浏览 */}
+      <Card
+        title={
+          <Row align="middle" justify="space-between" style={{ width: '100%' }}>
+            <Col>{browsingVersion ? `版本 ${browsingVersion} / 文件` : '版本'}</Col>
+            <Col>
+              {!browsingVersion && (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => message.info('创建版本（示例）')}>
+                  创建版本
+                </Button>
+              )}
+            </Col>
+          </Row>
+        }
+      >
+        {browsingVersion ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Space>
+                <Text type="secondary">当前位置：/{browsingVersion}{currentPath}</Text>
+                <Button onClick={handleBackToParent}>返回上级</Button>
+              </Space>
+              <Space>
+                <Tooltip title="可拖拽文件进行上传。单个文件大小不得超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启">
+                  <Button type="text" icon={<UploadOutlined />} onClick={() => message.info('上传文件（示例）')} />
+                </Tooltip>
+                <Tooltip title="上传压缩包">
+                  <Button type="text" icon={<InboxOutlined />} onClick={() => message.info('上传压缩包（示例）')} />
+                </Tooltip>
+                <Tooltip title="创建文件夹">
+                  <Button type="text" icon={<FolderAddOutlined />} onClick={() => message.info('创建文件夹（示例）')} />
+                </Tooltip>
+              </Space>
+            </div>
+            <Table<FileEntry>
+              columns={fileColumns}
+              dataSource={getCurrentEntries()}
+              rowKey={(r) => `${r.path}/${r.name}`}
+              pagination={false}
+            />
+          </>
+        ) : (
+          <Table<VersionRow>
+            columns={columns}
+            dataSource={versions}
+            rowKey={(r) => r.version}
+            pagination={false}
+          />
+        )}
+      </Card>
+
+      {/* 切换版本确认弹窗 */}
+      <Modal
+        title="切换版本确认"
+        open={switchModalVisible}
+        onCancel={() => setSwitchModalVisible(false)}
+        onOk={handleConfirmSwitch}
+        okText="确认切换"
+        cancelText="取消"
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item label="版本名" name="version">
+            <Input disabled />
+          </Form.Item>
+          <Form.Item label="发版详情" name="details" rules={[{ required: true, message: '请输入发版详情' }]}>
+            <Input.TextArea rows={4} placeholder="切换版本了" />
+          </Form.Item>
+        </Form>
+        <Alert
+          type="info"
+          showIcon
+          message="请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启"
+        />
+      </Modal>
+    </div>
+  )
+}
+
