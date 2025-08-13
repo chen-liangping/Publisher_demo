@@ -1,5 +1,0 @@
-{
-  "buildCommand": "next build || exit 0",
-  "ignoreCommand": "echo 'skip vercel checks'",
-  "framework": null
-}

@@ -15,18 +15,14 @@ import {
   Tabs,
   Tag,
   Popconfirm,
-  Row,
-  Col,
+
   InputNumber
 } from 'antd'
 import { 
   PlusOutlined, 
   DeleteOutlined,
   SettingOutlined,
-  SearchOutlined,
-  UploadOutlined,
-  DownloadOutlined,
-  EditOutlined
+
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 
@@ -181,7 +177,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   }
 
   // 创建安全组
-  const handleCreateGroup = async (values: unknown) => {
+  const handleCreateGroup = async (values: { name: string; description: string }) => {
     setLoading(true)
     
     // 模拟API调用
@@ -232,25 +228,25 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   }
 
   // 添加规则
-  const handleAddRule = async (values: unknown) => {
+  const handleAddRule = async (values: { direction: string; protocol: string; portRange: string[]; sourceType: string; source: string; description: string; action: string; priority: number }) => {
     if (!currentGroup) return
     
     const newRule: SecurityRule = {
       id: `rule-${Date.now()}`,
-      direction: values.direction,
-      protocol: values.protocol,
+      direction: (values.direction as 'inbound' | 'outbound'),
+      protocol: (values.protocol as 'TCP' | 'UDP' | 'ICMPv4' | 'ICMPv6' | 'ALL'),
       portRange: values.portRange,
-      action: values.action,
+      action: (values.action as 'allow' | 'deny'),
       source: values.source,
       priority: values.priority,
       description: values.description
     }
 
-    const updatedGroup = {
+    const updatedGroup: SecurityGroup = {
       ...currentGroup,
       rules: [...currentGroup.rules, newRule],
-      inboundRules: currentGroup.rules.filter(r => r.direction === 'inbound').length + (values.direction === 'inbound' ? 1 : 0),
-      outboundRules: currentGroup.rules.filter(r => r.direction === 'outbound').length + (values.direction === 'outbound' ? 1 : 0)
+      inboundRules: currentGroup.rules.filter(r => r.direction === 'inbound').length + ((values.direction as 'inbound' | 'outbound') === 'inbound' ? 1 : 0),
+      outboundRules: currentGroup.rules.filter(r => r.direction === 'outbound').length + ((values.direction as 'inbound' | 'outbound') === 'outbound' ? 1 : 0)
     }
 
     const updatedList = groupList.map(group => 

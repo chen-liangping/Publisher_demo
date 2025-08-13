@@ -17,9 +17,7 @@ import {
   Progress,
   Row,
   Col,
-  Divider,
-  Badge,
-  Collapse
+  Badge
 } from 'antd'
 import { 
   PlusOutlined, 
@@ -30,7 +28,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
-  SettingOutlined,
+
   DownOutlined,
   UpOutlined
 } from '@ant-design/icons'
@@ -126,7 +124,7 @@ export default function GameManagement() {
   const [addModalVisible, setAddModalVisible] = useState<boolean>(false)
   const [confirmModalVisible, setConfirmModalVisible] = useState<boolean>(false)
   const [initConfirmed, setInitConfirmed] = useState<boolean>(false)
-  const [currentGameData, setCurrentGameData] = useState<any>(null)
+  const [currentGameData, setCurrentGameData] = useState<Game | null>(null)
   const [initializingGames, setInitializingGames] = useState<Set<string>>(new Set())
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [form] = Form.useForm()
@@ -514,7 +512,14 @@ export default function GameManagement() {
 
 
   // 表单提交处理
-  const handleAddGame = async (values: any): Promise<void> => {
+  const handleAddGame = async (values: { 
+    appId: string; 
+    appName: string; 
+    clientResource: boolean; 
+    serverResource: boolean;
+    globalAcceleration: boolean;
+    flashLaunch: boolean;
+  }): Promise<void> => {
     // 前端校验
     if (!values.appId) {
       message.error('APP ID不能为空')
@@ -546,8 +551,28 @@ export default function GameManagement() {
       }
     }
 
-    // 保存数据并显示初始化确认弹窗
-    setCurrentGameData(values)
+    // 创建新游戏对象并显示初始化确认弹窗
+    const newGame: Game = {
+      id: `game-${Date.now()}`,
+      appId: values.appId,
+      description: values.appName || '新添加的游戏',
+      testEnv: {
+        initStatus: 'not_initialized' as const,
+        clientResource: values.clientResource,
+        serverResource: values.serverResource,
+        globalAcceleration: values.globalAcceleration,
+        flashLaunch: values.flashLaunch
+      },
+      prodEnv: {
+        initStatus: 'not_initialized' as const,
+        clientResource: false,
+        serverResource: false,
+        globalAcceleration: false,
+        flashLaunch: false
+      },
+      createTime: new Date().toLocaleString('zh-CN')
+    }
+    setCurrentGameData(newGame)
     setAddModalVisible(false)
     setConfirmModalVisible(true)
   }
@@ -556,6 +581,11 @@ export default function GameManagement() {
   const handleInitConfirm = async (): Promise<void> => {
     if (!initConfirmed) {
       message.error('请先勾选确认选项')
+      return
+    }
+
+    if (!currentGameData) {
+      message.error('游戏数据不存在')
       return
     }
 
@@ -579,10 +609,10 @@ export default function GameManagement() {
           appId: currentGameData.appId,
           description: currentGameData.description || '',
           testEnv: {
-            clientResource: currentGameData.clientResource || false,
-            serverResource: currentGameData.serverResource || false,
-            globalAcceleration: currentGameData.globalAcceleration || false,
-            flashLaunch: currentGameData.flashLaunch || false,
+            clientResource: currentGameData.testEnv.clientResource || false,
+            serverResource: currentGameData.testEnv.serverResource || false,
+            globalAcceleration: currentGameData.testEnv.globalAcceleration || false,
+            flashLaunch: currentGameData.testEnv.flashLaunch || false,
             initStatus: 'not_initialized'
           },
           prodEnv: {
@@ -644,7 +674,7 @@ export default function GameManagement() {
           borderLeft: `3px solid ${envColor}`,
           backgroundColor: envConfig.initStatus === 'completed' ? '#f6ffed' : '#fafafa'
         }}
-        bodyStyle={{ padding: '12px 16px' }}
+        styles={{ body: { padding: '12px 16px' } }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -745,7 +775,7 @@ export default function GameManagement() {
           boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
           border: '1px solid #f0f0f0'
         }}
-        bodyStyle={{ padding: '20px 24px' }}
+        styles={{ body: { padding: '20px 24px' } }}
       >
         {/* 卡片头部 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -866,7 +896,7 @@ export default function GameManagement() {
           </div>
         ) : gameList.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#666' }}>
-            暂无游戏数据，点击"添加游戏"开始使用
+            暂无游戏数据，点击&ldquo;添加游戏&rdquo;开始使用
           </div>
         ) : (
           <div>
@@ -1131,7 +1161,7 @@ export default function GameManagement() {
             {/* 详细步骤 */}
             <div>
               <div style={{ fontWeight: 500, marginBottom: 12 }}>初始化步骤</div>
-              {initProgressData.configs.map((config, index) => (
+              {initProgressData.configs.map((config) => (
                 <div 
                   key={config.name} 
                   style={{ 

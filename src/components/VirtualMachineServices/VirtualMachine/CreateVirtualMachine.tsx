@@ -18,25 +18,14 @@ import {
 import { 
   ArrowLeftOutlined
 } from '@ant-design/icons'
+import type { VirtualMachine } from './VirtualMachineList'
 
 const { Title } = Typography
 const { Option } = Select
 
 interface CreateVirtualMachineProps {
   onBack: () => void
-  onCreate: (vmData: any) => void
-}
-
-interface VMFormData {
-  alias: string
-  instanceType: string
-  systemImage: string
-  storage: number
-  needDataDisk: string
-  dataDiskSize?: number
-  loginMethod: string
-  password?: string
-  confirmPassword?: string
+  onCreate: (vmData: VirtualMachine) => void
 }
 
 export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtualMachineProps) {

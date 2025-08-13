@@ -24,7 +24,7 @@ export default function ContainerDatabase() {
           <Card
             hoverable
             style={{ height: 240 }}
-            bodyStyle={{ padding: '20px' }}
+            styles={{ body: { padding: '20px' } }}
             actions={[
               <Button key="config" type="text" icon={<SettingOutlined />}>
                 配置
@@ -58,7 +58,7 @@ export default function ContainerDatabase() {
           <Card
             hoverable
             style={{ height: 240 }}
-            bodyStyle={{ padding: '20px' }}
+            styles={{ body: { padding: '20px' } }}
             actions={[
               <Button key="config" type="text" icon={<SettingOutlined />}>
                 配置
@@ -92,7 +92,7 @@ export default function ContainerDatabase() {
           <Card
             hoverable
             style={{ height: 240, borderStyle: 'dashed' }}
-            bodyStyle={{ padding: '20px' }}
+            styles={{ body: { padding: '20px' } }}
           >
             <div style={{ textAlign: 'center', color: '#999' }}>
               <PlusOutlined style={{ fontSize: '32px', marginBottom: 12 }} />

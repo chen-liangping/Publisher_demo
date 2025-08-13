@@ -4,8 +4,6 @@ import { Layout, Menu, Typography } from 'antd'
 import { useState } from 'react'
 import { 
   CloudServerOutlined, 
-  KeyOutlined, 
-  FileOutlined, 
   CodeOutlined,
   AppstoreOutlined,
   DatabaseOutlined,

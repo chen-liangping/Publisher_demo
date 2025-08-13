@@ -16,7 +16,7 @@ import {
 import { 
   UploadOutlined, 
   DeleteOutlined,
-  SearchOutlined,
+
   FolderOutlined,
   FileOutlined,
   ExclamationCircleOutlined,
