@@ -2,15 +2,15 @@
 
 import React from 'react'
 import { 
-  Card, 
-  Descriptions, 
+ 
+ 
   Tag, 
   Button, 
   Space, 
   Typography,
   Row,
   Col,
-  Divider,
+
   message,
   Modal
 } from 'antd'

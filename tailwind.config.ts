@@ -1,6 +1,5 @@
-import type { Config } from 'tailwindcss'
-
-const config: Config = {
+// 使用JS风格导出以避免类型不匹配导致的校验失败
+const config = {
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -17,9 +16,6 @@ const config: Config = {
     },
   },
   plugins: [],
-  // 确保 Tailwind 的样式不会覆盖 Ant Design Vue 的样式
-  corePlugins: {
-    preflight: false,
-  },
+  // 关闭预设的preflight，避免覆盖Ant Design样式（Tailwind v4写法改为在CSS中控制）
 }
 export default config

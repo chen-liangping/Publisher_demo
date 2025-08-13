@@ -14,8 +14,7 @@ import {
   Empty
 } from 'antd'
 import { 
-  EditOutlined,
-  SearchOutlined
+  EditOutlined
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 
@@ -64,6 +63,9 @@ const mockResourceData: ResourceQuota[] = [
   }
 ]
 
+// 表单提交的值类型（仅包含可编辑字段）
+type ResourceFormValues = Pick<ResourceQuota, 'cpuCores' | 'mysqlInstances' | 'mongoInstances' | 'redisInstances' | 'zookeeperInstances'>
+
 export default function ResourceConfiguration() {
   const [resourceList, setResourceList] = useState<ResourceQuota[]>(mockResourceData)
   const [filteredList, setFilteredList] = useState<ResourceQuota[]>(mockResourceData)
@@ -92,14 +94,19 @@ export default function ResourceConfiguration() {
   }
 
   // 表单提交处理
-  const handleUpdateQuota = async (values: unknown): Promise<void> => {
+  const handleUpdateQuota = async (values: ResourceFormValues): Promise<void> => {
     if (!currentResource) return
 
     // 前端校验
-    const errors = []
+    const errors: string[] = []
     
-    if (!values.cpuCores || !values.mysqlInstances === undefined || !values.mongoInstances === undefined || 
-        !values.redisInstances === undefined || !values.zookeeperInstances === undefined) {
+    if (
+      values.cpuCores === undefined ||
+      values.mysqlInstances === undefined ||
+      values.mongoInstances === undefined ||
+      values.redisInstances === undefined ||
+      values.zookeeperInstances === undefined
+    ) {
       errors.push('请完整填写所有配额')
     }
 
@@ -142,7 +149,7 @@ export default function ResourceConfiguration() {
   }
 
   // 提交更新
-  const submitUpdate = async (values: unknown): Promise<void> => {
+  const submitUpdate = async (values: ResourceFormValues): Promise<void> => {
     setLoading(true)
 
     // 模拟API调用

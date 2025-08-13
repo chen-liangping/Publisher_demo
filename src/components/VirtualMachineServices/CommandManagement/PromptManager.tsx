@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react'
 import { 
-  Card, 
+ 
   Button, 
   Space, 
   Typography,
-  Descriptions,
+
   Tag,
-  Table,
-  Divider,
+
+
   Row,
   Col,
   Tabs
@@ -18,10 +18,10 @@ import {
   ArrowLeftOutlined,
   PlayCircleOutlined,
   EditOutlined,
-  CodeOutlined,
-  ClockCircleOutlined
+
+
 } from '@ant-design/icons'
-import type { TableColumnsType } from 'antd'
+
 
 const { Title, Paragraph } = Typography
 
@@ -106,43 +106,7 @@ export default function PromptManager({ command, onBack, onEdit, onExecute }: Pr
     return <Tag color={config.color}>{config.text}</Tag>
   }
 
-  // 执行历史表格列配置
-  const historyColumns: TableColumnsType<ExecutionHistory> = [
-    {
-      title: '执行时间',
-      dataIndex: 'executeTime',
-      key: 'executeTime',
-      width: 180
-    },
-    {
-      title: '目标虚拟机',
-      dataIndex: 'targetVM',
-      key: 'targetVM'
-    },
-    {
-      title: '关联文件',
-      dataIndex: 'fileName',
-      key: 'fileName',
-      render: (fileName: string) => fileName || '-'
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: renderStatus
-    },
-    {
-      title: '耗时',
-      dataIndex: 'duration',
-      key: 'duration'
-    },
-    {
-      title: '执行结果',
-      dataIndex: 'result',
-      key: 'result',
-      ellipsis: true
-    }
-  ]
+
 
   return (
     <div style={{ padding: '24px' }}>

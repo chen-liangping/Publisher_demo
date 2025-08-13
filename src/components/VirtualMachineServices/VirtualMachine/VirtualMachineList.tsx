@@ -17,7 +17,7 @@ import {
   ReloadOutlined, 
   DeleteOutlined,
   PlayCircleOutlined,
-  GlobalOutlined,
+
   DesktopOutlined
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
@@ -31,7 +31,7 @@ interface VirtualMachineListProps {
 }
 
 // 虚拟机数据类型定义
-interface VirtualMachine {
+export interface VirtualMachine {
   id: string
   name: string
   alias: string
@@ -152,7 +152,7 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
     {
       title: '虚拟机名称',
       key: 'info',
-      render: (_: any, vm: VirtualMachine) => (
+      render: (_: unknown, vm: VirtualMachine) => (
         <div>
           <div style={{ fontWeight: 500 }}>
             {onViewDetails ? (
@@ -195,7 +195,7 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, vm: VirtualMachine) => (
+      render: (_: unknown, vm: VirtualMachine) => (
         <Space>
           {vm.status === 'stopped' ? (
             <Button

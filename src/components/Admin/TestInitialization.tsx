@@ -7,7 +7,7 @@ import {
   Modal,
   Progress,
   Typography,
-  Space,
+
   Row,
   Col,
   message
@@ -15,9 +15,7 @@ import {
 import { 
   PlayCircleOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
   SyncOutlined,
-  ExclamationCircleOutlined,
   LoadingOutlined
 } from '@ant-design/icons'
 

@@ -11,25 +11,25 @@ import {
   Form,
   Input,
   message,
-  Upload,
-  Divider,
+
+
   Select,
   Tag
 } from 'antd'
 import { 
-  PlusOutlined, 
+ 
   DeleteOutlined, 
   CopyOutlined,
   UploadOutlined,
-  DownloadOutlined,
+
   EyeInvisibleOutlined,
   LinkOutlined,
   DisconnectOutlined
 } from '@ant-design/icons'
-import type { ColumnsType } from 'antd'
+import type { TableColumnsType } from 'antd'
 
 const { Title } = Typography
-const { TextArea } = Input
+
 
 // 虚拟机数据类型定义（用于下拉选择）
 interface VirtualMachine {
@@ -98,7 +98,7 @@ export default function KeyManagement() {
   const [keyList, setKeyList] = useState<SSHKey[]>(mockKeyData)
   const [loading, setLoading] = useState<boolean>(false)
   const [createModalVisible, setCreateModalVisible] = useState<boolean>(false)
-  const [importModalVisible, setImportModalVisible] = useState<boolean>(false)
+
   const [bindModalVisible, setBindModalVisible] = useState<boolean>(false)
   const [unbindModalVisible, setUnbindModalVisible] = useState<boolean>(false)
   const [currentKey, setCurrentKey] = useState<SSHKey | null>(null)
@@ -111,7 +111,7 @@ export default function KeyManagement() {
     try {
       await navigator.clipboard.writeText(publicKey)
       message.success('公钥已复制到剪贴板')
-    } catch (error) {
+    } catch {
       message.error('复制失败，请手动复制')
     }
   }
@@ -166,29 +166,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
     }, 1000)
   }
 
-  // 导入秘钥
-  const handleImportKey = async (values: { name: string; publicKey: string }): Promise<void> => {
-    setLoading(true)
-    
-    // 模拟API调用
-    setTimeout(() => {
-      const newKey: SSHKey = {
-        id: `key-${Date.now()}`,
-        name: values.name,
-        fingerprint: `SHA256:${Math.random().toString(36).substr(2, 43)}`,
-        createTime: new Date().toLocaleString('zh-CN'),
-        publicKey: values.publicKey,
-        isImported: true,
-        boundVMs: []
-      }
-      
-      setKeyList([newKey, ...keyList])
-      setImportModalVisible(false)
-      setLoading(false)
-      form.resetFields()
-      message.success('秘钥导入成功')
-    }, 1000)
-  }
+
 
   // 绑定虚机
   const handleBindVM = async (values: { vmIds: string[] }): Promise<void> => {
@@ -261,7 +239,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
   }
 
   // 表格列配置
-  const columns: ColumnsType<SSHKey> = [
+  const columns: TableColumnsType<SSHKey> = [
     {
       title: '秘钥名称',
       dataIndex: 'name',
@@ -274,7 +252,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
           {record.boundVMs && record.boundVMs.length > 0 && (
             <div style={{ marginTop: 4 }}>
               {record.boundVMs.map(vm => (
-                <Tag key={vm.id} size="small" color="blue" style={{ marginBottom: 2 }}>
+                <Tag key={vm.id} color="blue" style={{ marginBottom: 2 }}>
                   {vm.alias}
                 </Tag>
               ))}
@@ -479,7 +457,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
                   label: (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>{vm.alias}</span>
-                      <Tag size="small" color={vm.status === 'running' ? 'green' : 'default'}>
+                      <Tag color={vm.status === 'running' ? 'green' : 'default'}>
                         {vm.status === 'running' ? '运行中' : '已停止'}
                       </Tag>
                     </div>
@@ -552,7 +530,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
                 label: (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{vm.alias}</span>
-                    <Tag size="small" color={vm.status === 'running' ? 'green' : 'default'}>
+                    <Tag color={vm.status === 'running' ? 'green' : 'default'}>
                       {vm.status === 'running' ? '运行中' : '已停止'}
                     </Tag>
                   </div>
@@ -571,7 +549,7 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               <li>解绑后，该秘钥将无法用于SSH连接对应的虚拟机</li>
               <li>解绑操作不会影响虚拟机的运行状态</li>
-              <li>如需重新绑定，可通过"绑定虚机"功能重新关联</li>
+              <li>如需重新绑定，可通过&ldquo;绑定虚机&rdquo;功能重新关联</li>
             </ul>
           </div>
           

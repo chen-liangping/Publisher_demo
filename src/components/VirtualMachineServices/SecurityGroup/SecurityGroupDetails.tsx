@@ -25,7 +25,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
-  SettingOutlined
+
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 
@@ -90,23 +90,23 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
   }
 
   // 添加规则
-  const handleAddRule = async (values: any) => {
+  const handleAddRule = async (values: { direction: string; protocol: string; portRange: string[]; sourceType: string; source: string; description: string; action: string; priority: number }) => {
     const newRule: SecurityRule = {
       id: `rule-${Date.now()}`,
-      direction: values.direction,
-      protocol: values.protocol,
+      direction: (values.direction as 'inbound' | 'outbound'),
+      protocol: (values.protocol as 'TCP' | 'UDP' | 'ICMPv4' | 'ICMPv6' | 'ALL'),
       portRange: values.portRange,
-      action: values.action,
+      action: (values.action as 'allow' | 'deny'),
       source: values.source,
       priority: values.priority,
       description: values.description
     }
 
-    const updatedGroup = {
+    const updatedGroup: SecurityGroup = {
       ...currentGroup,
       rules: [...currentGroup.rules, newRule],
-      inboundRules: currentGroup.rules.filter(r => r.direction === 'inbound').length + (values.direction === 'inbound' ? 1 : 0),
-      outboundRules: currentGroup.rules.filter(r => r.direction === 'outbound').length + (values.direction === 'outbound' ? 1 : 0)
+      inboundRules: currentGroup.rules.filter(r => r.direction === 'inbound').length + ((values.direction as 'inbound' | 'outbound') === 'inbound' ? 1 : 0),
+      outboundRules: currentGroup.rules.filter(r => r.direction === 'outbound').length + ((values.direction as 'inbound' | 'outbound') === 'outbound' ? 1 : 0)
     }
 
     setCurrentGroup(updatedGroup)
@@ -139,16 +139,25 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
   }
 
   // 更新规则
-  const handleUpdateRule = async (values: any) => {
+  const handleUpdateRule = async (values: { direction: string; protocol: string; portRange: string[]; sourceType: string; source: string; description: string; action: string; priority: number }) => {
     if (!editingRule) return
 
-    const updatedRules = currentGroup.rules.map(rule => 
+    const updatedRules: SecurityRule[] = currentGroup.rules.map(rule => 
       rule.id === editingRule.id 
-        ? { ...rule, ...values }
+        ? {
+            ...rule,
+            direction: (values.direction as 'inbound' | 'outbound'),
+            protocol: (values.protocol as 'TCP' | 'UDP' | 'ICMPv4' | 'ICMPv6' | 'ALL'),
+            portRange: values.portRange,
+            action: (values.action as 'allow' | 'deny'),
+            source: values.source,
+            priority: values.priority,
+            description: values.description
+          }
         : rule
     )
 
-    const updatedGroup = {
+    const updatedGroup: SecurityGroup = {
       ...currentGroup,
       rules: updatedRules
     }
@@ -161,18 +170,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
   }
 
 
-  // 渲染实例状态
-  const renderInstanceStatus = (status: string) => {
-    const statusConfig = {
-      running: { color: 'success', text: '运行中' },
-      stopped: { color: 'default', text: '已停止' },
-      starting: { color: 'processing', text: '启动中' },
-      stopping: { color: 'warning', text: '停止中' }
-    }
-    
-    const config = statusConfig[status as keyof typeof statusConfig]
-    return <Tag color={config.color}>{config.text}</Tag>
-  }
+
 
   // 规则表格列配置
   const getRuleColumns = (direction: 'inbound' | 'outbound'): TableColumnsType<SecurityRule> => [
@@ -234,7 +232,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
       title: '操作',
       key: 'actions',
       width: 150,
-      render: (_: any, record: SecurityRule) => (
+              render: (_: unknown, record: SecurityRule) => (
         <Space size="small">
           <Button
             size="small"
