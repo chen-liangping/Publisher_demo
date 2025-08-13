@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: '产品原型',
+  title: 'publisher_demo',
   description: '使用 Next.js 和 Ant Design 构建的产品原型',
 }
 
