@@ -11,26 +11,24 @@ import {
   Input,
   Switch,
   message,
-  Checkbox,
-  Tag,
-  Tooltip,
   Progress,
-  Row,
-  Col,
-  Badge
+  Alert,
+  Pagination,
+  Tooltip
 } from 'antd'
 import { 
   PlusOutlined, 
   DeleteOutlined,
   ExclamationCircleOutlined,
-  PlayCircleOutlined,
   LoadingOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
-
-  DownOutlined,
-  UpOutlined
+  DesktopOutlined,
+  SettingOutlined,
+  GlobalOutlined,
+  ThunderboltOutlined,
+  WarningOutlined
 } from '@ant-design/icons'
 
 const { Title } = Typography
@@ -125,9 +123,31 @@ export default function GameManagement() {
   const [confirmModalVisible, setConfirmModalVisible] = useState<boolean>(false)
   const [initConfirmed, setInitConfirmed] = useState<boolean>(false)
   const [currentGameData, setCurrentGameData] = useState<Game | null>(null)
-  const [initializingGames, setInitializingGames] = useState<Set<string>>(new Set())
+  // 已移除初始化中的集合，改用进度弹窗来标识
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [form] = Form.useForm()
+
+  // A-1 顶部筛选/排序与统计 & A-3 分页
+  const [keyword, setKeyword] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(8)
+
+  // 配置弹窗（表单字段列表）
+  type ResourceFormFields = Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch'>
+  // 新增：添加游戏表单字段类型
+  interface AddGameFormValues {
+    appId: string
+    description?: string
+    clientResource: boolean
+    serverResource: boolean
+    globalAcceleration: boolean
+    flashLaunch: boolean
+  }
+  const [configModalVisible, setConfigModalVisible] = useState<boolean>(false)
+  const [configModalGame, setConfigModalGame] = useState<Game | null>(null)
+  const [configModalEnv, setConfigModalEnv] = useState<'testEnv' | 'prodEnv' | null>(null)
+  const [configForm] = Form.useForm<ResourceFormFields>()
+  const [globalAccelLocked, setGlobalAccelLocked] = useState<boolean>(false)
 
   // 新增：资源配置确认弹窗状态
   const [resourceConfirmVisible, setResourceConfirmVisible] = useState<boolean>(false)
@@ -158,16 +178,16 @@ export default function GameManagement() {
     configs: Array<{ name: string; desc: string }>
   } | null>(null)
 
-  // 切换卡片展开状态
+  // 删除二次确认
+  const [deleteConfirmGame, setDeleteConfirmGame] = useState<Game | null>(null)
+
+  // 切换卡片展开状态（当前用在表格型行结构的“展开”按钮）
   const toggleCardExpanded = (gameId: string): void => {
     setExpandedCards(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(gameId)) {
-        newSet.delete(gameId)
-      } else {
-        newSet.add(gameId)
-      }
-      return newSet
+      const next = new Set(prev)
+      if (next.has(gameId)) next.delete(gameId)
+      else next.add(gameId)
+      return next
     })
   }
 
@@ -179,99 +199,10 @@ export default function GameManagement() {
       return
     }
 
-    Modal.confirm({
-      title: '删除确认',
-      content: '删除后数据不可恢复，是否删除？',
-      okText: '确定',
-      okType: 'danger',
-      cancelText: '关闭',
-      onOk: () => {
-        setGameList(gameList.filter(item => item.id !== game.id))
-        message.success('游戏删除成功')
-      }
-    })
+    setDeleteConfirmGame(game)
   }
 
-  // 切换资源状态
-  const handleToggleResource = (
-    gameId: string, 
-    environment: 'testEnv' | 'prodEnv',
-    resourceType: keyof Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch'>, 
-    checked: boolean
-  ): void => {
-    const game = gameList.find(g => g.id === gameId)
-    if (!game) return
-
-    const envConfig = game[environment]
-    const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
-    const resourceNames = {
-      clientResource: '客户端资源',
-      serverResource: '服务端资源',
-      globalAcceleration: '全球加速',
-      flashLaunch: 'FlashLaunch'
-    }
-
-    // 已初始化的游戏，客户端和服务端资源不可修改
-    if (envConfig.initStatus === 'completed' && (resourceType === 'clientResource' || resourceType === 'serverResource')) {
-      message.warning(`${envName}已完成初始化，不可修改`)
-      return
-    }
-
-    // 全球加速特殊逻辑
-    if (resourceType === 'globalAcceleration') {
-      if (checked) {
-        // 检查是否配置了客户端资源
-        if (!envConfig.clientResource) {
-          message.warning(`${envName}未配置客户端资源，无法开启`)
-          return
-        }
-        // 开启全球加速需要确认
-        showResourceConfirm(
-          gameId,
-          environment,
-          resourceType,
-          checked,
-          `开启${envName}全球加速`,
-          `开启后无法关闭，是否确认开启${envName}的全球加速？`
-        )
-        return
-      } else {
-        // 尝试关闭全球加速时，提示无法关闭
-        message.warning('开启后无法关闭')
-        return
-      }
-    }
-
-    // FlashLaunch 特殊逻辑 - 任何时候都可以修改，但需要确认
-    if (resourceType === 'flashLaunch') {
-      showResourceConfirm(
-        gameId,
-        environment,
-        resourceType,
-        checked,
-        `${checked ? '开启' : '关闭'}${envName}FlashLaunch`,
-        `是否确认${checked ? '开启' : '关闭'}${envName}的FlashLaunch？`
-      )
-      return
-    }
-
-    // 客户端和服务端资源未初始化时需要确认
-    if ((resourceType === 'clientResource' || resourceType === 'serverResource') && envConfig.initStatus === 'not_initialized') {
-      showResourceConfirm(
-        gameId,
-        environment,
-        resourceType,
-        checked,
-        `${checked ? '开启' : '关闭'}${envName}${resourceNames[resourceType]}`,
-        `是否确认${checked ? '开启' : '关闭'}${envName}的${resourceNames[resourceType]}？`
-      )
-      return
-    }
-
-    // 其他情况直接更新
-    updateGameResource(gameId, environment, resourceType, checked)
-    message.success(`${envName}${resourceNames[resourceType]}已${checked ? '开启' : '关闭'}`)
-  }
+  // 已移除：开关在表单弹窗统一保存
 
   // 更新游戏资源状态
   const updateGameResource = (
@@ -296,24 +227,7 @@ export default function GameManagement() {
   }
 
   // 显示资源配置确认弹窗
-  const showResourceConfirm = (
-    gameId: string, 
-    environment: 'testEnv' | 'prodEnv',
-    resourceType: keyof Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch'>, 
-    checked: boolean, 
-    title: string, 
-    content: string
-  ): void => {
-    setResourceConfirmData({
-      gameId,
-      environment,
-      resourceType,
-      checked,
-      title,
-      content
-    })
-    setResourceConfirmVisible(true)
-  }
+  // 已移除：统一由表单保存
 
   // 确认资源配置修改
   const handleResourceConfirm = (): void => {
@@ -376,10 +290,8 @@ export default function GameManagement() {
   // 开始游戏初始化（带进度显示）
   const startGameInitializationWithProgress = (game: Game, environment: 'testEnv' | 'prodEnv', initConfigs: Array<{ name: string; desc: string }>): void => {
     const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
-    const gameEnvId = `${game.id}-${environment}`
     
-    // 添加到初始化中的游戏列表
-    setInitializingGames(prev => new Set(prev).add(gameEnvId))
+    // 标记初始化开始（通过进度弹窗）
     
     // 设置初始化进度数据
     const progressConfigs = initConfigs.map(config => ({
@@ -456,7 +368,6 @@ export default function GameManagement() {
   // 完成初始化
   const completeInitialization = (gameId: string, environment: 'testEnv' | 'prodEnv'): void => {
     const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
-    const gameEnvId = `${gameId}-${environment}`
     
     // 更新游戏环境状态为已完成初始化
     const updatedGameList = gameList.map(game => {
@@ -473,12 +384,7 @@ export default function GameManagement() {
     })
     setGameList(updatedGameList)
     
-    // 从初始化中列表移除
-    setInitializingGames(prev => {
-      const newSet = new Set(prev)
-      newSet.delete(gameEnvId)
-      return newSet
-    })
+    // 完成：关闭进度弹窗
     
     message.success(`${envName}初始化成功！`)
     
@@ -492,13 +398,7 @@ export default function GameManagement() {
   // 处理初始化失败
   const handleInitializationFailure = (gameId: string, environment: 'testEnv' | 'prodEnv'): void => {
     const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
-    const gameEnvId = `${gameId}-${environment}`
     
-    setInitializingGames(prev => {
-      const newSet = new Set(prev)
-      newSet.delete(gameEnvId)
-      return newSet
-    })
     
     message.error(`${envName}初始化失败，请稍后重试`)
     
@@ -512,14 +412,7 @@ export default function GameManagement() {
 
 
   // 表单提交处理
-  const handleAddGame = async (values: { 
-    appId: string; 
-    appName: string; 
-    clientResource: boolean; 
-    serverResource: boolean;
-    globalAcceleration: boolean;
-    flashLaunch: boolean;
-  }): Promise<void> => {
+  const handleAddGame = async (values: AddGameFormValues): Promise<void> => {
     // 前端校验
     if (!values.appId) {
       message.error('APP ID不能为空')
@@ -555,7 +448,7 @@ export default function GameManagement() {
     const newGame: Game = {
       id: `game-${Date.now()}`,
       appId: values.appId,
-      description: values.appName || '新添加的游戏',
+      description: values.description || '新添加的游戏',
       testEnv: {
         initStatus: 'not_initialized' as const,
         clientResource: values.clientResource,
@@ -565,16 +458,17 @@ export default function GameManagement() {
       },
       prodEnv: {
         initStatus: 'not_initialized' as const,
-        clientResource: false,
-        serverResource: false,
-        globalAcceleration: false,
-        flashLaunch: false
+        clientResource: values.clientResource,
+        serverResource: values.serverResource,
+        globalAcceleration: values.globalAcceleration,
+        flashLaunch: values.flashLaunch
       },
       createTime: new Date().toLocaleString('zh-CN')
     }
-    setCurrentGameData(newGame)
+    setGameList(prev => [newGame, ...prev])
     setAddModalVisible(false)
-    setConfirmModalVisible(true)
+    form.resetFields()
+    message.success('添加成功')
   }
 
   // 初始化确认
@@ -648,166 +542,52 @@ export default function GameManagement() {
     }, 3000)
   }
 
-  // 渲染环境配置卡片
-  const renderEnvironmentCard = (game: Game, environment: 'testEnv' | 'prodEnv') => {
-    const envConfig = game[environment]
-    const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
-    const envColor = environment === 'testEnv' ? '#1890ff' : '#52c41a'
-    const testInitializing = initializingGames.has(`${game.id}-testEnv`)
-    const prodInitializing = initializingGames.has(`${game.id}-prodEnv`)
-    const isInitializing = environment === 'testEnv' ? testInitializing : prodInitializing
-
-    const resources = [
-      { key: 'clientResource', name: '客户端资源', icon: '🖥️' },
-      { key: 'serverResource', name: '服务端资源', icon: '⚙️' },
-      { key: 'globalAcceleration', name: '全球加速', icon: '🌍' },
-      { key: 'flashLaunch', name: 'FlashLaunch', icon: '⚡' }
-    ]
-
-    const enabledCount = resources.filter(r => envConfig[r.key as keyof EnvironmentConfig]).length
-
-    return (
-      <Card
-        size="small"
-        style={{ 
-          marginBottom: 12,
-          borderLeft: `3px solid ${envColor}`,
-          backgroundColor: envConfig.initStatus === 'completed' ? '#f6ffed' : '#fafafa'
-        }}
-        styles={{ body: { padding: '12px 16px' } }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontWeight: 500, color: envColor, fontSize: '14px' }}>
-              {envName}
-            </div>
-            <Tag color={envConfig.initStatus === 'completed' ? 'success' : 'warning'}>
-              {envConfig.initStatus === 'completed' ? '已初始化' : '未初始化'}
-            </Tag>
-            <Badge count={enabledCount} showZero style={{ backgroundColor: '#52c41a' }}>
-              <span style={{ fontSize: '12px', color: '#666' }}>已配置</span>
-            </Badge>
-          </div>
-          
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {envConfig.initStatus === 'not_initialized' && (
-              <Button
-                size="small"
-                type="primary"
-                icon={isInitializing ? <LoadingOutlined /> : <PlayCircleOutlined />}
-                onClick={() => handleInitializeGame(game, environment)}
-                loading={isInitializing}
-                disabled={isInitializing}
-                style={{ backgroundColor: envColor, borderColor: envColor }}
-              >
-                {isInitializing ? '初始化中' : '初始化'}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* 资源配置详情 */}
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {resources.map(resource => {
-            const isEnabled = envConfig[resource.key as keyof EnvironmentConfig] as boolean
-            const isDisabled = envConfig.initStatus === 'completed' && 
-                              (resource.key === 'clientResource' || resource.key === 'serverResource')
-            
-            let tooltip = ''
-            if (isDisabled) {
-              tooltip = '已完成初始化，不可修改'
-            } else if (resource.key === 'globalAcceleration' && envConfig.globalAcceleration) {
-              tooltip = '开启后无法关闭'
-            }
-            
-            const switchDisabled = isDisabled || 
-                                  (resource.key === 'globalAcceleration' && envConfig.globalAcceleration)
-
-            return (
-              <div
-                key={resource.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 8px',
-                  backgroundColor: isEnabled ? '#e6f7ff' : '#f5f5f5',
-                  borderRadius: 4,
-                  border: `1px solid ${isEnabled ? '#91d5ff' : '#d9d9d9'}`,
-                  fontSize: '12px'
-                }}
-              >
-                <span>{resource.icon}</span>
-                <span style={{ color: isEnabled ? '#1890ff' : '#666' }}>
-                  {resource.name}
-                </span>
-                <Tooltip title={tooltip}>
-                  <Switch
-                    checked={isEnabled}
-                    onChange={(checked) => handleToggleResource(game.id, environment, resource.key as keyof Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch'>, checked)}
-                    size="small"
-                    disabled={switchDisabled}
-                  />
-                </Tooltip>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
-    )
-  }
+  // 渲染环境配置卡片（已替换为表单弹窗，不再使用）
+  // 已移除：旧抽屉卡片渲染（保留声明避免历史引用报错）
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const renderEnvironmentCard = (_game: Game, _environment: 'testEnv' | 'prodEnv') => null
 
   // 渲染游戏卡片
   const renderGameCard = (game: Game) => {
     const isExpanded = expandedCards.has(game.id)
     const testCompleted = game.testEnv.initStatus === 'completed'
     const prodCompleted = game.prodEnv.initStatus === 'completed'
-    const totalResources = [
-      game.testEnv.clientResource, game.testEnv.serverResource, game.testEnv.globalAcceleration, game.testEnv.flashLaunch,
-      game.prodEnv.clientResource, game.prodEnv.serverResource, game.prodEnv.globalAcceleration, game.prodEnv.flashLaunch
-    ].filter(Boolean).length
+    const overallStatusColor = (testCompleted && prodCompleted)
+      ? '#52c41a' // 两个环境都初始化：绿色
+      : (testCompleted || prodCompleted)
+        ? '#faad14' // 仅一个初始化：黄色
+        : '#ff4d4f' // 都未初始化：红色
 
     return (
       <Card
         key={game.id}
+        variant="borderless"
         style={{ 
           marginBottom: 16,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: '1px solid #f0f0f0'
+          background: '#fff'
         }}
-        styles={{ body: { padding: '20px 24px' } }}
+        styles={{ body: { padding: '16px 20px' } }}
       >
         {/* 卡片头部 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-              <Title level={4} style={{ margin: 0, fontSize: '18px', color: '#1890ff' }}>
-                {game.appId}
-              </Title>
-              <Badge count={totalResources} showZero style={{ backgroundColor: '#52c41a' }}>
-                <span style={{ fontSize: '12px', color: '#999' }}>配置项</span>
-              </Badge>
-            </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Title level={4} style={{ margin: 0, fontSize: '18px', color: '#1890ff' }}>
+              {game.appId}
+            </Title>
+            {/* 总体初始化状态：单一图标按颜色区分 */}
+            <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: overallStatusColor, display: 'inline-block' }} />
             {game.description && (
-              <div style={{ color: '#666', fontSize: '14px', marginBottom: 8 }}>
+              <span style={{ color: '#666', fontSize: '12px' }}>
                 {game.description}
-              </div>
+              </span>
             )}
-            <div style={{ color: '#999', fontSize: '12px' }}>
+            <span style={{ color: '#999', fontSize: '12px', marginLeft: 60 }}>
               创建时间：{game.createTime}
-            </div>
+            </span>
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button
-              type="text"
-              size="small"
-              icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-              onClick={() => toggleCardExpanded(game.id)}
-              style={{ color: '#666' }}
-            >
-              {isExpanded ? '收起' : '展开配置'}
-            </Button>
+            <Button size="small" onClick={() => toggleCardExpanded(game.id)}>{isExpanded ? '收起' : '展开'}</Button>
             <Button
               size="small"
               danger
@@ -821,49 +601,119 @@ export default function GameManagement() {
           </div>
         </div>
 
-        {/* 环境状态概览 */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: isExpanded ? 20 : 0 }}>
-          <div style={{ 
-            flex: 1, 
-            padding: '12px 16px', 
-            backgroundColor: '#f0f9ff', 
-            borderRadius: 6,
-            border: '1px solid #bae7ff'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 500, color: '#1890ff' }}>测试环境</span>
-              <Tag color={testCompleted ? 'success' : 'warning'}>
-                {testCompleted ? '已初始化' : '未初始化'}
-              </Tag>
-            </div>
-          </div>
-          <div style={{ 
-            flex: 1, 
-            padding: '12px 16px', 
-            backgroundColor: '#f6ffed', 
-            borderRadius: 6,
-            border: '1px solid #b7eb8f'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 500, color: '#52c41a' }}>生产环境</span>
-              <Tag color={prodCompleted ? 'success' : 'warning'}>
-                {prodCompleted ? '已初始化' : '未初始化'}
-              </Tag>
-            </div>
-          </div>
-        </div>
-
-        {/* 详细配置（展开时显示） */}
+        {/* 表格型展开：默认不显示，由展开按钮控制 */}
         {isExpanded && (
-          <div style={{ paddingTop: 20, borderTop: '1px solid #f0f0f0' }}>
-            <Row gutter={16}>
-              <Col span={12}>
-                {renderEnvironmentCard(game, 'testEnv')}
-              </Col>
-              <Col span={12}>
-                {renderEnvironmentCard(game, 'prodEnv')}
-              </Col>
-            </Row>
+          <div style={{ borderTop: '1px solid #f0f0f0' }}>
+            {/* 第二行：测试环境 */}
+            <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fbfffb' }}>
+              <Space size={8}>
+                <span title={testCompleted ? '已初始化' : '未初始化'}>
+                  {testCompleted ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <WarningOutlined style={{ color: '#faad14' }} />
+                  )}
+                </span>
+                <span style={{ color: '#34495e', fontWeight: 500 }}>测试环境</span>
+                {/* 开启的配置以图标展示（带 Tooltip） */}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {game.testEnv.clientResource && (
+                    <Tooltip title="客户端资源">
+                      <DesktopOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 15}} />
+                    </Tooltip>
+                  )}
+                  {game.testEnv.serverResource && (
+                    <Tooltip title="服务端资源">
+                      <SettingOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                  {game.testEnv.globalAcceleration && (
+                    <Tooltip title="全球加速">
+                      <GlobalOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                  {game.testEnv.flashLaunch && (
+                    <Tooltip title="FlashLaunch">
+                      <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                </span>
+                
+              </Space>
+              <Space>
+                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'testEnv')}>初始化</Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setConfigModalGame(game)
+                    setConfigModalEnv('testEnv')
+                    setGlobalAccelLocked(!!game.testEnv.globalAcceleration)
+                    configForm.setFieldsValue({
+                      clientResource: game.testEnv.clientResource,
+                      serverResource: game.testEnv.serverResource,
+                      globalAcceleration: game.testEnv.globalAcceleration,
+                      flashLaunch: game.testEnv.flashLaunch
+                    })
+                    setConfigModalVisible(true)
+                  }}
+                >配置</Button>
+              </Space>
+            </div>
+            {/* 第三行：生产环境 */}
+            <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f7fbff' }}>
+              <Space size={8}>
+                <span title={prodCompleted ? '已初始化' : '未初始化'}>
+                  {prodCompleted ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : (
+                    <WarningOutlined style={{ color: '#faad14' }} />
+                  )}
+                </span>
+                <span style={{ color: '#34495e', fontWeight: 500 }}>生产环境</span>
+                {/* 开启的配置以图标展示（带 Tooltip） */}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {game.prodEnv.clientResource && (
+                    <Tooltip title="客户端资源">
+                      <DesktopOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 15}} />
+                    </Tooltip>
+                  )}
+                  {game.prodEnv.serverResource && (
+                    <Tooltip title="服务端资源">
+                      <SettingOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                  {game.prodEnv.globalAcceleration && (
+                    <Tooltip title="全球加速">
+                      <GlobalOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                  {game.prodEnv.flashLaunch && (
+                    <Tooltip title="FlashLaunch">
+                      <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
+                </span>
+                
+              </Space>
+              <Space>
+                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'prodEnv')}>初始化</Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setConfigModalGame(game)
+                    setConfigModalEnv('prodEnv')
+                    setGlobalAccelLocked(!!game.prodEnv.globalAcceleration)
+                    configForm.setFieldsValue({
+                      clientResource: game.prodEnv.clientResource,
+                      serverResource: game.prodEnv.serverResource,
+                      globalAcceleration: game.prodEnv.globalAcceleration,
+                      flashLaunch: game.prodEnv.flashLaunch
+                    })
+                    setConfigModalVisible(true)
+                  }}
+                >配置</Button>
+              </Space>
+            </div>
           </div>
         )}
       </Card>
@@ -873,18 +723,32 @@ export default function GameManagement() {
 
 
   return (
+    <>
     <Card>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          游戏管理
-        </Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={() => setAddModalVisible(true)}
-        >
-          添加游戏
-        </Button>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 480 }}>
+          <Title level={4} style={{ margin: 0 }}>
+            游戏管理
+          </Title>
+          {/* 统计概览（按需隐藏） */}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* 搜索 */}
+          <Input.Search
+            placeholder="搜索 appid"
+            allowClear
+            onSearch={(v) => { setKeyword(v); setCurrentPage(1) }}
+            onChange={(e) => { if (!e.target.value) { setKeyword(''); setCurrentPage(1) } }}
+            style={{ width: 240 }}
+          />
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => setAddModalVisible(true)}
+          >
+            添加游戏
+          </Button>
+        </div>
       </div>
       
       {/* 游戏列表 */}
@@ -899,12 +763,33 @@ export default function GameManagement() {
             暂无游戏数据，点击&ldquo;添加游戏&rdquo;开始使用
           </div>
         ) : (
-          <div>
-            {gameList.map(game => renderGameCard(game))}
-            <div style={{ textAlign: 'center', color: '#999', fontSize: '14px' }}>
-              共 {gameList.length} 个游戏
-            </div>
-          </div>
+          (() => {
+            // 过滤
+            const filtered = gameList.filter(g => g.appId.toLowerCase().includes(keyword.toLowerCase()))
+            // 默认创建时间倒序
+            const sorted = [...filtered].sort((a, b) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime())
+            // 分页
+            const start = (currentPage - 1) * pageSize
+            const pageItems = sorted.slice(start, start + pageSize)
+
+            return (
+              <div>
+                {pageItems.map(game => renderGameCard(game))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <div style={{ color: '#999', fontSize: 14 }}>共 {sorted.length} 个游戏</div>
+                  <Pagination
+                    current={currentPage}
+                    pageSize={pageSize}
+                    total={sorted.length}
+                    showSizeChanger
+                    pageSizeOptions={[8, 12, 16] as unknown as number[]}
+                    onChange={(p, ps) => { setCurrentPage(p); setPageSize(ps) }}
+                    showTotal={(total) => `共 ${total} 条`}
+                  />
+                </div>
+              </div>
+            )
+          })()
         )}
       </div>
 
@@ -922,7 +807,16 @@ export default function GameManagement() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={handleAddGame}
+          onFinish={(vals) => {
+            handleAddGame(vals as AddGameFormValues)
+          }}
+          onFinishFailed={() => message.error('请检查表单必填项')}
+          initialValues={{
+            clientResource: true,
+            serverResource: false,
+            globalAcceleration: false,
+            flashLaunch: false
+          }}
         >
           <Form.Item
             label="APP ID"
@@ -931,7 +825,7 @@ export default function GameManagement() {
               { required: true, message: 'APP ID不能为空' }
             ]}
           >
-            <Input placeholder="请输入appid" />
+            <Input placeholder="请输入appid" allowClear />
           </Form.Item>
           
           <Form.Item
@@ -979,7 +873,7 @@ export default function GameManagement() {
           
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" onClick={() => form.submit()}>
                 确认
               </Button>
               <Button onClick={() => {
@@ -991,6 +885,25 @@ export default function GameManagement() {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 删除确认弹窗 */}
+      <Modal
+        title="删除确认"
+        open={!!deleteConfirmGame}
+        onCancel={() => setDeleteConfirmGame(null)}
+        onOk={() => {
+          if (deleteConfirmGame) {
+            setGameList(gameList.filter(item => item.id !== deleteConfirmGame.id))
+            message.success('游戏删除成功')
+          }
+          setDeleteConfirmGame(null)
+        }}
+        okText="确定"
+        okButtonProps={{ danger: true }}
+        cancelText="关闭"
+      >
+        删除后数据不可恢复，是否删除该游戏（{deleteConfirmGame?.appId}）？
       </Modal>
 
       {/* 初始化确认弹窗 */}
@@ -1030,12 +943,14 @@ export default function GameManagement() {
             </div>
           </div>
 
-          <Checkbox 
-            checked={initConfirmed}
-            onChange={(e) => setInitConfirmed(e.target.checked)}
-          >
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={initConfirmed}
+              onChange={(e) => setInitConfirmed(e.target.checked)}
+            />
             我已知晓并确认
-          </Checkbox>
+          </label>
         </div>
 
         <Space>
@@ -1201,5 +1116,49 @@ export default function GameManagement() {
         )}
       </Modal>
     </Card>
+    {/* 配置弹窗：以列表字段（表单）形式交互 */}
+    <Modal
+      title={configModalGame ? `配置 - ${configModalGame.appId}（${configModalEnv === 'testEnv' ? '测试环境' : configModalEnv === 'prodEnv' ? '生产环境' : ''}）` : '配置'}
+      open={configModalVisible}
+      onCancel={() => { setConfigModalVisible(false); setConfigModalGame(null); setConfigModalEnv(null) }}
+      onOk={() => {
+        const values = configForm.getFieldsValue()
+        // 提交前校验：开启全球加速时必须已开启客户端资源
+        if (values.globalAcceleration && !values.clientResource) {
+          message.error('请先开启客户端资源，才能开启全球加速')
+          return
+        }
+        if (configModalGame && configModalEnv) {
+          setGameList(prev => prev.map(g => {
+            if (g.id !== configModalGame.id) return g
+            const next = { ...g }
+            next[configModalEnv] = { ...next[configModalEnv], ...values }
+            return next
+          }))
+          message.success('配置已保存')
+        }
+        setConfigModalVisible(false)
+        setConfigModalGame(null)
+        setConfigModalEnv(null)
+      }}
+      width={520}
+    >
+      <Alert type="warning" showIcon message="全球加速开启后不可关闭，请谨慎操作" style={{ marginBottom: 12 }} />
+      <Form form={configForm} layout="vertical">
+        <Form.Item label="客户端资源" name="clientResource" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+        <Form.Item label="服务端资源" name="serverResource" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+        <Form.Item label="全球加速" name="globalAcceleration" valuePropName="checked" extra="全球加速开启后不可关闭">
+          <Switch disabled={globalAccelLocked} />
+        </Form.Item>
+        <Form.Item label="FlashLaunch" name="flashLaunch" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+      </Form>
+    </Modal>
+    </>
   )
 }
