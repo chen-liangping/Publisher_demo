@@ -290,6 +290,7 @@ export default function GameManagement() {
   // 开始游戏初始化（带进度显示）
   const startGameInitializationWithProgress = (game: Game, environment: 'testEnv' | 'prodEnv', initConfigs: Array<{ name: string; desc: string }>): void => {
     const envName = environment === 'testEnv' ? '测试环境' : '生产环境'
+    const gameEnvId = `${game.id}-${environment}`
     
     // 标记初始化开始（通过进度弹窗）
     
