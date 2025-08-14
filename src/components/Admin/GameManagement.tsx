@@ -50,6 +50,9 @@ interface Game {
   testEnv: EnvironmentConfig
   prodEnv: EnvironmentConfig
   createTime: string
+  status?: 'active' | 'offlining' | 'offline'
+  offlineLogs?: Array<{ time: string; step: string; status: 'pending' | 'running' | 'success' | 'failed'; detail?: string }>
+  offlinePlan?: string[]
 }
 
 // 模拟游戏数据
@@ -126,6 +129,10 @@ export default function GameManagement() {
   // 已移除初始化中的集合，改用进度弹窗来标识
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [form] = Form.useForm()
+  const [offlineConfirmVisible, setOfflineConfirmVisible] = useState<boolean>(false)
+  const [offlineTargetGame, setOfflineTargetGame] = useState<Game | null>(null)
+  const [offlineAcknowledge, setOfflineAcknowledge] = useState<boolean>(false)
+  const [offlineLogsVisible, setOfflineLogsVisible] = useState<boolean>(false)
 
   // A-1 顶部筛选/排序与统计 & A-3 分页
   const [keyword, setKeyword] = useState<string>('')
@@ -191,14 +198,12 @@ export default function GameManagement() {
     })
   }
 
-  // 删除游戏
+  // 删除游戏（仅允许在下线完成后）
   const handleDeleteGame = (game: Game): void => {
-    // 已初始化的游戏不能删除
-    if (game.testEnv.initStatus === 'completed' || game.prodEnv.initStatus === 'completed') {
-      message.warning('已有环境完成初始化的游戏不能删除')
+    if (game.status !== 'offline') {
+      message.warning('需先下线完成后才能删除')
       return
     }
-
     setDeleteConfirmGame(game)
   }
 
@@ -311,6 +316,149 @@ export default function GameManagement() {
 
     // 开始逐步初始化
     executeInitializationSteps(game.id, environment, progressConfigs, 0)
+  }
+
+  // 模拟下线流程：10% 概率失败，可重试
+  const simulateOfflining = (gameId: string): void => {
+    const steps = [
+      'AliCloud/OSS: 清空并删除 Bucket',
+      'AliCloud/RAM: 删除 Access Keys / 删除策略版本与策略 / 删除用户',
+      'AliCloud/ACR NS: 删除命名空间（预先清理 PV/PVC，解除 finalizers）',
+      'AliCloud/Tair(Redis): 转按量计费并轮询状态后删除实例',
+      'AliCloud/K8s: 获取并删除命名空间内 PVC/PV/挂载点',
+      'AliCloud/ACK: 删除命名空间（确保已清理 PV&PVC）',
+      'AliCloud/PolarDB: 转计费后删除 PRD 集群与 STG 数据库',
+      'AliCloud/MSE: 删除网关域名/网关/Ingress/Ingress Class/Configs',
+      'AliCloud/GA: 按标签获取并触发删除 Global Accelerator',
+      'AWS/CloudFront: 获取 ETag，禁用并删除 Distribution',
+      'AWS/S3: 清空并删除 Bucket',
+      'AWS/IAM: 删除 Access-Key/Policies/User',
+      'AWS/Route53: 删除记录/流量策略/实例',
+    ]
+
+    const runStep = (index: number) => {
+      if (index >= steps.length) {
+        // 全部完成
+        setGameList(prev => prev.map(g => {
+          if (g.id !== gameId) return g
+          const logs = g.offlineLogs ? [...g.offlineLogs] : []
+          const lastRunning = logs.findLastIndex(l => l.status === 'running')
+          if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: 'success' }
+          logs.push({ time: new Date().toLocaleString('zh-CN'), step: '下线完成', status: 'success' })
+          return { ...g, status: 'offline', offlineLogs: logs }
+        }))
+        message.success('下线完成，可以删除该游戏')
+        return
+      }
+
+      // 将上一条 running 置 success，并插入当前步骤为 running
+      setGameList(prev => prev.map(g => {
+        if (g.id !== gameId) return g
+        const logs = g.offlineLogs ? [...g.offlineLogs] : []
+        const lastRunning = logs.findLastIndex(l => l.status === 'running')
+        if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: 'success' }
+        logs.push({ time: new Date().toLocaleString('zh-CN'), step: steps[index], status: 'running' })
+        return { ...g, offlineLogs: logs, status: 'offlining' }
+      }))
+
+      const delay = 600 + Math.floor(Math.random() * 400)
+      setTimeout(() => {
+        const fail = Math.random() < 0.1 // 10% 概率失败
+        setGameList(prev => prev.map(g => {
+          if (g.id !== gameId) return g
+          const logs = g.offlineLogs ? [...g.offlineLogs] : []
+          const lastRunning = logs.findLastIndex(l => l.status === 'running')
+          if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: fail ? 'failed' : 'success' }
+          return { ...g, offlineLogs: logs, status: fail ? 'offlining' : g.status }
+        }))
+
+        if (!fail) runStep(index + 1)
+      }, delay)
+    }
+
+    // 启动
+    runStep(0)
+  }
+
+  // 重试指定步骤：将该步标记为 running，并再次推进后续步骤
+  const retryOfflineStep = (logIndex: number): void => {
+    if (!offlineTargetGame) return
+    const targetId = offlineTargetGame.id
+    // 将失败步骤改为 running，并清理其后续步骤（保持线性推进）
+    setGameList(prev => prev.map(g => {
+      if (g.id !== targetId) return g
+      const logs = g.offlineLogs ? [...g.offlineLogs] : []
+      for (let i = logs.length - 1; i > logIndex; i--) logs.pop()
+      logs[logIndex] = { ...logs[logIndex], status: 'running' }
+      return { ...g, status: 'offlining', offlineLogs: logs }
+    }))
+
+    // 继续推进：把该步置 success，再继续后续队列
+    setTimeout(() => {
+      setGameList(prev => prev.map(g => {
+        if (g.id !== targetId) return g
+        const logs = g.offlineLogs ? [...g.offlineLogs] : []
+        logs[logIndex] = { ...logs[logIndex], status: 'success' }
+        return { ...g, offlineLogs: logs }
+      }))
+      // 继续剩余未执行步骤
+      simulateOffliningFrom(targetId, logIndex + 1)
+    }, 800)
+  }
+
+  // 从指定步骤索引继续推进（基于统一 steps 清单）
+  const simulateOffliningFrom = (gameId: string, startIndex: number): void => {
+    const steps = [
+      'AliCloud/OSS: 清空并删除 Bucket',
+      'AliCloud/RAM: 删除 Access Keys / 删除策略版本与策略 / 删除用户',
+      'AliCloud/ACR NS: 删除命名空间（预先清理 PV/PVC，解除 finalizers）',
+      'AliCloud/Tair(Redis): 转按量计费并轮询状态后删除实例',
+      'AliCloud/K8s: 获取并删除命名空间内 PVC/PV/挂载点',
+      'AliCloud/ACK: 删除命名空间（确保已清理 PV&PVC）',
+      'AliCloud/PolarDB: 转计费后删除 PRD 集群与 STG 数据库',
+      'AliCloud/MSE: 删除网关域名/网关/Ingress/Ingress Class/Configs',
+      'AliCloud/GA: 按标签获取并触发删除 Global Accelerator',
+      'AWS/CloudFront: 获取 ETag，禁用并删除 Distribution',
+      'AWS/S3: 清空并删除 Bucket',
+      'AWS/IAM: 删除 Access-Key/Policies/User',
+      'AWS/Route53: 删除记录/流量策略/实例',
+    ]
+    const runStep = (i: number) => {
+      if (i >= steps.length) {
+        setGameList(prev => prev.map(g => {
+          if (g.id !== gameId) return g
+          const logs = g.offlineLogs ? [...g.offlineLogs] : []
+          const lastRunning = logs.findLastIndex(l => l.status === 'running')
+          if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: 'success' }
+          logs.push({ time: new Date().toLocaleString('zh-CN'), step: '下线完成', status: 'success' })
+          return { ...g, status: 'offline', offlineLogs: logs }
+        }))
+        message.success('下线完成，可以删除该游戏')
+        return
+      }
+      // 将上一条 running 置 success，并插入当前步骤为 running
+      setGameList(prev => prev.map(g => {
+        if (g.id !== gameId) return g
+        const logs = g.offlineLogs ? [...g.offlineLogs] : []
+        const lastRunning = logs.findLastIndex(l => l.status === 'running')
+        if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: 'success' }
+        logs.push({ time: new Date().toLocaleString('zh-CN'), step: steps[i], status: 'running' })
+        return { ...g, offlineLogs: logs, status: 'offlining' }
+      }))
+      const delay = 600 + Math.floor(Math.random() * 400)
+      setTimeout(() => {
+        const fail = Math.random() < 0.7
+        setGameList(prev => prev.map(g => {
+          if (g.id !== gameId) return g
+          const logs = g.offlineLogs ? [...g.offlineLogs] : []
+          const lastRunning = logs.findLastIndex(l => l.status === 'running')
+          if (lastRunning >= 0) logs[lastRunning] = { ...logs[lastRunning], status: fail ? 'failed' : 'success' }
+          return { ...g, offlineLogs: logs, status: fail ? 'offlining' : g.status }
+        }))
+        if (!fail) runStep(i + 1)
+      }, delay)
+    }
+    runStep(startIndex)
   }
 
   // 执行初始化步骤
@@ -572,7 +720,7 @@ export default function GameManagement() {
         {/* 卡片头部 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Title level={4} style={{ margin: 0, fontSize: '18px', color: '#1890ff' }}>
+            <Title level={4} style={{ margin: 0, fontSize: '18px', color: game.status === 'offline' ? '#7f8c8d' : '#1890ff' }}>
               {game.appId}
             </Title>
             {/* 总体初始化状态：单一图标按颜色区分 */}
@@ -589,13 +737,29 @@ export default function GameManagement() {
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Button size="small" onClick={() => toggleCardExpanded(game.id)}>{isExpanded ? '收起' : '展开'}</Button>
+            {/* 下线：仅当已初始化任一环境才可下线；下线完成后才允许删除 */}
+            <Button
+              size="small"
+              onClick={() => {
+                setOfflineTargetGame(game)
+                setOfflineAcknowledge(false)
+                if (game.status === 'offlining' || game.status === 'offline') {
+                  setOfflineLogsVisible(true)
+                } else {
+                  setOfflineConfirmVisible(true)
+                }
+              }}
+              disabled={game.status === 'active' && (game.testEnv.initStatus !== 'completed' && game.prodEnv.initStatus !== 'completed')}
+            >
+              {game.status === 'offlining' || game.status === 'offline' ? '下线日志' : '下线'}
+            </Button>
             <Button
               size="small"
               danger
               icon={<DeleteOutlined />}
               onClick={() => handleDeleteGame(game)}
-              disabled={testCompleted || prodCompleted}
-              title={(testCompleted || prodCompleted) ? '已有环境完成初始化的游戏不能删除' : '删除游戏'}
+              disabled={game.status !== 'offline'}
+              title={game.status !== 'offline' ? '需先下线完成后才能删除' : '删除游戏'}
             >
               删除
             </Button>
@@ -608,32 +772,36 @@ export default function GameManagement() {
             {/* 第二行：测试环境 */}
             <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fbfffb' }}>
               <Space size={8}>
-                <span title={testCompleted ? '已初始化' : '未初始化'}>
-                  {testCompleted ? (
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  ) : (
-                    <WarningOutlined style={{ color: '#faad14' }} />
-                  )}
-                </span>
+                {game.status === 'offline' ? (
+                  <span style={{ color: '#999', fontWeight: 500 }}>已下线</span>
+                ) : (
+                  <span title={testCompleted ? '已初始化' : '未初始化'}>
+                    {testCompleted ? (
+                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    ) : (
+                      <WarningOutlined style={{ color: '#faad14' }} />
+                    )}
+                  </span>
+                )}
                 <span style={{ color: '#34495e', fontWeight: 500 }}>测试环境</span>
                 {/* 开启的配置以图标展示（带 Tooltip） */}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  {game.testEnv.clientResource && (
+                  {game.status !== 'offline' && game.testEnv.clientResource && (
                     <Tooltip title="客户端资源">
                       <DesktopOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 15}} />
                     </Tooltip>
                   )}
-                  {game.testEnv.serverResource && (
+                  {game.status !== 'offline' && game.testEnv.serverResource && (
                     <Tooltip title="服务端资源">
                       <SettingOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.testEnv.globalAcceleration && (
+                  {game.status !== 'offline' && game.testEnv.globalAcceleration && (
                     <Tooltip title="全球加速">
                       <GlobalOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.testEnv.flashLaunch && (
+                  {game.status !== 'offline' && game.testEnv.flashLaunch && (
                     <Tooltip title="FlashLaunch">
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
@@ -642,7 +810,7 @@ export default function GameManagement() {
                 
               </Space>
               <Space>
-                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'testEnv')}>初始化</Button>
+                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'testEnv')} disabled={game.status === 'offline'} title={game.status === 'offline' ? '已下线，无法初始化' : '初始化'}>初始化</Button>
                 <Button
                   size="small"
                   onClick={() => {
@@ -657,38 +825,44 @@ export default function GameManagement() {
                     })
                     setConfigModalVisible(true)
                   }}
+                  disabled={game.status === 'offline'}
+                  title={game.status === 'offline' ? '已下线，无法配置' : '配置'}
                 >配置</Button>
               </Space>
             </div>
             {/* 第三行：生产环境 */}
             <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f7fbff' }}>
               <Space size={8}>
-                <span title={prodCompleted ? '已初始化' : '未初始化'}>
-                  {prodCompleted ? (
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  ) : (
-                    <WarningOutlined style={{ color: '#faad14' }} />
-                  )}
-                </span>
+                {game.status === 'offline' ? (
+                  <span style={{ color: '#999', fontWeight: 500 }}>已下线</span>
+                ) : (
+                  <span title={prodCompleted ? '已初始化' : '未初始化'}>
+                    {prodCompleted ? (
+                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    ) : (
+                      <WarningOutlined style={{ color: '#faad14' }} />
+                    )}
+                  </span>
+                )}
                 <span style={{ color: '#34495e', fontWeight: 500 }}>生产环境</span>
                 {/* 开启的配置以图标展示（带 Tooltip） */}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  {game.prodEnv.clientResource && (
+                  {game.status !== 'offline' && game.prodEnv.clientResource && (
                     <Tooltip title="客户端资源">
                       <DesktopOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 15}} />
                     </Tooltip>
                   )}
-                  {game.prodEnv.serverResource && (
+                  {game.status !== 'offline' && game.prodEnv.serverResource && (
                     <Tooltip title="服务端资源">
                       <SettingOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.prodEnv.globalAcceleration && (
+                  {game.status !== 'offline' && game.prodEnv.globalAcceleration && (
                     <Tooltip title="全球加速">
                       <GlobalOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.prodEnv.flashLaunch && (
+                  {game.status !== 'offline' && game.prodEnv.flashLaunch && (
                     <Tooltip title="FlashLaunch">
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
@@ -697,7 +871,7 @@ export default function GameManagement() {
                 
               </Space>
               <Space>
-                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'prodEnv')}>初始化</Button>
+                <Button size="small" type="link" onClick={() => handleInitializeGame(game, 'prodEnv')} disabled={game.status === 'offline'} title={game.status === 'offline' ? '已下线，无法初始化' : '初始化'}>初始化</Button>
                 <Button
                   size="small"
                   onClick={() => {
@@ -712,6 +886,8 @@ export default function GameManagement() {
                     })
                     setConfigModalVisible(true)
                   }}
+                  disabled={game.status === 'offline'}
+                  title={game.status === 'offline' ? '已下线，无法配置' : '配置'}
                 >配置</Button>
               </Space>
             </div>
@@ -886,6 +1062,71 @@ export default function GameManagement() {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 下线确认弹窗 */}
+      <Modal
+        title="确认下线"
+        open={offlineConfirmVisible}
+        onCancel={() => { setOfflineConfirmVisible(false); setOfflineTargetGame(null); setOfflineAcknowledge(false) }}
+        onOk={() => {
+          if (!offlineTargetGame) return
+          if (!offlineAcknowledge) { message.warning('请勾选“我已知悉风险”'); return }
+          // 标记为下线中，并初始化日志
+          setGameList(prev => prev.map(g => g.id === offlineTargetGame.id ? {
+            ...g,
+            status: 'offlining',
+            offlineLogs: [
+              { time: new Date().toLocaleString('zh-CN'), step: '开始下线', status: 'running' as const },
+              { time: new Date().toLocaleString('zh-CN'), step: '清理云资源任务队列', status: 'running' as const },
+            ]
+          } : g))
+          setOfflineConfirmVisible(false)
+          setOfflineLogsVisible(true)
+          // 模拟异步清理流程
+          simulateOfflining(offlineTargetGame.id)
+        }}
+        okText="确认下线"
+        okButtonProps={{ danger: true, disabled: !offlineAcknowledge }}
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 12, color: '#8c4a00', background: '#fff7e6', border: '1px solid #ffd591', padding: 12, borderRadius: 6 }}>
+          下线将清理所有关联资源，过程不可取消且不可恢复，请谨慎操作。
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input type="checkbox" checked={offlineAcknowledge} onChange={(e) => setOfflineAcknowledge(e.target.checked)} />
+          我已知悉风险
+        </label>
+      </Modal>
+
+      {/* 下线日志弹窗 */}
+      <Modal
+        title={`下线日志${offlineTargetGame ? ` - ${offlineTargetGame.appId}` : ''}`}
+        open={offlineLogsVisible}
+        onCancel={() => setOfflineLogsVisible(false)}
+        footer={null}
+        width={700}
+      >
+        <div style={{ maxHeight: 360, overflow: 'auto', paddingRight: 4 }}>
+          {(gameList.find(g => g.id === offlineTargetGame?.id)?.offlineLogs || []).map((log, idx) => {
+            const canRetry = log.status === 'failed' && (gameList.find(g => g.id === offlineTargetGame?.id)?.status === 'offlining')
+            return (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ color: '#999', width: 168 }}>{log.time}</span>
+                <span style={{ flex: 1, marginLeft: 12 }}>{log.step}</span>
+                <span style={{ color: log.status === 'success' ? '#52c41a' : log.status === 'failed' ? '#ff4d4f' : log.status === 'running' ? '#1677ff' : '#999', marginRight: 12 }}>
+                  {log.status}
+                </span>
+                {canRetry && (
+                  <Button size="small" type="link" onClick={() => retryOfflineStep(idx)}>
+                    重试
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+          {!(gameList.find(g => g.id === offlineTargetGame?.id)?.offlineLogs || []).length && <div style={{ color: '#999' }}>暂无日志</div>}
+        </div>
       </Modal>
 
       {/* 删除确认弹窗 */}
