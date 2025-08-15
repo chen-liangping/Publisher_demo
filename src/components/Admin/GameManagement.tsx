@@ -28,7 +28,8 @@ import {
   SettingOutlined,
   GlobalOutlined,
   ThunderboltOutlined,
-  WarningOutlined
+  WarningOutlined,
+  LineChartOutlined
 } from '@ant-design/icons'
 
 const { Title } = Typography
@@ -39,6 +40,7 @@ interface EnvironmentConfig {
   serverResource: boolean
   globalAcceleration: boolean
   flashLaunch: boolean
+  grafanaConfig: boolean
   initStatus: 'completed' | 'not_initialized'
 }
 
@@ -65,15 +67,17 @@ const mockGameData: Game[] = [
       clientResource: true,
       serverResource: true,
       globalAcceleration: false,
-      flashLaunch: true,
+      flashLaunch: false,
+      grafanaConfig: false,
       initStatus: 'completed'
     },
     prodEnv: {
       clientResource: true,
-      serverResource: false,
+      serverResource: true,
       globalAcceleration: true,
       flashLaunch: false,
-      initStatus: 'not_initialized'
+      grafanaConfig: false,
+      initStatus: 'completed'
     },
     createTime: '2024-01-15 10:30:00'
   },
@@ -82,17 +86,19 @@ const mockGameData: Game[] = [
     appId: 'testgame',
     description: '测试游戏',
     testEnv: {
-      clientResource: false,
-      serverResource: true,
+      clientResource: true,
+      serverResource: false,
       globalAcceleration: false,
-      flashLaunch: true,
+      flashLaunch: false,
+      grafanaConfig: false,
       initStatus: 'not_initialized'
     },
     prodEnv: {
       clientResource: true,
-      serverResource: true,
+      serverResource: false,
       globalAcceleration: false,
       flashLaunch: false,
+      grafanaConfig: false,
       initStatus: 'not_initialized'
     },
     createTime: '2024-01-14 15:20:00'
@@ -104,15 +110,17 @@ const mockGameData: Game[] = [
     testEnv: {
       clientResource: true,
       serverResource: false,
-      globalAcceleration: true,
-      flashLaunch: true,
+      globalAcceleration: false,
+      flashLaunch: false,
+      grafanaConfig: false,
       initStatus: 'completed'
     },
     prodEnv: {
-      clientResource: false,
+      clientResource: true,
       serverResource: false,
       globalAcceleration: false,
       flashLaunch: false,
+      grafanaConfig: false,
       initStatus: 'not_initialized'
     },
     createTime: '2024-01-13 09:15:00'
@@ -140,7 +148,7 @@ export default function GameManagement() {
   const [pageSize, setPageSize] = useState<number>(8)
 
   // 配置弹窗（表单字段列表）
-  type ResourceFormFields = Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch'>
+  type ResourceFormFields = Pick<EnvironmentConfig, 'clientResource' | 'serverResource' | 'globalAcceleration' | 'flashLaunch' | 'grafanaConfig'>
   // 新增：添加游戏表单字段类型
   interface AddGameFormValues {
     appId: string
@@ -149,12 +157,20 @@ export default function GameManagement() {
     serverResource: boolean
     globalAcceleration: boolean
     flashLaunch: boolean
+    grafanaConfig: boolean
   }
   const [configModalVisible, setConfigModalVisible] = useState<boolean>(false)
   const [configModalGame, setConfigModalGame] = useState<Game | null>(null)
   const [configModalEnv, setConfigModalEnv] = useState<'testEnv' | 'prodEnv' | null>(null)
   const [configForm] = Form.useForm<ResourceFormFields>()
   const [globalAccelLocked, setGlobalAccelLocked] = useState<boolean>(false)
+  const [clientResourceLocked, setClientResourceLocked] = useState<boolean>(false)
+  const [serverResourceLocked, setServerResourceLocked] = useState<boolean>(false)
+  const [globalAccelInitTip, setGlobalAccelInitTip] = useState<boolean>(false)
+  const [grafanaLocked, setGrafanaLocked] = useState<boolean>(false)
+  const [grafanaInitTip, setGrafanaInitTip] = useState<boolean>(false)
+  const [flashLaunchLocked, setFlashLaunchLocked] = useState<boolean>(false)
+  const [flashLaunchInitTip, setFlashLaunchInitTip] = useState<boolean>(false)
 
   // 新增：资源配置确认弹窗状态
   const [resourceConfirmVisible, setResourceConfirmVisible] = useState<boolean>(false)
@@ -562,36 +578,7 @@ export default function GameManagement() {
 
   // 表单提交处理
   const handleAddGame = async (values: AddGameFormValues): Promise<void> => {
-    // 前端校验
-    if (!values.appId) {
-      message.error('APP ID不能为空')
-      return
-    }
-
-    // 检查APP ID是否已存在
-    const existingGame = gameList.find(game => game.appId === values.appId)
-    if (existingGame) {
-      message.error('该APP ID已存在，请重新输入')
-      return
-    }
-
-    // 检查是否至少开启了客户端或服务端资源
-    if (!values.clientResource && !values.serverResource) {
-      message.error('服务端和客户端资源至少配置一项')
-      return
-    }
-
-    // 检查依赖关系：未配置客户端资源时不能开启全球加速和flashlaunch
-    if (!values.clientResource) {
-      if (values.globalAcceleration) {
-        message.error('未配置客户端资源，无法开启全球加速')
-        return
-      }
-      if (values.flashLaunch) {
-        message.error('未配置客户端资源，无法开启FlashLaunch')
-        return
-      }
-    }
+    // 依赖的前端表单校验均已迁移至 Form.Item 的 rules 中，这里不再做重复校验
 
     // 创建新游戏对象并显示初始化确认弹窗
     const newGame: Game = {
@@ -603,14 +590,16 @@ export default function GameManagement() {
         clientResource: values.clientResource,
         serverResource: values.serverResource,
         globalAcceleration: values.globalAcceleration,
-        flashLaunch: values.flashLaunch
+        flashLaunch: values.flashLaunch,
+        grafanaConfig: values.grafanaConfig
       },
       prodEnv: {
         initStatus: 'not_initialized' as const,
         clientResource: values.clientResource,
         serverResource: values.serverResource,
         globalAcceleration: values.globalAcceleration,
-        flashLaunch: values.flashLaunch
+        flashLaunch: values.flashLaunch,
+        grafanaConfig: values.grafanaConfig
       },
       createTime: new Date().toLocaleString('zh-CN')
     }
@@ -656,6 +645,7 @@ export default function GameManagement() {
             serverResource: currentGameData.testEnv.serverResource || false,
             globalAcceleration: currentGameData.testEnv.globalAcceleration || false,
             flashLaunch: currentGameData.testEnv.flashLaunch || false,
+            grafanaConfig: currentGameData.testEnv.grafanaConfig || false,
             initStatus: 'not_initialized'
           },
           prodEnv: {
@@ -663,6 +653,7 @@ export default function GameManagement() {
             serverResource: false,
             globalAcceleration: false,
             flashLaunch: false,
+            grafanaConfig: false,
             initStatus: 'not_initialized'
           },
           createTime: new Date().toLocaleString('zh-CN')
@@ -721,8 +712,8 @@ export default function GameManagement() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Title level={4} style={{ margin: 0, fontSize: '18px', color: game.status === 'offline' ? '#7f8c8d' : '#1890ff' }}>
-              {game.appId}
-            </Title>
+                {game.appId}
+              </Title>
             {/* 总体初始化状态：单一图标按颜色区分 */}
             <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: overallStatusColor, display: 'inline-block' }} />
             {game.description && (
@@ -806,6 +797,11 @@ export default function GameManagement() {
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
+                  {game.status !== 'offline' && game.testEnv.grafanaConfig && (
+                    <Tooltip title="Grafana配置">
+                      <LineChartOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
                 </span>
                 
               </Space>
@@ -816,12 +812,26 @@ export default function GameManagement() {
                   onClick={() => {
                     setConfigModalGame(game)
                     setConfigModalEnv('testEnv')
-                    setGlobalAccelLocked(!!game.testEnv.globalAcceleration)
+                    // 未初始化环境可自由开关；已初始化且已开启则不可关闭
+                    setGlobalAccelLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.globalAcceleration)
+                    // 已初始化：展示全球加速开启不可关闭的提示
+                    setGlobalAccelInitTip(game.testEnv.initStatus === 'completed')
+                    // grafana配置：已初始化且已开启则不可关闭
+                    setGrafanaLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.grafanaConfig)
+                    // 已初始化：展示grafana配置开启不可关闭的提示
+                    setGrafanaInitTip(game.testEnv.initStatus === 'completed')
+                    // flashlaunch：已初始化且已开启则不可关闭
+                    setFlashLaunchLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.flashLaunch)
+                    // 已初始化：展示flashlaunch开启不可关闭的提示
+                    setFlashLaunchInitTip(game.testEnv.initStatus === 'completed')
+                    setClientResourceLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.clientResource)
+                    setServerResourceLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.serverResource)
                     configForm.setFieldsValue({
                       clientResource: game.testEnv.clientResource,
                       serverResource: game.testEnv.serverResource,
                       globalAcceleration: game.testEnv.globalAcceleration,
-                      flashLaunch: game.testEnv.flashLaunch
+                      flashLaunch: game.testEnv.flashLaunch,
+            grafanaConfig: game.testEnv.grafanaConfig
                     })
                     setConfigModalVisible(true)
                   }}
@@ -867,6 +877,11 @@ export default function GameManagement() {
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
+                  {game.status !== 'offline' && game.prodEnv.grafanaConfig && (
+                    <Tooltip title="Grafana配置">
+                      <LineChartOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
+                    </Tooltip>
+                  )}
                 </span>
                 
               </Space>
@@ -877,12 +892,26 @@ export default function GameManagement() {
                   onClick={() => {
                     setConfigModalGame(game)
                     setConfigModalEnv('prodEnv')
-                    setGlobalAccelLocked(!!game.prodEnv.globalAcceleration)
+                    // 未初始化环境可自由开关；已初始化且已开启则不可关闭
+                    setGlobalAccelLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.globalAcceleration)
+                    // 已初始化：展示全球加速开启不可关闭的提示
+                    setGlobalAccelInitTip(game.prodEnv.initStatus === 'completed')
+                    // grafana配置：已初始化且已开启则不可关闭
+                    setGrafanaLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.grafanaConfig)
+                    // 已初始化：展示grafana配置开启不可关闭的提示
+                    setGrafanaInitTip(game.prodEnv.initStatus === 'completed')
+                    // flashlaunch：已初始化且已开启则不可关闭
+                    setFlashLaunchLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.flashLaunch)
+                    // 已初始化：展示flashlaunch开启不可关闭的提示
+                    setFlashLaunchInitTip(game.prodEnv.initStatus === 'completed')
+                    setClientResourceLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.clientResource)
+                    setServerResourceLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.serverResource)
                     configForm.setFieldsValue({
                       clientResource: game.prodEnv.clientResource,
                       serverResource: game.prodEnv.serverResource,
                       globalAcceleration: game.prodEnv.globalAcceleration,
-                      flashLaunch: game.prodEnv.flashLaunch
+                      flashLaunch: game.prodEnv.flashLaunch,
+            grafanaConfig: game.prodEnv.grafanaConfig
                     })
                     setConfigModalVisible(true)
                   }}
@@ -904,9 +933,9 @@ export default function GameManagement() {
     <Card>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 480 }}>
-          <Title level={4} style={{ margin: 0 }}>
-            游戏管理
-          </Title>
+        <Title level={4} style={{ margin: 0 }}>
+          游戏管理
+        </Title>
           {/* 统计概览（按需隐藏） */}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -918,13 +947,13 @@ export default function GameManagement() {
             onChange={(e) => { if (!e.target.value) { setKeyword(''); setCurrentPage(1) } }}
             style={{ width: 240 }}
           />
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />}
-            onClick={() => setAddModalVisible(true)}
-          >
-            添加游戏
-          </Button>
+        <Button 
+          type="primary" 
+          icon={<PlusOutlined />}
+          onClick={() => setAddModalVisible(true)}
+        >
+          添加游戏
+        </Button>
         </div>
       </div>
       
@@ -950,7 +979,7 @@ export default function GameManagement() {
             const pageItems = sorted.slice(start, start + pageSize)
 
             return (
-              <div>
+          <div>
                 {pageItems.map(game => renderGameCard(game))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                   <div style={{ color: '#999', fontSize: 14 }}>共 {sorted.length} 个游戏</div>
@@ -959,12 +988,12 @@ export default function GameManagement() {
                     pageSize={pageSize}
                     total={sorted.length}
                     showSizeChanger
-                    pageSizeOptions={[8, 12, 16] as unknown as number[]}
+                    pageSizeOptions={[5, 10, 20] as unknown as number[]}
                     onChange={(p, ps) => { setCurrentPage(p); setPageSize(ps) }}
                     showTotal={(total) => `共 ${total} 条`}
                   />
-                </div>
-              </div>
+            </div>
+          </div>
             )
           })()
         )}
@@ -992,7 +1021,8 @@ export default function GameManagement() {
             clientResource: true,
             serverResource: false,
             globalAcceleration: false,
-            flashLaunch: false
+            flashLaunch: false,
+            grafanaConfig: false
           }}
         >
           <Form.Item
@@ -1000,6 +1030,16 @@ export default function GameManagement() {
             name="appId"
             rules={[
               { required: true, message: 'APP ID不能为空' }
+              ,
+              // 唯一性校验：避免与现有 appId 重复
+              {
+                validator: async (_rule, value) => {
+                  if (!value) return Promise.resolve()
+                  const exists = gameList.some(g => g.appId === value)
+                  if (exists) return Promise.reject(new Error('该APP ID已存在，请重新输入'))
+                  return Promise.resolve()
+                }
+              }
             ]}
           >
             <Input placeholder="请输入appid" allowClear />
@@ -1017,6 +1057,18 @@ export default function GameManagement() {
             name="clientResource"
             valuePropName="checked"
             extra="开启后显示'已配置'"
+            dependencies={['serverResource']}
+            rules={[
+              {
+                validator: async (_rule, value, callback) => {
+                  const server = form.getFieldValue('serverResource') as boolean
+                  if (!value && !server) {
+                    return Promise.reject(new Error('请至少选择客户端或服务端资源'))
+                  }
+                  return Promise.resolve()
+                }
+              }
+            ]}
           >
             <Switch />
           </Form.Item>
@@ -1035,6 +1087,18 @@ export default function GameManagement() {
             name="globalAcceleration"
             valuePropName="checked"
             extra="启用全球加速"
+            dependencies={['clientResource']}
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const client = form.getFieldValue('clientResource') as boolean
+                  if (value && !client) {
+                    return Promise.reject(new Error('未配置客户端资源，无法开启全球加速'))
+                  }
+                  return Promise.resolve()
+                }
+              }
+            ]}
           >
             <Switch />
           </Form.Item>
@@ -1044,6 +1108,38 @@ export default function GameManagement() {
             name="flashLaunch"
             valuePropName="checked"
             extra="启用flashlaunch"
+            dependencies={['clientResource']}
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const client = form.getFieldValue('clientResource') as boolean
+                  if (value && !client) {
+                    return Promise.reject(new Error('未配置客户端资源，无法开启FlashLaunch'))
+                  }
+                  return Promise.resolve()
+                }
+              }
+            ]}
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            label="Grafana配置"
+            name="grafanaConfig"
+            valuePropName="checked"
+            extra="启用Grafana监控"
+            dependencies={['clientResource']}
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const client = form.getFieldValue('clientResource') as boolean
+                  if (value && !client) {
+                    return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+                  }
+                  return Promise.resolve()
+                }
+              }
+            ]}
           >
             <Switch />
           </Form.Item>
@@ -1188,8 +1284,8 @@ export default function GameManagement() {
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input 
               type="checkbox" 
-              checked={initConfirmed}
-              onChange={(e) => setInitConfirmed(e.target.checked)}
+            checked={initConfirmed}
+            onChange={(e) => setInitConfirmed(e.target.checked)}
             />
             我已知晓并确认
           </label>
@@ -1364,40 +1460,99 @@ export default function GameManagement() {
       open={configModalVisible}
       onCancel={() => { setConfigModalVisible(false); setConfigModalGame(null); setConfigModalEnv(null) }}
       onOk={() => {
-        const values = configForm.getFieldsValue()
-        // 提交前校验：开启全球加速时必须已开启客户端资源
-        if (values.globalAcceleration && !values.clientResource) {
-          message.error('请先开启客户端资源，才能开启全球加速')
-          return
-        }
-        if (configModalGame && configModalEnv) {
-          setGameList(prev => prev.map(g => {
-            if (g.id !== configModalGame.id) return g
-            const next = { ...g }
-            next[configModalEnv] = { ...next[configModalEnv], ...values }
-            return next
-          }))
-          message.success('配置已保存')
-        }
-        setConfigModalVisible(false)
-        setConfigModalGame(null)
-        setConfigModalEnv(null)
+        // 使用表单校验，错误在对应表单项下方提示
+        configForm
+          .validateFields()
+          .then((values) => {
+            if (configModalGame && configModalEnv) {
+              setGameList(prev => prev.map(g => {
+                if (g.id !== configModalGame.id) return g
+                const next = { ...g }
+                next[configModalEnv] = { ...next[configModalEnv], ...values }
+                return next
+              }))
+              message.success('配置已保存')
+            }
+            setConfigModalVisible(false)
+            setConfigModalGame(null)
+            setConfigModalEnv(null)
+          })
+          .catch(() => {
+            // 校验不通过时，由 Form.Item 展示错误
+          })
       }}
       width={520}
     >
-      <Alert type="warning" showIcon message="全球加速开启后不可关闭，请谨慎操作" style={{ marginBottom: 12 }} />
+     
       <Form form={configForm} layout="vertical">
         <Form.Item label="客户端资源" name="clientResource" valuePropName="checked">
-          <Switch />
+          <Switch disabled={clientResourceLocked} />
         </Form.Item>
         <Form.Item label="服务端资源" name="serverResource" valuePropName="checked">
-          <Switch />
+          <Switch disabled={serverResourceLocked} />
         </Form.Item>
-        <Form.Item label="全球加速" name="globalAcceleration" valuePropName="checked" extra="全球加速开启后不可关闭">
+        <Form.Item 
+          label="全球加速" 
+          name="globalAcceleration" 
+          valuePropName="checked" 
+          extra={globalAccelInitTip ? '游戏已初始化，全球加速一旦开启不可关闭' : undefined}
+          dependencies={['clientResource']}
+          validateTrigger="onChange"
+          rules={[
+            {
+              validator: async (_rule, value) => {
+                const client = configForm.getFieldValue('clientResource') as boolean
+                if (value && !client) {
+                  return Promise.reject(new Error('未配置客户端资源，无法开启全球加速'))
+                }
+                return Promise.resolve()
+              }
+            }
+          ]}
+        >
           <Switch disabled={globalAccelLocked} />
         </Form.Item>
-        <Form.Item label="FlashLaunch" name="flashLaunch" valuePropName="checked">
-          <Switch />
+        <Form.Item 
+          label="FlashLaunch" 
+          name="flashLaunch" 
+          valuePropName="checked"
+          extra={flashLaunchInitTip ? '游戏已初始化，FlashLaunch一旦开启不可关闭' : undefined}
+          dependencies={['clientResource']}
+          validateTrigger="onChange"
+          rules={[
+            {
+              validator: async (_rule, value) => {
+                const client = configForm.getFieldValue('clientResource') as boolean
+                if (value && !client) {
+                  return Promise.reject(new Error('未配置客户端资源，无法开启FlashLaunch'))
+                }
+                return Promise.resolve()
+              }
+            }
+          ]}
+        >
+          <Switch disabled={flashLaunchLocked} />
+        </Form.Item>
+        <Form.Item 
+          label="Grafana配置" 
+          name="grafanaConfig" 
+          valuePropName="checked" 
+          extra={grafanaInitTip ? '游戏已初始化，Grafana配置一旦开启不可关闭' : undefined}
+          dependencies={['clientResource']}
+          validateTrigger="onChange"
+          rules={[
+            {
+              validator: async (_rule, value) => {
+                const client = configForm.getFieldValue('clientResource') as boolean
+                if (value && !client) {
+                  return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+                }
+                return Promise.resolve()
+              }
+            }
+          ]}
+        >
+          <Switch disabled={grafanaLocked} />
         </Form.Item>
       </Form>
     </Modal>

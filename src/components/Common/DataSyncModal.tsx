@@ -17,14 +17,19 @@ import {
   Checkbox,
   Input,
   Table,
-  message
+  message,
+  Tooltip
 } from 'antd'
 import { 
   SyncOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   AppstoreOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  CaretDownOutlined,
+  CaretRightOutlined,
+  CheckSquareOutlined,
+  BorderOutlined
 } from '@ant-design/icons'
 
 const { Title, Text, Paragraph } = Typography
@@ -42,8 +47,11 @@ const mockData = {
     versionFiles: ['v1.0.1', 'v1.0.2', 'v1.1.0'],
     configFiles: ['config.json', 'env.json', 'database.json'],
     applications: [
-      { id: 'app1', name: 'Web应用', alias: 'web-app', mountedImages: ['nginx:1.20'], mountedFiles: ['uploads/', 'config/'] },
-      { id: 'app2', name: 'API服务', alias: 'api-service', mountedImages: ['node:16-alpine'], mountedFiles: ['logs/'] }
+      { id: 'app1', name: 'Web应用', alias: 'web-app', label: '游服', mountedImages: ['nginx:1.20'], mountedFiles: ['uploads/', 'config/'] },
+      { id: 'app2', name: 'API服务', alias: 'api-service', label: '游服', mountedImages: ['node:16-alpine'], mountedFiles: ['logs/'] },
+      { id: 'app3', name: 'Dashboard', alias: 'dashboard', label: '测试', mountedImages: ['nginx:1.20'] },
+      { id: 'app4', name: 'Vue应用', alias: 'vue-app', label: '平台', mountedImages: ['nginx:1.20'] },
+      { id: 'app5', name: 'PHP应用', alias: 'php-app', label: '平台', mountedImages: ['nginx:1.20'] } 
     ],
     images: [
       { id: 'img1', name: 'nginx:1.20', mountedByApps: ['app1'], canUnselect: false },
@@ -52,8 +60,8 @@ const mockData = {
       { id: 'img4', name: 'mysql:8.0', mountedByApps: [], canUnselect: true }
     ],
     storages: [
-      { id: 'storage1', name: 'PostgreSQL', alias: 'main-db' },
-      { id: 'storage2', name: 'Redis缓存', alias: 'cache-db' }
+      { id: 'storage1', name: 'MySQL(main)', alias: 'main' },
+      { id: 'storage2', name: 'Redis(demo)', alias: 'demo' }
     ],
     sharedFiles: [
       { id: 'file1', name: 'uploads/', mountedByApps: ['app1'], canUnselect: false },
@@ -89,10 +97,169 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
   const [selectedApps, setSelectedApps] = useState<string[]>([])
   const [appAliases, setAppAliases] = useState<{ [key: string]: string }>({})
   const [selectedImages, setSelectedImages] = useState<string[]>([])
+  const [imageAliases, setImageAliases] = useState<{ [key: string]: string }>({})
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [fileAliases, setFileAliases] = useState<{ [key: string]: string }>({})
   const [selectedStorages, setSelectedStorages] = useState<string[]>([])
   const [storageAliases, setStorageAliases] = useState<{ [key: string]: string }>({})
   const [alertContacts, setAlertContacts] = useState<boolean>(false)
+  const [openApps, setOpenApps] = useState<boolean>(true)
+  const [openImages, setOpenImages] = useState<boolean>(true)
+  const [openFiles, setOpenFiles] = useState<boolean>(true)
+  const [openStorages, setOpenStorages] = useState<boolean>(true)
+
+  // 一键全选 - 客户端数据
+  const selectAllClient = (): void => {
+    setSelectedVersionFiles([...mockData.testEnv.versionFiles])
+    setSelectedConfigFiles([...mockData.testEnv.configFiles])
+    setCdnSourceConfig(true)
+    setCdnCacheConfig(true)
+    setCorsConfig(true)
+  }
+
+  // 一键全选 - 服务端数据
+  const selectAllServer = (): void => {
+    // 应用
+    const allAppIds = mockData.testEnv.applications.map(a => a.id)
+    setSelectedApps(allAppIds)
+    const nextAppAliases: { [key: string]: string } = {}
+    mockData.testEnv.applications.forEach(a => { nextAppAliases[a.id] = a.name })
+    setAppAliases(nextAppAliases)
+
+    // 镜像（遵循挂载不可取消：全选时也默认全部选中，但在UI层仍保持禁用态 isDisabled）
+    const allImageIds = mockData.testEnv.images.map(img => img.id)
+    setSelectedImages(allImageIds)
+    const nextImageAliases: { [key: string]: string } = {}
+    mockData.testEnv.images.forEach(img => { nextImageAliases[img.id] = img.name })
+    setImageAliases(nextImageAliases)
+
+    // 共享文件（同上）
+    const allFileIds = mockData.testEnv.sharedFiles.map(f => f.id)
+    setSelectedFiles(allFileIds)
+    const nextFileAliases: { [key: string]: string } = {}
+    mockData.testEnv.sharedFiles.forEach(f => { nextFileAliases[f.id] = f.name })
+    setFileAliases(nextFileAliases)
+
+    // 存储
+    const allStorageIds = mockData.testEnv.storages.map(s => s.id)
+    setSelectedStorages(allStorageIds)
+    const nextStorageAliases: { [key: string]: string } = {}
+    mockData.testEnv.storages.forEach(s => { nextStorageAliases[s.id] = s.alias })
+    setStorageAliases(nextStorageAliases)
+  }
+
+  // 全不选 - 客户端数据
+  const deselectAllClient = (): void => {
+    setSelectedVersionFiles([])
+    setSelectedConfigFiles([])
+    setCdnSourceConfig(false)
+    setCdnCacheConfig(false)
+    setCorsConfig(false)
+  }
+
+  // 全不选 - 服务端数据
+  const deselectAllServer = (): void => {
+    setSelectedApps([])
+    setAppAliases({})
+    setSelectedImages([])
+    setImageAliases({})
+    setSelectedFiles([])
+    setFileAliases({})
+    setSelectedStorages([])
+    setStorageAliases({})
+  }
+
+  // 分段全选/全不选（服务端-应用）
+  const selectAllApps = (): void => {
+    const allIds = mockData.testEnv.applications.map(a => a.id)
+    setSelectedApps(allIds)
+    const nextAliases: { [key: string]: string } = {}
+    mockData.testEnv.applications.forEach(a => { nextAliases[a.id] = a.name })
+    setAppAliases(nextAliases)
+  }
+  const deselectAllApps = (): void => {
+    setSelectedApps([])
+    setAppAliases({})
+  }
+
+  // 分段全选/全不选（服务端-镜像）
+  const selectAllImages = (): void => {
+    const allIds = mockData.testEnv.images.map(i => i.id)
+    setSelectedImages(allIds)
+    const nextAliases: { [key: string]: string } = {}
+    mockData.testEnv.images.forEach(i => { nextAliases[i.id] = i.name })
+    setImageAliases(nextAliases)
+  }
+  const deselectAllImages = (): void => {
+    // 保留“已挂载且不可取消”的镜像
+    const disabledIds = mockData.testEnv.images
+      .filter(img => (!img.canUnselect && img.mountedByApps.some(appId => selectedApps.includes(appId))))
+      .map(img => img.id)
+    setSelectedImages(disabledIds)
+    const next: { [key: string]: string } = {}
+    disabledIds.forEach(id => {
+      const img = mockData.testEnv.images.find(i => i.id === id)
+      if (img) next[id] = img.name
+    })
+    setImageAliases(next)
+  }
+
+  // 分段全选/全不选（服务端-共享文件）
+  const selectAllFiles = (): void => {
+    const allIds = mockData.testEnv.sharedFiles.map(f => f.id)
+    setSelectedFiles(allIds)
+    const next: { [key: string]: string } = {}
+    mockData.testEnv.sharedFiles.forEach(f => { next[f.id] = f.name })
+    setFileAliases(next)
+  }
+  const deselectAllFiles = (): void => {
+    const disabledIds = mockData.testEnv.sharedFiles
+      .filter(file => (!file.canUnselect && file.mountedByApps.some(appId => selectedApps.includes(appId))))
+      .map(file => file.id)
+    setSelectedFiles(disabledIds)
+    const next: { [key: string]: string } = {}
+    disabledIds.forEach(id => {
+      const f = mockData.testEnv.sharedFiles.find(x => x.id === id)
+      if (f) next[id] = f.name
+    })
+    setFileAliases(next)
+  }
+
+  // 分段全选/全不选（服务端-存储）
+  const selectAllStorages = (): void => {
+    const allIds = mockData.testEnv.storages.map(s => s.id)
+    setSelectedStorages(allIds)
+    const next: { [key: string]: string } = {}
+    mockData.testEnv.storages.forEach(s => { next[s.id] = s.alias })
+    setStorageAliases(next)
+  }
+  const deselectAllStorages = (): void => {
+    setSelectedStorages([])
+    setStorageAliases({})
+  }
+
+  // 客户端分段全选/全不选
+  const selectAllVersionFiles = (): void => {
+    setSelectedVersionFiles([...mockData.testEnv.versionFiles])
+  }
+  const deselectAllVersionFiles = (): void => {
+    setSelectedVersionFiles([])
+  }
+  const selectAllConfigFiles = (): void => {
+    setSelectedConfigFiles([...mockData.testEnv.configFiles])
+  }
+  const deselectAllConfigFiles = (): void => {
+    setSelectedConfigFiles([])
+  }
+  const selectAllCDN = (): void => {
+    setCdnSourceConfig(true)
+    setCdnCacheConfig(true)
+  }
+  const deselectAllCDN = (): void => {
+    setCdnSourceConfig(false)
+    setCdnCacheConfig(false)
+  }
+  // CORS 统一由单一图标控制，无需分开的全选/全不选函数
 
   // 重置状态
   const resetState = () => {
@@ -116,11 +283,11 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
   }
 
   // 处理应用选择变化，自动关联镜像和共享文件
-  const handleAppSelection = (appId: string, checked: boolean, app: { alias: string }) => {
+  const handleAppSelection = (appId: string, checked: boolean, app: { alias: string; name?: string }) => {
     if (checked) {
       // 选择应用
       setSelectedApps([...selectedApps, appId])
-      setAppAliases({ ...appAliases, [appId]: app.alias })
+      setAppAliases({ ...appAliases, [appId]: app.name ?? app.alias })
       
       // 自动选择该应用挂载的镜像（不可取消）
       const relatedImages = mockData.testEnv.images
@@ -632,9 +799,39 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
       <Row gutter={24}>
         {/* 客户端数据 */}
         <Col span={12}>
-          <Card title="客户端数据" style={{ marginBottom: 16 }}>
+          <Card title="客户端数据" extra={<>
+            <Tooltip title="全选/全不选 客户端">
+              <Button size="small" type="text"
+                icon={selectedVersionFiles.length === mockData.testEnv.versionFiles.length
+                  && selectedConfigFiles.length === mockData.testEnv.configFiles.length
+                  && cdnSourceConfig && cdnCacheConfig && corsConfig ? <CheckSquareOutlined /> : <BorderOutlined />}
+                onClick={() => {
+                  const isAllSelected = selectedVersionFiles.length === mockData.testEnv.versionFiles.length
+                    && selectedConfigFiles.length === mockData.testEnv.configFiles.length
+                    && cdnSourceConfig && cdnCacheConfig && corsConfig
+                  if (isAllSelected) deselectAllClient()
+                  else selectAllClient()
+                }}
+              />
+            </Tooltip>
+          </>} style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 16 }}>
               <Text strong>版本文件</Text>
+              <Button type="link" size="small" onClick={() => setOpenFiles(!openFiles)} style={{ padding: 0, marginLeft: 8 }}>
+                {openFiles ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 版本文件">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={selectedVersionFiles.length === mockData.testEnv.versionFiles.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedVersionFiles.length === mockData.testEnv.versionFiles.length
+                    if (all) deselectAllVersionFiles(); else selectAllVersionFiles()
+                  }}
+                />
+              </Tooltip>
+              {openFiles && (
               <Checkbox.Group
                 style={{ display: 'block', marginTop: 8 }}
                 value={selectedVersionFiles}
@@ -646,10 +843,26 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                   </div>
                 ))}
               </Checkbox.Group>
+              )}
             </div>
             
             <div style={{ marginBottom: 16 }}>
               <Text strong>配置文件</Text>
+              <Button type="link" size="small" onClick={() => setOpenStorages(!openStorages)} style={{ padding: 0, marginLeft: 8 }}>
+                {openStorages ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 配置文件">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={selectedConfigFiles.length === mockData.testEnv.configFiles.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedConfigFiles.length === mockData.testEnv.configFiles.length
+                    if (all) deselectAllConfigFiles(); else selectAllConfigFiles()
+                  }}
+                />
+              </Tooltip>
+              {openStorages && (
               <Checkbox.Group
                 style={{ display: 'block', marginTop: 8 }}
                 value={selectedConfigFiles}
@@ -661,10 +874,26 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                   </div>
                 ))}
               </Checkbox.Group>
+              )}
             </div>
             
             <div style={{ marginBottom: 16 }}>
               <Text strong>CDN配置</Text>
+              <Button type="link" size="small" onClick={() => setOpenImages(!openImages)} style={{ padding: 0, marginLeft: 8 }}>
+                {openImages ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 CDN配置">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={cdnSourceConfig && cdnCacheConfig ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = cdnSourceConfig && cdnCacheConfig
+                    if (all) deselectAllCDN(); else selectAllCDN()
+                  }}
+                />
+              </Tooltip>
+              {openImages && (
               <div style={{ marginTop: 8 }}>
                 <Checkbox checked={cdnSourceConfig} onChange={(e) => setCdnSourceConfig(e.target.checked)}>
                   CDN源站配置
@@ -674,45 +903,93 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                   CDN缓存配置
                 </Checkbox>
               </div>
+              )}
             </div>
             
             <div>
               <Text strong>跨域配置</Text>
+              <Button type="link" size="small" onClick={() => setOpenApps(!openApps)} style={{ padding: 0, marginLeft: 8 }}>
+                {openApps ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              {openApps && (
               <div style={{ marginTop: 8 }}>
                 <Checkbox checked={corsConfig} onChange={(e) => setCorsConfig(e.target.checked)}>
                   跨域配置
                 </Checkbox>
               </div>
+              )}
             </div>
           </Card>
         </Col>
 
         {/* 服务端数据 */}
         <Col span={12}>
-          <Card title="服务端数据" style={{ marginBottom: 16 }}>
+          <Card title="服务端数据" extra={<>
+            <Tooltip title="全选/全不选 服务端">
+              <Button size="small" type="text"
+                icon={selectedApps.length === mockData.testEnv.applications.length
+                  && selectedImages.length === mockData.testEnv.images.length
+                  && selectedFiles.length === mockData.testEnv.sharedFiles.length
+                  && selectedStorages.length === mockData.testEnv.storages.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                onClick={() => {
+                  const isAllSelected = selectedApps.length === mockData.testEnv.applications.length
+                    && selectedImages.length === mockData.testEnv.images.length
+                    && selectedFiles.length === mockData.testEnv.sharedFiles.length
+                    && selectedStorages.length === mockData.testEnv.storages.length
+                  if (isAllSelected) deselectAllServer()
+                  else selectAllServer()
+                }}
+              />
+            </Tooltip>
+          </>} style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 16 }}>
               <Text strong>应用</Text>
+              <Button type="link" size="small" onClick={() => setOpenApps(!openApps)} style={{ padding: 0, marginLeft: 8 }}>
+                {openApps ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 应用">
+                <Button type="text" size="small" style={{ padding: 0, marginLeft: 8 }}
+                  icon={selectedApps.length === mockData.testEnv.applications.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedApps.length === mockData.testEnv.applications.length
+                    if (all) deselectAllApps(); else selectAllApps()
+                  }}
+                />
+              </Tooltip>
               <Alert
                 message="应用同步将同步应用所有数据，包含应用类型、部署方式、容器配置、镜像、标签、插件、挂载的文件等应用配置"
                 type="info"
                 style={{ margin: '8px 0', fontSize: '12px' }}
               />
-              {mockData.testEnv.applications.map(app => (
+              {openApps && mockData.testEnv.applications.map(app => (
                 <div key={app.id} style={{ marginBottom: 8 }}>
                   <Checkbox
                     checked={selectedApps.includes(app.id)}
                     onChange={(e) => handleAppSelection(app.id, e.target.checked, app)}
                   >
-                    {app.name}
+                    <span style={{ marginRight: 8 }}>{app.name}</span>
+                    {app.label && (
+                      <Tag color={app.label === '游服' ? 'orange' : app.label === '平台' ? 'blue' : 'green'} style={{ marginLeft: 4 }}>
+                        {app.label}
+                      </Tag>
+                    )}
                   </Checkbox>
                   {selectedApps.includes(app.id) && (
                     <Input
                       size="small"
-                      placeholder="迁移后应用别名"
-                      value={appAliases[app.id] || ''}
+                      placeholder="迁移后名称"
+                      value={appAliases[app.id] || app.name || app.alias}
                       onChange={(e) => setAppAliases({ ...appAliases, [app.id]: e.target.value })}
-                      style={{ marginLeft: 8, width: 120 }}
+                      style={{ marginLeft: 8, width: 180 }}
                     />
+                  )}
+                  {selectedApps.includes(app.id) && appAliases[app.id] && appAliases[app.id] !== (app.name || app.alias) && (
+                    <div style={{ marginLeft: 24, marginTop: 4, fontSize: 12, color: '#666' }}>
+                      <span>迁移前：</span>
+                      <span style={{ marginRight: 16 }}>{app.name}</span>
+                      <span>迁移后：</span>
+                      <span>{appAliases[app.id]}</span>
+                    </div>
                   )}
                 </div>
               ))}
@@ -720,10 +997,22 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
 
             <div style={{ marginBottom: 16 }}>
               <Text strong>镜像</Text>
+              <Button type="link" size="small" onClick={() => setOpenImages(!openImages)} style={{ padding: 0, marginLeft: 8 }}>
+                {openImages ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 镜像">
+                <Button type="text" size="small" style={{ padding: 0, marginLeft: 8 }}
+                  icon={selectedImages.length === mockData.testEnv.images.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedImages.length === mockData.testEnv.images.length
+                    if (all) deselectAllImages(); else selectAllImages()
+                  }}
+                />
+              </Tooltip>
               <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
                 已挂载应用的镜像默认选中，不可取消
               </div>
-              {mockData.testEnv.images.map(image => {
+              {openImages && mockData.testEnv.images.map(image => {
                 const isMountedBySelectedApp = image.mountedByApps.some(appId => selectedApps.includes(appId))
                 const isDisabled = !image.canUnselect && isMountedBySelectedApp
                 
@@ -735,18 +1024,24 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedImages([...selectedImages, image.id])
+                          setImageAliases({ ...imageAliases, [image.id]: image.name })
                         } else {
                           setSelectedImages(selectedImages.filter(id => id !== image.id))
+                          const next = { ...imageAliases }
+                          delete next[image.id]
+                          setImageAliases(next)
                         }
                       }}
                     >
-                      {image.name}
+                      <span style={{ marginRight: 8 }}>{image.name}</span>
+                     
                       {isMountedBySelectedApp && (
                         <Tag color="blue" style={{ marginLeft: 8 }}>
                           已挂载
                         </Tag>
                       )}
                     </Checkbox>
+                    {/* 镜像：选择时不再展示迁移前/后行内信息，改为在迁移表格体现 */}
                   </div>
                 )
               })}
@@ -754,10 +1049,22 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
 
             <div style={{ marginBottom: 16 }}>
               <Text strong>共享文件</Text>
+              <Button type="link" size="small" onClick={() => setOpenFiles(!openFiles)} style={{ padding: 0, marginLeft: 8 }}>
+                {openFiles ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 共享文件">
+                <Button type="text" size="small" style={{ padding: 0, marginLeft: 8 }}
+                  icon={selectedFiles.length === mockData.testEnv.sharedFiles.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedFiles.length === mockData.testEnv.sharedFiles.length
+                    if (all) deselectAllFiles(); else selectAllFiles()
+                  }}
+                />
+              </Tooltip>
               <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
                 已挂载应用的文件默认选中，不可取消
               </div>
-              {mockData.testEnv.sharedFiles.map(file => {
+              {openFiles && mockData.testEnv.sharedFiles.map(file => {
                 const isMountedBySelectedApp = file.mountedByApps.some(appId => selectedApps.includes(appId))
                 const isDisabled = !file.canUnselect && isMountedBySelectedApp
                 
@@ -769,18 +1076,24 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedFiles([...selectedFiles, file.id])
+                          setFileAliases({ ...fileAliases, [file.id]: file.name })
                         } else {
                           setSelectedFiles(selectedFiles.filter(id => id !== file.id))
+                          const next = { ...fileAliases }
+                          delete next[file.id]
+                          setFileAliases(next)
                         }
                       }}
                     >
-                      {file.name}
+                      <span style={{ marginRight: 8 }}>{file.name}</span>
+                 
                       {isMountedBySelectedApp && (
                         <Tag color="green" style={{ marginLeft: 8 }}>
                           已挂载
                         </Tag>
                       )}
                     </Checkbox>
+                    {/* 共享文件：选择时不再展示迁移前/后行内信息，改为在迁移表格体现 */}
                   </div>
                 )
               })}
@@ -788,12 +1101,24 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
 
             <div style={{ marginBottom: 16 }}>
               <Text strong>存储</Text>
+              <Button type="link" size="small" onClick={() => setOpenStorages(!openStorages)} style={{ padding: 0, marginLeft: 8 }}>
+                {openStorages ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              </Button>
+              <Tooltip title="全选/全不选 存储">
+                <Button type="text" size="small" style={{ padding: 0, marginLeft: 8 }}
+                  icon={selectedStorages.length === mockData.testEnv.storages.length ? <CheckSquareOutlined /> : <BorderOutlined />}
+                  onClick={() => {
+                    const all = selectedStorages.length === mockData.testEnv.storages.length
+                    if (all) deselectAllStorages(); else selectAllStorages()
+                  }}
+                />
+              </Tooltip>
               <Alert
                 message="存储同步将同步存储类型、引擎版本、实例类型、账号密码等信息，同步后不可回退，请谨慎操作"
                 type="warning"
                 style={{ margin: '8px 0', fontSize: '12px' }}
               />
-              {mockData.testEnv.storages.map(storage => (
+              {openStorages && mockData.testEnv.storages.map(storage => (
                 <div key={storage.id} style={{ marginBottom: 8 }}>
                   <Checkbox
                     checked={selectedStorages.includes(storage.id)}
@@ -809,16 +1134,24 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
                       }
                     }}
                   >
-                    {storage.name}
+                    <span style={{ marginRight: 8 }}>{storage.name}</span>
                   </Checkbox>
                   {selectedStorages.includes(storage.id) && (
                     <Input
                       size="small"
-                      placeholder="迁移后存储别名"
-                      value={storageAliases[storage.id] || ''}
+                      placeholder="迁移后名称"
+                      value={storageAliases[storage.id] || storage.alias}
                       onChange={(e) => setStorageAliases({ ...storageAliases, [storage.id]: e.target.value })}
-                      style={{ marginLeft: 8, width: 120 }}
+                      style={{ marginLeft: 8, width: 180 }}
                     />
+                  )}
+                  {selectedStorages.includes(storage.id) && storageAliases[storage.id] && storageAliases[storage.id] !== storage.alias && (
+                    <div style={{ marginLeft: 24, marginTop: 4, fontSize: 12, color: '#666' }}>
+                      <span>迁移前：</span>
+                      <span style={{ marginRight: 16 }}>{storage.name}</span>
+                      <span>迁移后：</span>
+                      <span>{storageAliases[storage.id]}</span>
+                    </div>
                   )}
                 </div>
               ))}
