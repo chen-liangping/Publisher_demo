@@ -431,7 +431,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                   <Option value="TCP">TCP</Option>
                   <Option value="UDP">UDP</Option>
                   <Option value="ICMPv4">ICMP(ipv4)</Option>
-                  <Option value="ICMPv6">ICMP(ipv6)</Option>
+                 {/*注释IPV6 <Option value="ICMPv6">ICMP(ipv6)</Option> */}
                   <Option value="ALL">ALL</Option>
                 </Select>
               </Form.Item>
@@ -456,6 +456,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                     { label: 'HTTPS (443)', value: '443' },
                     { label: 'MySQL (3306)', value: '3306' },
                     { label: 'Redis (6379)', value: '6379' },
+                    { label: 'PostgreSQL(5432)', value: '5432' },
                     { label: 'ALL', value: 'ALL' }
                   ]}
                 />
@@ -477,12 +478,24 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
 
           <Row gutter={16}>
             <Col span={16}>
+              {/* 授权范围使用可输入下拉（支持输入和选择），预置常见 IPv4 网段 */}
               <Form.Item
                 name="source"
                 label="授权范围"
                 rules={[{ required: true, message: '请输入授权范围' }]}
               >
-                <Input placeholder="例如：0.0.0.0/0 或 192.168.1.0/24" />
+                <Select
+                  mode="tags"
+                  placeholder="选择或输入授权范围，例如：0.0.0.0/0"
+                  style={{ width: '100%' }}
+                  tokenSeparators={[',']}
+                  options={[
+                    { label: '(所有IPV4)0.0.0.0/0', value: '0.0.0.0/0' },
+                    { label: '192.168.0.0/16', value: '192.168.0.0/16' },
+                    { label: '172.16.0.0/12', value: '172.16.0.0/12' },
+                    { label: '10.0.0.0/8', value: '10.0.0.0/8' }
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>

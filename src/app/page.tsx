@@ -22,6 +22,7 @@ import UserAvatarMenu from '../components/Common/UserAvatarMenu'
 import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
 import SecurityGroupDetails from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupDetails'
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
+import Deployment from '../components/ContainerServices/Application/deployment'
 import ContainerDatabase from '../components/ContainerServices/Database/ContainerDatabase'
 import ClientPage from '../components/Client/ClientPage'
 import ClientVersionPage from '../components/Client/ClientVersionPage'
@@ -43,6 +44,7 @@ interface VirtualMachine {
   publicIp?: string
   createTime: string
   domain: string
+  sslCertName?: string
   systemDiskSize?: number
   dataDiskSize?: number
   keyPair?: string
@@ -89,8 +91,46 @@ interface SecurityRule {
 export default function Home() {
   const [selectedMenu, setSelectedMenu] = useState<MenuKey>('vm-management')
   const [selectedVM, setSelectedVM] = useState<VirtualMachine | null>(null)
+  // 将虚拟机列表状态上提到父组件，方便从详情页同步更新
+  const [vmList, setVmList] = useState<VirtualMachine[]>([
+    {
+      id: 'i-bp1234567890abcdef',
+      name: 'web-server-01',
+      alias: 'Web服务器1',
+      status: 'running',
+      spec: '4c.8G',
+      systemImage: 'CentOS 7.9 64位',
+      privateIp: '172.16.0.10',
+      publicIp: '47.96.123.45',
+      createTime: '2024-01-15 10:30:00',
+      domain: 'g123-web01.com',
+      systemDiskSize: 40,
+      dataDiskSize: 100,
+      loginUser: 'appid',
+      securityGroup: 'sg-001',
+      securityGroupName: 'default-web',
+      sslCertName: 'letsencrypt'
+    },
+    {
+      id: 'i-bp0987654321fedcba',
+      name: 'db-server-01',
+      alias: '数据库服务器',
+      status: 'stopped',
+      spec: '8c.16G',
+      systemImage: 'Ubuntu 18.04 64位',
+      privateIp: '172.16.0.11',
+      createTime: '2024-01-14 15:20:00',
+      domain: 'g123-db01.com',
+      systemDiskSize: 60,
+      loginUser: 'appid',
+      securityGroup: 'sg-002',
+      securityGroupName: 'database-group',
+      sslCertName: 'db-cert'
+    }
+  ])
   const [selectedCommand, setSelectedCommand] = useState<Command | null>(null)
   const [selectedSecurityGroup, setSelectedSecurityGroup] = useState<SecurityGroup | null>(null)
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
 
   // 模拟当前用户信息
   const currentUser = {
@@ -105,11 +145,24 @@ export default function Home() {
     setSelectedVM(null) // 切换菜单时清除选中的虚拟机
     setSelectedCommand(null) // 切换菜单时清除选中的命令
     setSelectedSecurityGroup(null) // 切换菜单时清除选中的安全组
+    setSelectedAppId(null)
   }
 
   // 查看虚拟机详情
   const handleViewVMDetails = (vm: VirtualMachine): void => {
     setSelectedVM(vm)
+  }
+
+  // 从详情页或其它子组件接收操作通知（例如更新 publicIp）
+  const handleVMOperationFromDetails = (vmId: string, operation: string, payload?: string | undefined) => {
+    if (operation === 'updatePublicIp') {
+      const updated = vmList.map(v => v.id === vmId ? { ...v, publicIp: payload } : v)
+      setVmList(updated)
+      // 如果当前正在查看的虚机是被修改的那一台，也同步更新 selectedVM
+      if (selectedVM && selectedVM.id === vmId) {
+        setSelectedVM({ ...(selectedVM as VirtualMachine), publicIp: payload })
+      }
+    }
   }
 
   // 返回虚拟机列表
@@ -159,9 +212,7 @@ export default function Home() {
             <VirtualMachineDetails 
               vm={selectedVM} 
               onBack={handleBackToList}
-              onOperation={(vmId: string, operation: string) => {
-                console.log('VM Operation:', vmId, operation)
-              }}
+              onOperation={handleVMOperationFromDetails}
             />
           )
         } else {
@@ -169,6 +220,8 @@ export default function Home() {
           return (
             <VirtualMachineList 
               onViewDetails={handleViewVMDetails} 
+              vmList={vmList}
+              setVmList={setVmList}
             />
           )
         }
@@ -213,7 +266,11 @@ export default function Home() {
           )
         }
       case 'container-app':
-        return <ContainerApplication />
+        // 如果有选中的应用 id，展示 Deployment 页面，否则展示应用卡片列表
+        if (selectedAppId) {
+          return <Deployment appId={selectedAppId} />
+        }
+        return <ContainerApplication onOpenDeployment={(id: string) => { setSelectedAppId(id); setSelectedMenu('container-app') }} />
       case 'container-database':
         return <ContainerDatabase />
       case 'client-page':
@@ -253,6 +310,25 @@ export default function Home() {
             defaultOpenKeys={['vm-app', 'container-app']}
             style={{ height: '100%', borderRight: 0 }}
             items={[
+              {
+                key: 'client',
+                icon: <MobileOutlined />,
+                label: '客户端',
+                children: [
+                  {
+                    key: 'client-version',
+                    icon: <MobileOutlined />,
+                    label: '版本',
+                    onClick: () => handleMenuClick('client-version')
+                  },
+                  {
+                    key: 'client-page',
+                    icon: <MobileOutlined />,
+                    label: 'CDN',
+                    onClick: () => handleMenuClick('client-page')
+                  }
+                ]
+              },
               {
                 key: 'vm-app',
                 icon: <CloudServerOutlined />,
@@ -304,25 +380,6 @@ export default function Home() {
                   },
                   */
               
-                ]
-              },
-              {
-                key: 'client',
-                icon: <MobileOutlined />,
-                label: '客户端',
-                children: [
-                  {
-                    key: 'client-version',
-                    icon: <MobileOutlined />,
-                    label: '版本',
-                    onClick: () => handleMenuClick('client-version')
-                  },
-                  {
-                    key: 'client-page',
-                    icon: <MobileOutlined />,
-                    label: 'CDN',
-                    onClick: () => handleMenuClick('client-page')
-                  }
                 ]
               },
               {

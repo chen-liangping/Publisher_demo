@@ -40,7 +40,8 @@ interface EnvironmentConfig {
   serverResource: boolean
   globalAcceleration: boolean
   flashLaunch: boolean
-  grafanaConfig: boolean
+  // grafanaConfig 可选，某些场景暂不展示该字段
+  grafanaConfig?: boolean
   initStatus: 'completed' | 'not_initialized'
 }
 
@@ -167,8 +168,9 @@ export default function GameManagement() {
   const [clientResourceLocked, setClientResourceLocked] = useState<boolean>(false)
   const [serverResourceLocked, setServerResourceLocked] = useState<boolean>(false)
   const [globalAccelInitTip, setGlobalAccelInitTip] = useState<boolean>(false)
-  const [grafanaLocked, setGrafanaLocked] = useState<boolean>(false)
-  const [grafanaInitTip, setGrafanaInitTip] = useState<boolean>(false)
+  // Grafana 相关暂时隐藏（仅注释展示/控制逻辑，保留数据模型）
+  // const [grafanaLocked, setGrafanaLocked] = useState<boolean>(false)
+  // const [grafanaInitTip, setGrafanaInitTip] = useState<boolean>(false)
   const [flashLaunchLocked, setFlashLaunchLocked] = useState<boolean>(false)
   const [flashLaunchInitTip, setFlashLaunchInitTip] = useState<boolean>(false)
 
@@ -591,7 +593,7 @@ export default function GameManagement() {
         serverResource: values.serverResource,
         globalAcceleration: values.globalAcceleration,
         flashLaunch: values.flashLaunch,
-        grafanaConfig: values.grafanaConfig
+        // grafanaConfig: values.grafanaConfig // 暂时隐藏 Grafana 字段
       },
       prodEnv: {
         initStatus: 'not_initialized' as const,
@@ -599,7 +601,7 @@ export default function GameManagement() {
         serverResource: values.serverResource,
         globalAcceleration: values.globalAcceleration,
         flashLaunch: values.flashLaunch,
-        grafanaConfig: values.grafanaConfig
+        // grafanaConfig: values.grafanaConfig // 暂时隐藏 Grafana 字段
       },
       createTime: new Date().toLocaleString('zh-CN')
     }
@@ -645,7 +647,7 @@ export default function GameManagement() {
             serverResource: currentGameData.testEnv.serverResource || false,
             globalAcceleration: currentGameData.testEnv.globalAcceleration || false,
             flashLaunch: currentGameData.testEnv.flashLaunch || false,
-            grafanaConfig: currentGameData.testEnv.grafanaConfig || false,
+            // grafanaConfig: currentGameData.testEnv.grafanaConfig || false, // 暂时隐藏 Grafana 字段
             initStatus: 'not_initialized'
           },
           prodEnv: {
@@ -653,7 +655,7 @@ export default function GameManagement() {
             serverResource: false,
             globalAcceleration: false,
             flashLaunch: false,
-            grafanaConfig: false,
+            // grafanaConfig: false, // 暂时隐藏 Grafana 字段
             initStatus: 'not_initialized'
           },
           createTime: new Date().toLocaleString('zh-CN')
@@ -797,7 +799,8 @@ export default function GameManagement() {
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.status !== 'offline' && game.testEnv.grafanaConfig && (
+                  {/* Grafana 图标与展示暂时隐藏 */}
+                  {false && game.status !== 'offline' && game.testEnv.grafanaConfig && (
                     <Tooltip title="Grafana配置">
                       <LineChartOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
@@ -816,10 +819,9 @@ export default function GameManagement() {
                     setGlobalAccelLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.globalAcceleration)
                     // 已初始化：展示全球加速开启不可关闭的提示
                     setGlobalAccelInitTip(game.testEnv.initStatus === 'completed')
-                    // grafana配置：已初始化且已开启则不可关闭
-                    setGrafanaLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.grafanaConfig)
-                    // 已初始化：展示grafana配置开启不可关闭的提示
-                    setGrafanaInitTip(game.testEnv.initStatus === 'completed')
+                    // Grafana 相关暂时隐藏
+                    // setGrafanaLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.grafanaConfig)
+                    // setGrafanaInitTip(game.testEnv.initStatus === 'completed')
                     // flashlaunch：已初始化且已开启则不可关闭
                     setFlashLaunchLocked(game.testEnv.initStatus === 'completed' && !!game.testEnv.flashLaunch)
                     // 已初始化：展示flashlaunch开启不可关闭的提示
@@ -831,7 +833,7 @@ export default function GameManagement() {
                       serverResource: game.testEnv.serverResource,
                       globalAcceleration: game.testEnv.globalAcceleration,
                       flashLaunch: game.testEnv.flashLaunch,
-            grafanaConfig: game.testEnv.grafanaConfig
+                      // grafanaConfig: game.testEnv.grafanaConfig, // 暂时隐藏 Grafana 字段
                     })
                     setConfigModalVisible(true)
                   }}
@@ -877,7 +879,8 @@ export default function GameManagement() {
                       <ThunderboltOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
                   )}
-                  {game.status !== 'offline' && game.prodEnv.grafanaConfig && (
+                  {/* Grafana 图标与展示暂时隐藏 */}
+                  {false && game.status !== 'offline' && game.prodEnv.grafanaConfig && (
                     <Tooltip title="Grafana配置">
                       <LineChartOutlined style={{ color: '#74b9ff', fontSize: 12 ,marginLeft: 3}} />
                     </Tooltip>
@@ -896,10 +899,9 @@ export default function GameManagement() {
                     setGlobalAccelLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.globalAcceleration)
                     // 已初始化：展示全球加速开启不可关闭的提示
                     setGlobalAccelInitTip(game.prodEnv.initStatus === 'completed')
-                    // grafana配置：已初始化且已开启则不可关闭
-                    setGrafanaLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.grafanaConfig)
-                    // 已初始化：展示grafana配置开启不可关闭的提示
-                    setGrafanaInitTip(game.prodEnv.initStatus === 'completed')
+                    // Grafana 相关暂时隐藏
+                    // setGrafanaLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.grafanaConfig)
+                    // setGrafanaInitTip(game.prodEnv.initStatus === 'completed')
                     // flashlaunch：已初始化且已开启则不可关闭
                     setFlashLaunchLocked(game.prodEnv.initStatus === 'completed' && !!game.prodEnv.flashLaunch)
                     // 已初始化：展示flashlaunch开启不可关闭的提示
@@ -911,7 +913,7 @@ export default function GameManagement() {
                       serverResource: game.prodEnv.serverResource,
                       globalAcceleration: game.prodEnv.globalAcceleration,
                       flashLaunch: game.prodEnv.flashLaunch,
-            grafanaConfig: game.prodEnv.grafanaConfig
+                      // grafanaConfig: game.prodEnv.grafanaConfig, // 暂时隐藏 Grafana 字段
                     })
                     setConfigModalVisible(true)
                   }}
@@ -1123,26 +1125,29 @@ export default function GameManagement() {
           >
             <Switch />
           </Form.Item>
-          <Form.Item
-            label="Grafana配置"
-            name="grafanaConfig"
-            valuePropName="checked"
-            extra="启用Grafana监控"
-            dependencies={['clientResource']}
-            rules={[
-              {
-                validator: async (_rule, value) => {
-                  const client = form.getFieldValue('clientResource') as boolean
-                  if (value && !client) {
-                    return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+          {/* Grafana 配置暂时隐藏 */}
+          {false && (
+            <Form.Item
+              label="Grafana配置"
+              name="grafanaConfig"
+              valuePropName="checked"
+              extra="启用Grafana监控"
+              dependencies={['clientResource']}
+              rules={[
+                {
+                  validator: async (_rule, value) => {
+                    const client = form.getFieldValue('clientResource') as boolean
+                    if (value && !client) {
+                      return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+                    }
+                    return Promise.resolve()
                   }
-                  return Promise.resolve()
                 }
-              }
-            ]}
-          >
-            <Switch />
-          </Form.Item>
+              ]}
+            >
+              <Switch />
+            </Form.Item>
+          )}
           
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
@@ -1533,27 +1538,30 @@ export default function GameManagement() {
         >
           <Switch disabled={flashLaunchLocked} />
         </Form.Item>
-        <Form.Item 
-          label="Grafana配置" 
-          name="grafanaConfig" 
-          valuePropName="checked" 
-          extra={grafanaInitTip ? '游戏已初始化，Grafana配置一旦开启不可关闭' : undefined}
-          dependencies={['clientResource']}
-          validateTrigger="onChange"
-          rules={[
-            {
-              validator: async (_rule, value) => {
-                const client = configForm.getFieldValue('clientResource') as boolean
-                if (value && !client) {
-                  return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+        {/* Grafana 配置暂时隐藏 */}
+        {false && (
+          <Form.Item 
+            label="Grafana配置" 
+            name="grafanaConfig" 
+            valuePropName="checked" 
+            extra={/* grafanaInitTip ? '游戏已初始化，Grafana配置一旦开启不可关闭' : undefined */ undefined}
+            dependencies={['clientResource']}
+            validateTrigger="onChange"
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const client = configForm.getFieldValue('clientResource') as boolean
+                  if (value && !client) {
+                    return Promise.reject(new Error('未配置客户端资源，无法开启Grafana配置'))
+                  }
+                  return Promise.resolve()
                 }
-                return Promise.resolve()
               }
-            }
-          ]}
-        >
-          <Switch disabled={grafanaLocked} />
-        </Form.Item>
+            ]}
+          >
+            <Switch disabled={/* grafanaLocked */ false} />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
     </>

@@ -29,7 +29,6 @@ import type { TableColumnsType } from 'antd'
 const { Title, Text } = Typography
 const { Search } = Input
 const { Option } = Select
-const { TabPane } = Tabs
 
 // 安全组数据类型定义
 interface SecurityGroup {
@@ -447,7 +446,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           </Space>
           
           <Search
-            placeholder="搜索安全组名称或描述"
+            placeholder="搜索安全组名称"
             allowClear
             style={{ width: 300 }}
             onSearch={handleSearch}
@@ -547,15 +546,20 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
         >
           {currentGroup && (
             <div>
-              <Tabs defaultActiveKey="rules">
-                <TabPane tab="安全规则" key="rules">
-                  <div style={{ marginBottom: 16 }}>
-                    <Form
-                      form={ruleForm}
-                      layout="inline"
-                      onFinish={handleAddRule}
-                      style={{ marginBottom: 16 }}
-                    >
+              <Tabs
+                defaultActiveKey="rules"
+                items={[
+                  {
+                    key: 'rules',
+                    label: '安全规则',
+                    children: (
+                      <div style={{ marginBottom: 16 }}>
+                        <Form
+                          form={ruleForm}
+                          layout="inline"
+                          onFinish={handleAddRule}
+                          style={{ marginBottom: 16 }}
+                        >
                       <Form.Item name="direction" rules={[{ required: true }]}>
                         <Select placeholder="方向" style={{ width: 100 }}>
                           <Option value="inbound">入方向</Option>
@@ -567,7 +571,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                           <Option value="TCP">TCP</Option>
                           <Option value="UDP">UDP</Option>
                           <Option value="ICMPv4">ICMP(ipv4)</Option>
-                          <Option value="ICMPv6">ICMP(ipv6)</Option>
+                          {/*注释IPV6 <Option value="ICMPv6">ICMP(ipv6)</Option> */}
                           <Option value="ALL">ALL</Option>
                         </Select>
                       </Form.Item>
@@ -581,6 +585,9 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                             { label: 'SSH (22)', value: '22' },
                             { label: 'HTTP (80)', value: '80' },
                             { label: 'HTTPS (443)', value: '443' },
+                            { label: 'MySQL (3306)', value: '3306' },
+                            { label: 'Redis (6379)', value: '6379' },
+                            { label: 'PostgreSQL(5432)', value: '5432' },
                             { label: 'ALL', value: 'ALL' }
                           ]}
                         />
@@ -592,7 +599,18 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                         </Select>
                       </Form.Item>
                       <Form.Item name="source" rules={[{ required: true }]}>
-                        <Input placeholder="授权范围" style={{ width: 150 }} />
+                        <Select
+                          mode="tags"
+                          placeholder="选择或输入授权范围，例如：0.0.0.0/0"
+                          style={{ width: 220 }}
+                          tokenSeparators={[',']}
+                          options={[
+                            { label: '(所有IPV4)0.0.0.0/0', value: '0.0.0.0/0' },
+                            { label: '192.168.0.0/16', value: '192.168.0.0/16' },
+                            { label: '172.16.0.0/12', value: '172.16.0.0/12' },
+                            { label: '10.0.0.0/8', value: '10.0.0.0/8' }
+                          ]}
+                        />
                       </Form.Item>
                       <Form.Item name="priority" rules={[{ required: true }]}>
                         <InputNumber placeholder="优先级" min={1} max={100} style={{ width: 80 }} />
@@ -605,18 +623,12 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                           添加规则
                         </Button>
                       </Form.Item>
-                    </Form>
-                  </div>
-
-                  <Table
-                    columns={ruleColumns}
-                    dataSource={currentGroup.rules}
-                    rowKey="id"
-                    size="small"
-                    pagination={false}
-                  />
-                </TabPane>
-              </Tabs>
+                        </Form>
+                      </div>
+                    )
+                  }
+                ]}
+              />
             </div>
           )}
         </Modal>

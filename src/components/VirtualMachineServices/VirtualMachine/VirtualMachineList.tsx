@@ -9,7 +9,8 @@ import {
   Typography, 
   Card,
   Modal,
-  message
+  message,
+  Select
 } from 'antd'
 import { 
   PlusOutlined, 
@@ -17,7 +18,7 @@ import {
   ReloadOutlined, 
   DeleteOutlined,
   PlayCircleOutlined,
-
+  LinkOutlined,
   DesktopOutlined
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
@@ -28,6 +29,8 @@ const { Title, Link } = Typography
 // 组件接口定义
 interface VirtualMachineListProps {
   onViewDetails?: (vm: VirtualMachine) => void
+  vmList?: VirtualMachine[]
+  setVmList?: (list: VirtualMachine[]) => void
 }
 
 // 虚拟机数据类型定义
@@ -45,8 +48,8 @@ export interface VirtualMachine {
   systemDiskSize?: number
   dataDiskSize?: number
   loginUser?: string
-  securityGroup?: string
-  securityGroupName?: string
+  securityGroups?: string[]
+  securityGroupNames?: string[]
 }
 
 // 模拟虚拟机数据
@@ -65,8 +68,8 @@ const mockVMData: VirtualMachine[] = [
     systemDiskSize: 40,
     dataDiskSize: 100,
     loginUser: 'appid',
-    securityGroup: 'sg-001',
-    securityGroupName: 'default-web'
+    securityGroups: ['sg-001'],
+    securityGroupNames: ['default-web']
   },
   {
     id: 'i-bp0987654321fedcba',
@@ -80,15 +83,26 @@ const mockVMData: VirtualMachine[] = [
     domain: 'g123-db01.com',
     systemDiskSize: 60,
     loginUser: 'appid',
-    securityGroup: 'sg-002',
-    securityGroupName: 'database-group'
+    securityGroups: ['sg-002'],
+    securityGroupNames: ['database-group']
   }
 ]
 
-export default function VirtualMachineList({ onViewDetails }: VirtualMachineListProps = {}) {
-  const [vmList, setVmList] = useState<VirtualMachine[]>(mockVMData)
+// 可绑定的安全组（用于示例绑定操作）
+const mockSecurityGroups = [
+  { id: 'sg-001', name: 'default-web' },
+  { id: 'sg-002', name: 'database-group' }
+]
+
+export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList }: VirtualMachineListProps = {}) {
+  const [internalVmList, internalSetVmList] = useState<VirtualMachine[]>(mockVMData)
+  const vmList = propVmList ?? internalVmList
+  const setVmList = propSetVmList ?? internalSetVmList
   const [loading, setLoading] = useState<boolean>(false)
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false)
+  const [showBindModal, setShowBindModal] = useState<boolean>(false)
+  const [bindTargetVm, setBindTargetVm] = useState<VirtualMachine | null>(null)
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
 
   // 虚拟机状态标签渲染
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
@@ -203,17 +217,15 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
               size="small"
               icon={<PlayCircleOutlined />}
               onClick={() => handleVMOperation(vm.id, 'start')}
-            >
-              启动
-            </Button>
+              title="启动"
+            />
           ) : (
             <Button
               size="small"
               icon={<PoweroffOutlined />}
               onClick={() => handleVMOperation(vm.id, 'stop')}
-            >
-              关机
-            </Button>
+              title="关机"
+            />
           )}
           
           <Button
@@ -221,28 +233,34 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
             icon={<ReloadOutlined />}
             onClick={() => handleVMOperation(vm.id, 'restart')}
             disabled={vm.status === 'stopped'}
-          >
-            重启
-          </Button>
+            title="重启"
+          />
           
           <Button
             size="small"
             icon={<DesktopOutlined />}
             onClick={() => handleRemoteConnect(vm)}
             disabled={vm.status !== 'running'}
-            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : ''}
-          >
-            远程连接
-          </Button>
-          
+            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : '远程连接'}
+          />
+            
           <Button
             size="small"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDelete(vm)}
-          >
-            删除
-          </Button>
+            title="删除"
+          />
+          <Button
+            size="small"
+            icon={<LinkOutlined />}
+            onClick={() => {
+              setBindTargetVm(vm)
+              setSelectedGroupIds(vm.securityGroups || [])
+              setShowBindModal(true)
+            }}
+            title="绑定安全组"
+          />
         </Space>
       )
     }
@@ -295,6 +313,27 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
     )
   }
 
+  // 绑定安全组确认弹窗（支持多选绑定）
+  const handleConfirmBind = () => {
+    if (!bindTargetVm) return
+    // 模拟绑定：更新 vmList 中对应 vm 的 securityGroups 字段
+    const updated = vmList.map(vm =>
+      vm.id === bindTargetVm.id
+        ? {
+            ...vm,
+            securityGroups: selectedGroupIds,
+            securityGroupNames: selectedGroupIds.map(id => mockSecurityGroups.find(g => g.id === id)?.name || id)
+          }
+        : vm
+    )
+    setVmList(updated)
+    setShowBindModal(false)
+    setBindTargetVm(null)
+    setSelectedGroupIds([])
+    message.success('绑定安全组成功')
+  }
+
+
   return (
     <Card>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -321,6 +360,27 @@ export default function VirtualMachineList({ onViewDetails }: VirtualMachineList
           showTotal: (total) => `共 ${total} 台虚拟机`
         }}
       />
+
+      <Modal
+        title="绑定安全组"
+        open={showBindModal}
+        onCancel={() => { setShowBindModal(false); setBindTargetVm(null); setSelectedGroupIds([]) }}
+        onOk={handleConfirmBind}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 8 }}>目标虚机：{bindTargetVm?.alias}</div>
+          <Select
+            mode="tags"
+            style={{ width: '100%' }}
+            value={selectedGroupIds}
+            onChange={(v) => setSelectedGroupIds(v as string[])}
+          >
+            {mockSecurityGroups.map(g => (
+              <Select.Option key={g.id} value={g.id}>{g.name} ({g.id})</Select.Option>
+            ))}
+          </Select>
+        </div>
+      </Modal>
     </Card>
   )
 }

@@ -338,7 +338,7 @@ export default function TestInitialization() {
                 '100%': '#87d068',
               }}
               showInfo={false}
-              strokeWidth={8}
+              size="default"
             />
             
             <div style={{ marginTop: 16, color: '#666', fontSize: '14px' }}>
