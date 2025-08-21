@@ -242,11 +242,11 @@ export default function TestInitialization() {
                 color: clientCompleted ? '#52c41a' : '#666',
                 fontWeight: clientCompleted ? 500 : 'normal'
               }}>
-                {clientCompleted ? '初始化完成' : 'S3 和 CDN 尚未初始化'}
+                {clientCompleted ? '初始化完成' : '客户端资源尚未初始化'}
               </Text>
               <br />
               <Text style={{ fontSize: '14px', color: '#999' }}>
-                {clientCompleted ? '客户端资源已准备就绪' : '请点击初始化按钮执行操作'}
+                {clientCompleted ? <>客户端资源已准备就绪，<span style={{ color: '#ff4d4f' }}>查看日志</span></> : '请点击初始化按钮执行操作'}
               </Text>
             </div>
           </Card>
@@ -291,11 +291,11 @@ export default function TestInitialization() {
                 color: serverCompleted ? '#52c41a' : '#666',
                 fontWeight: serverCompleted ? 500 : 'normal'
               }}>
-                {serverCompleted ? '初始化完成' : 'K8S 配置尚未初始化'}
+                {serverCompleted ? '初始化完成' : '服务端资源尚未初始化'}
               </Text>
               <br />
               <Text style={{ fontSize: '14px', color: '#999' }}>
-                {serverCompleted ? '服务端资源已准备就绪' : '请点击初始化按钮执行操作'}
+                {serverCompleted ? <>服务端资源已准备就绪，<span style={{ color: '#ff4d4f' }}>查看日志</span></>: '请点击初始化按钮执行操作'}
               </Text>
             </div>
           </Card>
@@ -338,7 +338,7 @@ export default function TestInitialization() {
                 '100%': '#87d068',
               }}
               showInfo={false}
-              strokeWidth={8}
+              size="default"
             />
             
             <div style={{ marginTop: 16, color: '#666', fontSize: '14px' }}>

@@ -1,11 +1,11 @@
 'use client'
 
 import React, { useState } from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Space, 
+import {
+  Card,
+  Table,
+  Button,
+  Space,
   Typography,
   Modal,
   Form,
@@ -13,16 +13,17 @@ import {
   Select,
   Tag,
   message,
-  Popconfirm
+  Popconfirm,
+  Tooltip,
 } from 'antd'
-import { 
-  PlusOutlined, 
+import {
+  PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   PlayCircleOutlined,
   CodeOutlined,
-  EyeOutlined
 } from '@ant-design/icons'
+import PromptManager from './PromptManager'
 import type { TableColumnsType } from 'antd'
 
 const { Title } = Typography
@@ -111,6 +112,7 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
   const [executingCommand, setExecutingCommand] = useState<Command | null>(null)
   const [form] = Form.useForm()
   const [executeForm] = Form.useForm()
+  const [viewingCommand, setViewingCommand] = useState<Command | null>(null)
 
   // 标签选项
   const tagOptions = ['部署', '调试', '维护', '监控', '备份']
@@ -232,7 +234,11 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
     {
       title: '命令名称',
       dataIndex: 'name',
-      key: 'name'
+      key: 'name',
+      render: (name: string, record: Command) => (
+        // 点击命令名称进入详情页（在 Modal 中打开 PromptManager）
+        <Button type="link" onClick={() => { setViewingCommand(record); if (onViewDetails) onViewDetails(record) }}>{name}</Button>
+      )
     },
     {
       title: '标签',
@@ -262,47 +268,26 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
     {
       title: '操作',
       key: 'actions',
-      width: 200,
-      render: (_, command) => (
+      width: 140,
+      render: (_: unknown, command: Command) => (
         <Space>
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlayCircleOutlined />}
-            onClick={() => handleExecuteCommand(command)}
-          >
-            执行
-          </Button>
-          {onViewDetails && (
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => onViewDetails(command)}
+          <Tooltip title="执行">
+            <Button type="text" icon={<PlayCircleOutlined />} onClick={() => handleExecuteCommand(command)} />
+          </Tooltip>
+          {/* 详情图标已移除；点击命令名称可打开详情 */}
+          <Tooltip title="编辑">
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleEditCommand(command)} />
+          </Tooltip>
+          <Tooltip title="删除">
+            <Popconfirm
+              title="确认删除这个命令吗？"
+              onConfirm={() => handleDeleteCommand(command.id)}
+              okText="确认"
+              cancelText="取消"
             >
-              详情
-            </Button>
-          )}
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditCommand(command)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除这个命令吗？"
-            onConfirm={() => handleDeleteCommand(command.id)}
-            okText="确认"
-            cancelText="取消"
-          >
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-            >
-              删除
-            </Button>
-          </Popconfirm>
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </Tooltip>
         </Space>
       )
     }
@@ -334,6 +319,24 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
           }}
         />
       </Card>
+
+      {/* 命令详情 Modal（嵌入 PromptManager） */}
+      <Modal
+        title={viewingCommand ? `命令详情 - ${viewingCommand.name}` : ''}
+        open={!!viewingCommand}
+        onCancel={() => setViewingCommand(null)}
+        footer={null}
+        width={900}
+      >
+        {viewingCommand ? (
+          <PromptManager
+            command={viewingCommand}
+            onBack={() => setViewingCommand(null)}
+            onEdit={(cmd) => { setViewingCommand(null); handleEditCommand(cmd) }}
+            onExecute={(cmd) => { setViewingCommand(null); handleExecuteCommand(cmd) }}
+          />
+        ) : null}
+      </Modal>
 
       {/* 新建/编辑命令弹窗 */}
       <Modal
