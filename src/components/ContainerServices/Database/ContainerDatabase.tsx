@@ -16,6 +16,7 @@ import {
   message,
 } from 'antd'
 import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined } from '@ant-design/icons'
+import DatabaseDetails from './DatabaseDetails'
 
 const { Title } = Typography
 const { Option } = Select
@@ -33,17 +34,32 @@ interface DBInstance {
   // 创建进度相关（原型模拟）
   creatingProgress?: number
   creatingStep?: string
+  // 详情页扩展字段（不在列表中展示）
+  version?: string
+  connectionCount?: number
+  defaultPort?: number
+  capacity?: string
+  qos?: string
+  bandwidth?: string
+  evictionPolicy?: string
+  mangoSpec?: string
+  shardSpec?: string
+  mangoCount?: number
+  shardCount?: number
 }
 
 // 模拟自动注入的 gameId（原型）
 const AUTO_GAME_ID = 'gamedemo'
 
 const mockData: DBInstance[] = [
-  { id: '1', type: 'MySQL', alias: 'test', spec: '2核8GB', arch: '集群', username: 'gamedemo_test', status: 'running', password: 'P@ssw0rd!', gameId: AUTO_GAME_ID},
-  { id: '2', type: 'Redis', alias: 'cache1', spec: '1GB', arch: '标准', username: 'redis_user', status: 'running', password: 'redis1234', gameId: AUTO_GAME_ID},
+  { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群', username: 'admin', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 100, defaultPort: 3306, capacity: '100GB' },
+  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '标准', username: 'user', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 200, defaultPort: 6379, capacity: '50GB', qos: 'SSD', bandwidth: '1Gbps', evictionPolicy: 'volatile-lru'},
+  { id: '3', type: 'Mango', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'mongouser', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mango 4.4', connectionCount: 150, defaultPort: 27017, capacity: '50GB', mangoSpec: '2核4GB', mangoCount: 2, shardSpec: '4核8G', shardCount: 2},
+  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准', username: 'zkuser', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181 }
 ]
 
 export default function ContainerDatabase() {
+  const [selectedInstance, setSelectedInstance] = useState<DBInstance | null>(null)
   const [data, setData] = useState<DBInstance[]>(mockData)
   const [showCreate, setShowCreate] = useState(false)
   const [form] = Form.useForm()
@@ -158,7 +174,7 @@ export default function ContainerDatabase() {
   }
 
   const columns: ColumnsType<DBInstance> = [
-    { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : <Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag> },
+    { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : <Button type="link" onClick={() => setSelectedInstance(record)}><Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag></Button> },
     { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => (
       record.creatingProgress != null ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -259,38 +275,45 @@ export default function ContainerDatabase() {
   return (
     <div>
       {contextHolder}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>存储</Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            // 始终允许打开创建弹窗，类型超限在下拉中禁用
-            setShowCreate(true)
-            setSelectedType('MySQL')
-            form.setFieldsValue({ type: 'MySQL' })
-          }}
-        >
-          添加数据库
+      {selectedInstance ? (
+        <DatabaseDetails instance={selectedInstance} onBack={() => setSelectedInstance(null)} />
+      ) : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Title level={4} style={{ margin: 0 }}>存储</Title>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                // 始终允许打开创建弹窗，类型超限在下拉中禁用
+                setShowCreate(true)
+                setSelectedType('MySQL')
+                form.setFieldsValue({ type: 'MySQL' })
+              }}
+            >
+              添加数据库
         </Button>
       </div>
 
-      <div style={{ color: '#666', fontSize: 14, marginTop: 8, marginBottom: 16,display: 'block' }}> 
-          <strong>描述：</strong> 提供从缓存到数据库的全栈中间件存储解决方案，支持存储玩家业务数据与日志数据，并助力应用实现无状态化部署。
-          </div>
-
-      {/* 别名搜索框 */}
-      <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
-        <Input.Search
-          placeholder="按别名搜索"
-          allowClear
-          onSearch={(val) => setSearchAlias(val.trim())}
-          onChange={(e) => setSearchAlias(e.target.value.trim())}
-          style={{ width: 320 }}
-        />
+          <div style={{ color: '#666', fontSize: 14, marginTop: 8, marginBottom: 16,display: 'block' }}> 
+            <strong>描述：</strong> 提供从缓存到数据库的全栈中间件存储解决方案，支持存储玩家业务数据与日志数据，并助力应用实现无状态化部署。
               </div>
 
-      <Table columns={columns} dataSource={data.filter(d => !searchAlias || d.alias.toLowerCase().includes(searchAlias.toLowerCase()))} rowKey="id" pagination={{ pageSize: 10 }} />
+          {/* 别名搜索框 */}
+          <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
+            <Input.Search
+              placeholder="按别名搜索"
+              allowClear
+              onSearch={(val) => setSearchAlias(val.trim())}
+              onChange={(e) => setSearchAlias(e.target.value.trim())}
+              style={{ width: 320 }}
+            />
+              </div>
+
+          <Table columns={columns} dataSource={data.filter(d => !searchAlias || d.alias.toLowerCase().includes(searchAlias.toLowerCase()))} rowKey="id" pagination={{ pageSize: 10 }} />
+
+        </>
+      )}
 
       <Modal title="添加数据库实例" open={showCreate} onOk={handleCreate} onCancel={() => setShowCreate(false)}>
         <Form form={form} layout="vertical">
