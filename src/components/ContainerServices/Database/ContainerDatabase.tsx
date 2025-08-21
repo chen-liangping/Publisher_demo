@@ -9,13 +9,11 @@ import {
   Space,
   Typography,
   Tooltip,
-  Card,
   Modal,
   Form,
   Input,
   Select,
   message,
-  Progress,
 } from 'antd'
 import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined } from '@ant-design/icons'
 
@@ -87,24 +85,21 @@ export default function ContainerDatabase() {
       navigator.clipboard.writeText(text).then(() => {
         try {
           messageApi.success('密码已复制')
-        } catch (e) {
+        } catch {
           // fallback
-          // eslint-disable-next-line no-alert
           alert('密码已复制')
         }
       }).catch(() => {
         try {
           messageApi.error('复制失败')
-        } catch (e) {
-          // eslint-disable-next-line no-alert
+        } catch {
           alert('复制失败')
         }
       })
     } else {
       // 备用：使用老式兼容方式或提示
       try {
-        // @ts-ignore
-        const textarea = document.createElement('textarea')
+        const textarea = document.createElement('textarea') as HTMLTextAreaElement
         textarea.value = text
         document.body.appendChild(textarea)
         textarea.select()
@@ -112,15 +107,13 @@ export default function ContainerDatabase() {
         document.body.removeChild(textarea)
         try {
           messageApi.success('密码已复制')
-        } catch (e) {
-          // eslint-disable-next-line no-alert
+        } catch {
           alert('密码已复制')
         }
-      } catch (e) {
+      } catch {
         try {
           messageApi.warning('当前环境不支持复制')
-        } catch (err) {
-          // eslint-disable-next-line no-alert
+        } catch {
           alert('当前环境不支持复制')
         }
       }
@@ -188,7 +181,7 @@ export default function ContainerDatabase() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: DBInstance) => (
+      render: (_: unknown, record: DBInstance) => (
         <Space>
           <Tooltip title="数据库查询">
             <Button type="text" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${record.alias}（模拟）`)} />

@@ -19,13 +19,12 @@ import {
   ReloadOutlined,
   DeleteOutlined,
   PlayCircleOutlined,
-  GlobalOutlined,
+  
   DesktopOutlined,
   MinusCircleTwoTone
 } from '@ant-design/icons'
 
 const { Title } = Typography
-const { TabPane } = Tabs
 
 interface VirtualMachine {
   id: string
@@ -78,7 +77,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
   const prevSecurityGroupsRef = useRef<string | undefined>(vm.securityGroupNames?.join(','))
 
   // 添加一条日志的简易函数
-  const addLog = (operation: string) => {
+  const addLog = React.useCallback((operation: string) => {
     const entry: LogEntry = {
       key: `${vm.id}-${Date.now()}`,
       vmName: vm.alias,
@@ -86,7 +85,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
       time: new Date().toLocaleString(),
     }
     setLogs((s) => [entry, ...s])
-  }
+  }, [vm.id, vm.alias])
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
     const statusConfig = {
       running: { color: 'success', text: '运行中' },
@@ -142,7 +141,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
       addLog('绑定/更新安全组')
       prevSecurityGroupsRef.current = curr
     }
-  }, [vm.securityGroupNames])
+  }, [vm.securityGroupNames, addLog])
 
   // Table 列定义，用于操作日志展示
   const columns = [
@@ -214,7 +213,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
             重启实例
           </Button> 
           
-          {/* global IP 操作已移至公网IP字段旁的图标按钮 */}
+          {/* 公网 IP 操作已移至公网IP字段旁的图标按钮 */}
           
           <Button
             icon={<DesktopOutlined />}
