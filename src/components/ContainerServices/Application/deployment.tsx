@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState } from 'react'
+import type { ColumnsType } from 'antd/es/table'
 import {
   Card,
   Row,
@@ -89,8 +90,19 @@ export default function Deployment({ appId }: { appId?: string }) {
     })
   }
 
+  // 表单中每一项的类型描述（用于从 Form.List 中读取值）
+  interface ResourceFormItem {
+    key: string
+    container: string
+    image: string
+    memoryNum: number
+    memoryUnit: string
+    cpuBase: number
+    cpuUnit: string
+  }
+
   // 将表单值转换回资源字符串
-  const buildResourcesFromForm = (vals: any[]) : ResourceItem[] => {
+  const buildResourcesFromForm = (vals: ResourceFormItem[]) : ResourceItem[] => {
     return vals.map(v => ({
       key: v.key,
       container: v.container,
@@ -180,7 +192,7 @@ export default function Deployment({ appId }: { appId?: string }) {
     }
   }
 
-  const resourceColumns: any[] = [
+  const resourceColumns: ColumnsType<ResourceItem> = [
     { title: '容器', dataIndex: 'container', key: 'container' },
     { title: '镜像版本', dataIndex: 'image', key: 'image' },
     {
@@ -229,7 +241,18 @@ export default function Deployment({ appId }: { appId?: string }) {
     }
   ]
 
-  const podColumns: any[] = [
+  interface Pod {
+    key: string
+    service: string
+    group: string
+    startTime: string
+    updatedTime: string
+    policy: string
+    resources: string
+    status: string
+  }
+
+  const podColumns: ColumnsType<Pod> = [
     { title: '服务名称', dataIndex: 'service', key: 'service' },
     { title: '分组名称', dataIndex: 'group', key: 'group' },
     { title: '开服时间', dataIndex: 'startTime', key: 'startTime' },
@@ -279,7 +302,7 @@ export default function Deployment({ appId }: { appId?: string }) {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: any) => {
+      render: (_: unknown, _record: Pod) => {
         return (
           <Space>
             <Button icon={<EditOutlined />} onClick={() => openEditDrawer()}>编辑</Button>

@@ -49,7 +49,7 @@ interface VirtualMachine {
 interface VirtualMachineDetailsProps {
   vm: VirtualMachine
   onBack: () => void
-  onOperation: (vmId: string, operation: string, payload?: any) => void
+  onOperation: (vmId: string, operation: string, payload?: string | undefined) => void
 }
 
 export default function VirtualMachineDetails({ vm, onBack, onOperation }: VirtualMachineDetailsProps) {
