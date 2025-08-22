@@ -22,8 +22,11 @@ import UserAvatarMenu from '../components/Common/UserAvatarMenu'
 import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
 import SecurityGroupDetails from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupDetails'
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
+import { apps as demoApps } from '../components/ContainerServices/Application/apps'
 import Deployment from '../components/ContainerServices/Application/deployment'
+import DeploymentOther from '../components/ContainerServices/Application/deployment_other'
 import ContainerDatabase from '../components/ContainerServices/Database/ContainerDatabase'
+import DatabaseDetails from '../components/ContainerServices/Database/DatabaseDetails'
 import ClientPage from '../components/Client/ClientPage'
 import ClientVersionPage from '../components/Client/ClientVersionPage'
 
@@ -268,8 +271,18 @@ export default function Home() {
       case 'container-app':
         // 如果有选中的应用 id，展示 Deployment 页面，否则展示应用卡片列表
         if (selectedAppId) {
+          // 在 demo 环境中，从 demoApps 中查找 name/tags，如果找到则传入
+          const found = demoApps.find(a => a.id === selectedAppId)
+          if (found) {
+            // 根据 tag 决定渲染哪个详情组件
+            if (found.tags && found.tags.includes('游服')) {
+              return <Deployment appId={selectedAppId} appName={found.name} tags={found.tags} />
+            }
+            return <DeploymentOther appId={selectedAppId} appName={found.name} tags={found.tags} />
+          }
           return <Deployment appId={selectedAppId} />
         }
+        // 恢复原有行为：当 selectedAppId 存在时展示 Deployment，否则展示应用卡片列表
         return <ContainerApplication onOpenDeployment={(id: string) => { setSelectedAppId(id); setSelectedMenu('container-app') }} />
       case 'container-database':
         return <ContainerDatabase />
@@ -362,7 +375,7 @@ export default function Home() {
                     key: 'storage',
                     icon: <CloudServerOutlined />,
                     label: '存储',
-                    onClick: () => handleMenuClick('vm-management')
+                    onClick: () => handleMenuClick('container-database')
                   },
                   {
                     key: 'cron-job',

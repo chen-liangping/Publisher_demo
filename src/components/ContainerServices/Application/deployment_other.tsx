@@ -12,8 +12,9 @@ import {
   Button,
   Table,
   Tabs,
-  // Progress,
+  Progress,
   Dropdown,
+  Descriptions,
   Collapse,
   Drawer,
   Form,
@@ -22,23 +23,24 @@ import {
   Input,
   Modal
 } from 'antd'
-import { MoreOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons'
+import { MoreOutlined, EditOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
 
-export default function Deployment({ appId, appName, tags }: { appId?: string; appName?: string; tags?: string[] }) {
+export default function DeploymentOther({ appId, appName, tags }: { appId?: string; appName?: string; tags?: string[] }) {
+  const id = appId ?? 'unknown'
   const [activeKey, setActiveKey] = useState<string>('overview')
   const name = appName ?? 'kumo游服'
-  const appTags = tags ?? ['游服']
+  const appTags = tags ?? ['平台']
 
   // 资源类型定义
   interface ResourceItem {
     key: string
     container: string
     image: string
-    // cpu 存为字符串展示（例如 "0.1C 可突发至0.4"）
+    // cpu 存为字符串展示（例如 "0.1C 可突发至0.4")
     cpu: string
-    // memory 存为字符串（例如 "128 Mi"）
+    // memory 存为字符串（例如 "128 Mi")
     memory: string
   }
 
@@ -63,7 +65,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   // refs for resource rows inside Drawer to reliably scroll/focus
   const rowRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
   // 当打开抽屉时需要聚焦的新增资源 key
-  const [, setFocusResourceKey] = useState<string | null>(null)
+  const [focusResourceKey, setFocusResourceKey] = useState<string | null>(null)
 
   // 将资源字符串解析为表单友好结构
   const parseResourcesForForm = (items: ResourceItem[]) => {
@@ -74,7 +76,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       const memoryUnit = memMatch ? memMatch[2] : 'Mi'
 
       // cpu: e.g. "0.1C" (只需要 base)，单位固定为 C
-      const cpuMatch = String(item.cpu || '').match(/([\d.]+)C/) 
+      const cpuMatch = String(item.cpu || '').match(/([\d.]+)C/)
       const cpuBase = cpuMatch ? Number(cpuMatch[1]) : undefined
       const cpuUnit = 'C'
 
@@ -187,7 +189,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       const updated = buildResourcesFromForm(list)
       setResources(updated)
       setDrawerVisible(false)
-    } catch {
+    } catch (err) {
       // 表单校验失败时不关闭抽屉
     }
   }
@@ -217,25 +219,19 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     { title: '内存', dataIndex: 'memory', key: 'memory' }
   ]
 
-  // Mock pod info data，pod数据
+  // Mock pod info data，pod tab
   const pods = [
     {
       key: 'p1',
       service: 'game1',
-      group: '默认',
-      startTime: '2025-02-05 14:14:41',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '手动开服',
+      updatedTime: '2025-02-05 14:14:41',
       resources: '0.5C/1538Mi 推荐值：0.1C/448Mi',
       status: '故障'
     },
     {
       key: 'p2',
       service: 'game2',
-      group: '默认',
-      startTime: '2025-02-04 10:00:00',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '自动开服',
+      updatedTime: '2025-02-04 10:00:00',
       resources: '0.3C/768Mi',
       status: '正常'
     }
@@ -244,20 +240,14 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   interface Pod {
     key: string
     service: string
-    group: string
-    startTime: string
     updatedTime: string
-    policy: string
     resources: string
     status: string
   }
 
   const podColumns: ColumnsType<Pod> = [
     { title: '服务名称', dataIndex: 'service', key: 'service' },
-    { title: '分组名称', dataIndex: 'group', key: 'group' },
-    { title: '开服时间', dataIndex: 'startTime', key: 'startTime' },
     { title: '更新时间', dataIndex: 'updatedTime', key: 'updatedTime' },
-    { title: '策略', dataIndex: 'policy', key: 'policy' },
     { 
       title: '资源', 
       dataIndex: 'resources', 
@@ -301,24 +291,13 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     },
     {
       title: '操作',
-      key: 'actions',
-      render: () => (
-          <Space>
-          <Button type="link" onClick={() => openEditDrawer()}>编辑</Button>
-          <Button type="link">重启</Button>
-            <Dropdown
-              menu={{
-                items: [
-                  { key: '1', label: '停止' },
-                  { key: '2', label: '删除' }
-                ]
-              }}
-            >
-              <Button icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
+      key: '登入pod',
+      render: (_: unknown, _record: Pod) => {
+        return (
+          <Button type="link">登入pod</Button>
         )
       }
+    }
   ]
 
   // 部署管理表格的 mock 数据与列定义
@@ -338,36 +317,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     }
   ]
 
-  // 部署分组（用于展示分组列表）
-  interface DeployGroup {
-    key: string
-    groupName: string
-    note: string
-    services: string[] | string
-    imageVersion: string
-    // 可选的分组层面配置，可能来自不同数据源
-    graceful?: string
-    exposePort?: number | string
-  }
-
-  const [deployGroups, _setDeployGroups] = useState<DeployGroup[]>([
-    { key: 'g1', groupName: '默认', note: '基础分组', services: '1~3', imageVersion: 'integration-server:7.8.0-amd64', graceful: '5s', exposePort: 8080 },
-    { key: 'g2', groupName: '灰度', note: '小流量灰度', services: '4~6', imageVersion: 'integration-server:7.6.0-amd64', graceful: '60s', exposePort: 8090 }
-  ])
-
-  const [deployDrawerVisible, setDeployDrawerVisible] = useState<boolean>(false)
-  const [selectedGroup, setSelectedGroup] = useState<DeployGroup | null>(null)
-
-  const groupColumns: ColumnsType<DeployGroup> = [
-    { title: '分组名称', dataIndex: 'groupName', key: 'groupName' },
-    { title: '备注', dataIndex: 'note', key: 'note' },
-    { title: '服务列表', dataIndex: 'services', key: 'services' },
-    { title: '镜像版本', dataIndex: 'imageVersion', key: 'imageVersion' },
-    { title: '操作', key: 'actions', render: (_: unknown, record: DeployGroup) => (
-      <Button type="link" onClick={() => { setSelectedGroup(record); setDeployDrawerVisible(true) }}>查看配置</Button>
-    ) }
-  ]
-
   interface DeployConfig {
     key: string
     image: string
@@ -382,9 +331,19 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     externalPort: number
   }
 
-  type DetailPair = [string, string | number | React.ReactNode]
+  // 部署分组（用于展示分组列表）
+  interface DeployGroup {
+    key: string
+    groupName: string
+    note: string
+    services: string[] | string
+    imageVersion: string
+    // 可选的分组层面配置
+    graceful?: string
+    exposePort?: number | string
+  }
 
-  const _deployColumns: ColumnsType<DeployConfig> = [
+  const deployColumns: ColumnsType<DeployConfig> = [
     { title: '镜像版本', dataIndex: 'image', key: 'image' },
     { title: '环境变量', dataIndex: 'envCount', key: 'envCount', render: (c) => `${c}个环境变量` },
     { title: '启动命令', dataIndex: 'cmd', key: 'cmd' },
@@ -397,24 +356,24 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     { title: '对外端口', dataIndex: 'externalPort', key: 'externalPort' }
   ]
 
-  // 文件下载 mock 数据与列
-  type FileItem = { key: string; name: string; uploadedAt: string }
+  // 文件下载 mock 数据与列（和 deployment 一致）
   const fileList = [
     { key: 'f1', name: 'server-log-2025-08-22.log', uploadedAt: '2025-08-22 12:00:00' },
     { key: 'f2', name: 'config-backup.tar.gz', uploadedAt: '2025-08-20 09:12:00' }
   ]
+
+  type FileItem = { key: string; name: string; uploadedAt: string }
 
   const fileColumns: ColumnsType<FileItem> = [
     { title: '名称', dataIndex: 'name', key: 'name' },
     { title: '更新时间', dataIndex: 'uploadedAt', key: 'uploadedAt' },
     { title: '操作', key: 'actions', render: (_: unknown, record: FileItem) => (
       <Space>
-        <Button type="link" onClick={() => { Modal.info({ title: '下载模拟', content: `开始下载：${record.name}` }) }}>下载</Button>
+        <Button type="link" onClick={() => { Modal.info({ title: '下载模拟', content: `开始下载：${record.name}` }) }}>下载</Button>      
       </Space>
     ) }
   ]
 
-  // 复制文本到剪贴板并提示（简易实现）
   const copyText = async (text: string) => {
     try {
       if (navigator?.clipboard?.writeText) {
@@ -434,7 +393,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   }
 
   return (
-    <div className="container mx-auto p-6" data-app-id={appId}>
+    <div className="container mx-auto p-6">
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Title level={3} style={{ margin: 0 }}>
@@ -449,7 +408,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
         <div style={{ marginTop: 12 }}>
           <Tabs activeKey={activeKey} onChange={(k) => setActiveKey(String(k))} items={[
             { key: 'overview', label: '总览' },
-            { key: 'pod', label: '服务' },
+            { key: 'pod', label: 'pod' },
             { key: 'deploy', label: '部署管理' },
             { key: 'file', label: '文件' },
             { key: 'plugin', label: '插件' }
@@ -547,18 +506,81 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
             <div style={{ marginTop: 12 }}>
               <Collapse
                 ghost
-                items={[
-                  {
-                    key: '1',
-                    label: <span style={{ color: '#2f54eb', fontWeight: 500 }}>更多高级配置</span>,
-                    children: <div style={{ color: '#666' }}>高级配置项（示意）</div>
-                  }
-                ]}
+                items={[{
+                  key: '1',
+                  label: <span style={{ color: '#2f54eb', fontWeight: 500 }}>更多高级配置</span>,
+                  children: <div style={{ color: '#666' }}>高级配置项（示意）</div>
+                }]}
               />
             </div>
           </div>
         </div>
-      ) : activeKey === 'pod' ? (
+      ) : activeKey === 'deploy' ? (
+        <div>
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Title level={4} style={{ margin: 0 }}>配置</Title>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Card>
+                <Table columns={deployColumns} dataSource={deployConfigs} pagination={false} />
+              </Card>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <Title level={4}>变更记录</Title>
+            <Card>
+              <Table
+                columns={[
+                  { title: 'ID', dataIndex: 'id', key: 'id' },
+                  { title: '分组名称', dataIndex: 'group', key: 'group' },
+                  { title: '操作类型', dataIndex: 'type', key: 'type' },
+                  { title: '更新信息', dataIndex: 'info', key: 'info' },
+                  { title: '镜像版本', dataIndex: 'image', key: 'image' },
+                  { title: '是否能够回滚', dataIndex: 'canRollback', key: 'canRollback' },
+                  { title: '优雅中止等待时间', dataIndex: 'graceful', key: 'graceful' },
+                  { title: '对外端口', dataIndex: 'port', key: 'port' },
+                  { title: '部署时间', dataIndex: 'time', key: 'time' },
+                  { title: '操作', key: 'actions', render: () => <Button type="link">详情</Button> }
+                ]}
+                dataSource={[{ key: 'r1', id: '331201', group: '默认', type: '更新', info: 'start', image: 'integration-server:7.8.0-amd64', canRollback: '是', graceful: '5秒', port: 8080, time: '2025-08-20 16:32:05' }]}
+                pagination={{ pageSize: 10 }}
+              />
+            </Card>
+          </div>
+        </div>
+      ) : activeKey === 'file' ? (
+    <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
+            <Card title="基本信息" style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+      {/* Access Key */}
+            <div style={{ flex: 1 }}>
+            <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Access Key ID</div>
+            <div style={{ fontSize: 14 }}>LTAI5tEL*********U7dKm9R <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('LTAI5tEL*********U7dKm9R')}/>
+        </div>
+      </div>
+
+      {/* Secret */}
+        <div style={{ flex: 1 }}>
+        <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Secret</div>
+        <div style={{ fontSize: 14 }}>6pwC81vC0F***********L <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('6pwC81vC0F***********L')} />
+        </div>
+        </div>
+        </div>
+    </Card>
+
+        <Card style={{ width: '100%' }}>
+          <div>
+            <Title level={4} style={{ marginTop: 0 }}>服务器</Title>
+            <div style={{ color: '#666', marginBottom: 12, fontSize: 14 }}>服务器 \ server0</div>
+          </div>
+          <Table columns={fileColumns} dataSource={fileList} pagination={{ pageSize: 10 }} />
+        </Card>
+            </div>
+            </div>
+        ) : (
         <>
           {/* 资源变配 */}
           <div style={{ marginBottom: 24 }}>
@@ -592,9 +614,9 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
             >
               <Form form={editForm} layout="vertical">
                 <Form.List name="resources">
-                  {(fields) => (
+                  {(fields, { add, remove }) => (
                     <div>
-                      {fields.map((field) => (
+                      {fields.map((field, idx) => (
                         <div key={field.key} data-resource-key={field.key} ref={(el) => { rowRefs.current[field.key] = el }} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px dashed #f0f0f0' }}>
                           {/* 容器名（只读，显著展示，行间距缩小） */}
                           <div style={{ marginBottom: 6 }}>
@@ -643,128 +665,13 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
 
           {/* Pod 信息 */}
           <div>
-            <Title level={4}>服务</Title>
+            <Title level={4}>Pod</Title>
             <Card>
               <Table columns={podColumns} dataSource={pods} pagination={false} />
             </Card>
           </div>
         </>
-      ) : activeKey === 'deploy' ? (
-        <>
-        <div>
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Title level={4} style={{ margin: 0 }}>配置</Title>
-              <Space>
-                <Button type="primary">新建分组</Button>
-              </Space>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <Card>
-                <Table columns={groupColumns} dataSource={deployGroups} pagination={false} />
-              </Card>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <Title level={4}>变更记录</Title>
-            <Card>
-              <Table
-                columns={[
-                  { title: 'ID', dataIndex: 'id', key: 'id' },
-                  { title: '分组名称', dataIndex: 'group', key: 'group' },
-                  { title: '操作类型', dataIndex: 'type', key: 'type' },
-                  { title: '更新信息', dataIndex: 'info', key: 'info' },
-                  { title: '镜像版本', dataIndex: 'image', key: 'image' },
-                  { title: '是否能够回滚', dataIndex: 'canRollback', key: 'canRollback' },
-                  { title: '优雅中止等待时间', dataIndex: 'graceful', key: 'graceful' },
-                  { title: '对外端口', dataIndex: 'port', key: 'port' },
-                  { title: '部署时间', dataIndex: 'time', key: 'time' },
-                  { title: '操作', key: 'actions', render: () => <Button type="link">详情</Button> }
-                ]}
-                dataSource={[{ key: 'r1', id: '331201', group: '默认', type: '更新', info: 'start', image: 'integration-server:7.8.0-amd64', canRollback: '是', graceful: '5秒', port: 8080, time: '2025-08-20 16:32:05' }]}
-                pagination={{ pageSize: 10 }}
-              />
-            </Card>
-          </div>
-        </div>
-        {/* deploy group drawer: 显示 deployColumns 内容 */}
-        type DetailPair = [string, string | number | React.ReactNode]
-
-        <Drawer title="配置详情" placement="right" width={720} onClose={() => setDeployDrawerVisible(false)} open={deployDrawerVisible} destroyOnClose>
-          {selectedGroup ? (
-            <div>
-              <Title level={5} style={{ marginBottom: 8 }}></Title>
-              <div key={selectedGroup.key} style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 12 }}>
-                    {([
-                      ['优雅中止等待时间', selectedGroup.graceful ?? '60s'],
-                      ['对外端口', selectedGroup.exposePort ?? '8080']
-                    ] as DetailPair[]).map(([label, val]) => (
-                      <div key={String(label)} style={{ display: 'flex', padding: '12px 0', alignItems: 'center', borderBottom: '1px solid #f5f5f5' }}>
-                        <div style={{ width: 160, color: '#666', fontSize: 14 }}>{label}</div>
-                        <div style={{ flex: 1, fontSize: 14 }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                  </div>
-              <div>
-                <Title level={5} style={{ marginBottom: 12 }}>配置详情</Title>
-                {deployConfigs.map(cfg => (
-                  <div key={cfg.key} style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 12 }}>
-                    {([
-                      ['镜像版本', cfg.image ?? '-'],
-                      ['环境变量', `${cfg.envCount ?? 0}个环境变量`],
-                      ['启动命令', cfg.cmd || '-'],
-                      ['端口', cfg.ports || '-'],
-                      ['健康检查', cfg.health ? `类型：${cfg.health.type} 路径：${cfg.health.path} 端口：${cfg.health.port} 初始等待：${cfg.health.initialDelay}s` : '-'],
-                      ['通信协议', cfg.protocol || '-'],
-                      ['文件挂载', `${cfg.mounts ?? 0}个文件`],
-                      ['preStop类型', cfg.preStop || '-'],
-                    ] as DetailPair[]).map(([label, val]) => (
-                      <div key={label} style={{ display: 'flex', padding: '12px 0', alignItems: 'center', borderBottom: '1px solid #f5f5f5' }}>
-                        <div style={{ width: 160, color: '#666', fontSize: 14 }}>{label}</div>
-                        <div style={{ flex: 1, fontSize: 14 }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </Drawer>
-        </>
-      ) : activeKey === 'file' ? (
-        <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
-        <Card title="基本信息" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-  {/* Access Key */}
-        <div style={{ flex: 1 }}>
-        <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Access Key ID</div>
-        <div style={{ fontSize: 14 }}>LTAI5tEL*********U7dKm9R <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('LTAI5tEL*********U7dKm9R')}/>
-    </div>
-  </div>
-
-  {/* Secret */}
-    <div style={{ flex: 1 }}>
-    <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Secret</div>
-    <div style={{ fontSize: 14 }}>6pwC81vC0F***********L <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('6pwC81vC0F***********L')} />
-    </div>
-    </div>
-    </div>
-</Card>
-
-            <Card style={{ width: '100%' }}>
-              <div>
-                <Title level={4} style={{ marginTop: 0 }}>服务器</Title>
-                <div style={{ color: '#666', marginBottom: 12, fontSize: 14 }}>服务器 \ server0</div>
-              </div>
-              <Table columns={fileColumns} dataSource={fileList} pagination={{ pageSize: 10 }} />
-            </Card>
-        </div>
-        </div>
-      ) : null}
+      )}
             {/* 镜像/容器管理弹窗（组件顶层渲染，确保任意 tab 下可见） */}
             <Modal
               title="管理容器"

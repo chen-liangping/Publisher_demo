@@ -52,10 +52,10 @@ interface DBInstance {
 const AUTO_GAME_ID = 'gamedemo'
 
 const mockData: DBInstance[] = [
-  { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群', username: 'admin', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 100, defaultPort: 3306, capacity: '100GB' },
-  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '标准', username: 'user', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 200, defaultPort: 6379, capacity: '50GB', qos: 'SSD', bandwidth: '1Gbps', evictionPolicy: 'volatile-lru'},
-  { id: '3', type: 'Mango', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'mongouser', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mango 4.4', connectionCount: 150, defaultPort: 27017, capacity: '50GB', mangoSpec: '2核4GB', mangoCount: 2, shardSpec: '4核8G', shardCount: 2},
-  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准', username: 'zkuser', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181 }
+  { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB' },
+  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru'},
+  { id: '3', type: 'Mango', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mango 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', mangoSpec: '2核4GB', mangoCount: 2, shardSpec: '4核8G', shardCount: 2},
+  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181 }
 ]
 
 export default function ContainerDatabase() {
@@ -183,8 +183,8 @@ export default function ContainerDatabase() {
         </div>
       ) : record.alias
     )},
-    { title: '实例规格', dataIndex: 'spec', key: 'spec', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.spec },
-    { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.arch },
+    { title: '实例规格', dataIndex: 'spec', key: 'spec', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : <div style={{color: '#74b9ff'}}>{record.spec}</div> },
+    { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.arch},
     { title: '用户名', dataIndex: 'username', key: 'username', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.username },
     { title: '密码', dataIndex: 'password', key: 'password', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
