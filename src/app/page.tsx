@@ -29,11 +29,16 @@ import ContainerDatabase from '../components/ContainerServices/Database/Containe
 import DatabaseDetails from '../components/ContainerServices/Database/DatabaseDetails'
 import ClientPage from '../components/Client/ClientPage'
 import ClientVersionPage from '../components/Client/ClientVersionPage'
+import Task from '../components/task/task'
+import GiftManagment from '../components/gift_managment/gift_managment'
+import MessagePush from '../components/message/MessagePush'
+import PlayPage from '../components/play/play'
+import GiftDataPage from '../components/giftdata/giftdata'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push'
 
 // 虚拟机数据类型定义
 interface VirtualMachine {
@@ -228,6 +233,8 @@ export default function Home() {
             />
           )
         }
+      case 'cron-job':
+        return <Task />
       case 'key-management':
         return <KeyManagement />
       case 'file-management':
@@ -290,6 +297,14 @@ export default function Home() {
         return <ClientPage />
       case 'client-version':
         return <ClientVersionPage />
+      case 'gift-management':
+        return <GiftManagment />
+      case 'message-push':
+        return <MessagePush />
+      case 'play':
+        return <PlayPage />
+      case 'gift-data':
+        return <GiftDataPage />
       default:
         return <VirtualMachineList />
     }
@@ -381,7 +396,7 @@ export default function Home() {
                     key: 'cron-job',
                     icon: <CloudServerOutlined />,
                     label: '定时任务',
-                    onClick: () => handleMenuClick('vm-management')
+                    onClick: () => handleMenuClick('cron-job')
                   },
                 
                   /*注释秘钥，因为秘钥管理功能未开发
@@ -413,6 +428,34 @@ export default function Home() {
                     onClick: () => handleMenuClick('container-database')
                   }
                 ]
+              }
+              ,
+              {
+                key: 'gift-management',
+                icon: <AppstoreOutlined />,
+                label: '运营数据',
+                onClick: () => handleMenuClick('gift-management')
+              }
+              ,
+              {
+                key: 'message-push',
+                icon: <AppstoreOutlined />,
+                label: '消息推送',
+                onClick: () => handleMenuClick('message-push')
+              }
+              ,
+              {
+                key: 'play',
+                icon: <AppstoreOutlined />,
+                label: '活动数据',
+                onClick: () => handleMenuClick('play')
+              }
+              ,
+              {
+                key: 'gift-data',
+                icon: <AppstoreOutlined />,
+                label: '礼包道具',
+                onClick: () => handleMenuClick('gift-data')
               }
             ]}
           />

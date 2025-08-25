@@ -469,10 +469,6 @@ export default function ContainerDatabase() {
               </Form.Item>
             </>
           )}
-
-
-          {/* 用户名与密码由系统自动生成/注入，前端不需要用户填写 */}
-          <div style={{ color: '#999', marginBottom: 12 }}>用户名与密码将由系统自动生成，用户名格式：{AUTO_GAME_ID}_别名</div>
         </Form>
       </Modal>
     </div>
