@@ -315,11 +315,6 @@ https://access-tool.g123.jp/cp/api/v1/games/gamedemo/activity
       <Tabs
         items={items}
         defaultActiveKey="gift"
-        tabBarExtraContent={{
-          right: (
-            <Button onClick={() => window.alert('原型：API 配置')}>API</Button>
-          )
-        }}
       />
     </div>
   )

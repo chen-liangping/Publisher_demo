@@ -148,11 +148,6 @@ export default function PlayPage(): React.ReactElement {
       </div>
       <Tabs
         items={items}
-        tabBarExtraContent={{
-          right: (
-            <Button onClick={() => window.alert('原型：API 配置')}>API</Button>
-          )
-        }}
       />
     </div>
   )

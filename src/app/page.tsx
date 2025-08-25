@@ -431,6 +431,45 @@ export default function Home() {
               }
               ,
               {
+                key: 'Integration',
+                icon: <CodeOutlined />,
+                label: '接入',
+                children: [
+                  {
+                    key: 'gift-management',
+                    icon: <AppstoreOutlined />,
+                    label: '数据推送',
+                    onClick: () => handleMenuClick('gift-management')
+                  },
+                  {
+                    key: 'message-push',
+                    icon: <AppstoreOutlined />,
+                    label: '消息推送',
+                    onClick: () => handleMenuClick('message-push')
+                  }
+                ]
+              },
+              {
+                key: 'Operations',
+                icon: <AppstoreOutlined />,
+                label: '运营',
+                children: [
+                  {
+                    key: 'play',
+                    icon: <AppstoreOutlined />,
+                    label: '活动数据',
+                    onClick: () => handleMenuClick('play')
+                  },
+                  {
+                    key: 'gift-data',
+                    icon: <AppstoreOutlined />,
+                    label: '礼包道具',
+                    onClick: () => handleMenuClick('gift-data')
+                  }
+                ]
+              }
+              /*
+              {
                 key: 'gift-management',
                 icon: <AppstoreOutlined />,
                 label: '运营数据',
@@ -457,6 +496,7 @@ export default function Home() {
                 label: '礼包道具',
                 onClick: () => handleMenuClick('gift-data')
               }
+              */
             ]}
           />
         </Sider>
