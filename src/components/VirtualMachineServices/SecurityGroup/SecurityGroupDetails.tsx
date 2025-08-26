@@ -28,9 +28,9 @@ import {
 
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
+import Item from 'antd/es/list/Item'
 
 const { Title, Text } = Typography
-const { TabPane } = Tabs
 const { Option } = Select
 
 // 安全规则数据类型定义
@@ -357,36 +357,47 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
           </Button>
         }
       >
-        <Tabs defaultActiveKey="inbound">
-          <TabPane tab={`入方向规则 (${getInboundRules().length})`} key="inbound">
-            <Table
-              columns={getRuleColumns('inbound')}
-              dataSource={getInboundRules()}
-              rowKey="id"
-              size="small"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
-              }}
-            />
-          </TabPane>
-          <TabPane tab={`出方向规则 (${getOutboundRules().length})`} key="outbound">
-            <Table
-              columns={getRuleColumns('outbound')}
-              dataSource={getOutboundRules()}
-              rowKey="id"
-              size="small"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
-              }}
-            />
-          </TabPane>
-        </Tabs>
+        <Tabs
+          defaultActiveKey="inbound"
+          items={[
+            {
+              key: 'inbound',
+              label: `入方向规则 (${getInboundRules().length})`,
+              children: (
+                <Table
+                  columns={getRuleColumns('inbound')}
+                  dataSource={getInboundRules()}
+                  rowKey="id"
+                  size="small"
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
+                  }}
+                />
+              )
+            },
+            {
+              key: 'outbound',
+              label: `出方向规则 (${getOutboundRules().length})`,
+              children: (
+                <Table
+                  columns={getRuleColumns('outbound')}
+                  dataSource={getOutboundRules()}
+                  rowKey="id"
+                  size="small"
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
+                  }}
+                />
+              )
+            }
+          ]}
+        />
       </Card>
 
       {/* 添加/编辑规则弹窗 */}

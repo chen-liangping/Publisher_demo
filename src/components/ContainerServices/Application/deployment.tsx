@@ -87,7 +87,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
         cpuBase,
         cpuUnit
       }
-    })
+    });
   }
 
   // 表单中每一项的类型描述（用于从 Form.List 中读取值）

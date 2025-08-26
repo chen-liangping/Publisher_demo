@@ -242,7 +242,6 @@ export default function Task(): React.ReactElement {
           </Text>
         </div>
       </div>
-
       <Card
         style={{ marginTop: 16 }}
         title={<span style={{ fontSize: 18 }}>列表</span>}
@@ -268,7 +267,6 @@ export default function Task(): React.ReactElement {
           scroll={{ x: 980 }}
         />
       </Card>
-
       {/* 添加任务 Drawer */}
       <Drawer
         title={
@@ -390,7 +388,6 @@ export default function Task(): React.ReactElement {
           </Form.Item>
         </Form>
       </Drawer>
-
       {/* 任务详情 Drawer */}
       <Drawer
         title={
@@ -457,7 +454,7 @@ export default function Task(): React.ReactElement {
         )}
       </Drawer>
     </div>
-  )
+  );
 }
 
 // 构建最近 7 天 00:00:00 的执行记录（示例数据，状态故障）

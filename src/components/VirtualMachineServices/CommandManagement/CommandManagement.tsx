@@ -238,7 +238,7 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
       key: 'name',
       render: (name: string, record: Command) => (
         // 点击命令名称进入详情页（在 Modal 中打开 PromptManager）
-        <Button type="link" onClick={() => { setViewingCommand(record); if (onViewDetails) onViewDetails(record) }}>{name}</Button>
+        (<Button type="link" onClick={() => { setViewingCommand(record); if (onViewDetails) onViewDetails(record) }}>{name}</Button>)
       )
     },
     {
