@@ -1,7 +1,7 @@
 'use client'
 
 import { Layout, Menu, Typography } from 'antd'
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { 
   CloudServerOutlined, 
   CodeOutlined,
@@ -10,7 +10,8 @@ import {
   EyeOutlined,
   ContainerOutlined,
   SecurityScanOutlined,
-  MobileOutlined
+  MobileOutlined,
+  BellOutlined
 } from '@ant-design/icons'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
 import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
@@ -35,11 +36,13 @@ import MessagePush from '../components/message/MessagePush'
 import ActivityPage from '../components/tool/activity'
 import GiftDataPage from '../components/tool/gift'
 import I18nPage from '../components/tool/i18n'
+import AlertPage from '../components/alert'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert'
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
 
@@ -57,7 +60,15 @@ interface Command {
 // 组件内自管理，无需在页面声明 SecurityGroup 类型/状态
 
 export default function Home() {
-  const [selectedMenu, setSelectedMenu] = useState<MenuKey>('vm-management')
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const initialMenu = ((): MenuKey => {
+    const m = searchParams.get('menu') as MenuKey | null
+    return m ?? 'vm-management'
+  })()
+  const [selectedMenu, setSelectedMenu] = useState<MenuKey>(initialMenu)
   // 命令列表/详情由组件内部自管理
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
 
@@ -73,6 +84,10 @@ export default function Home() {
     setSelectedMenu(key)
     // 命令列表/详情由组件内部自管理
     setSelectedAppId(null)
+    // 将菜单写入 URL 的查询参数，避免新建路由文件
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('menu', key)
+    router.push(`${pathname}?${params.toString()}`)
   }
 
   // VM 列表/详情由组件内部自管理
@@ -80,6 +95,12 @@ export default function Home() {
   // 命令交互逻辑内聚到组件内部
 
   // 安全组列表/详情由组件内部自管理
+
+  // 监听 URL 变化（前进/后退）以同步选中菜单
+  useEffect(() => {
+    const m = searchParams.get('menu') as MenuKey | null
+    if (m && m !== selectedMenu) setSelectedMenu(m)
+  }, [searchParams])
 
   // 渲染右侧内容区域
   const renderContent = (): React.ReactElement => {
@@ -128,12 +149,15 @@ export default function Home() {
         return <GiftDataPage />
       case 'i18n':
         return <I18nPage />
+      case 'alert':
+        return <AlertPage />
       default:
         return <VirtualMachineList />
     }
   }
 
   return (
+    <Suspense fallback={null}>
     <Layout style={{ minHeight: '100vh' }}>
       {/* 顶部导航 */}
       <Header style={{ 
@@ -251,8 +275,13 @@ export default function Home() {
                     onClick: () => handleMenuClick('container-database')
                   }
                 ]
-              }
-              ,
+              },
+              {
+                key: 'alert',
+                icon: <BellOutlined />,
+                label: '告警配置',
+                onClick: () => handleMenuClick('alert')
+              },
               {
                 key: 'Integration',
                 icon: <CodeOutlined />,
@@ -317,5 +346,6 @@ export default function Home() {
         </Layout>
       </Layout>
     </Layout>
+    </Suspense>
   )
 }

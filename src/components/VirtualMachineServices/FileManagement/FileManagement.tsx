@@ -8,10 +8,11 @@ import {
   Space, 
   Typography,
   Upload,
-  Modal,
   message,
   Input,
-  Progress
+  Progress,
+  Tooltip,
+  Popconfirm
 } from 'antd'
 import { 
   UploadOutlined, 
@@ -19,7 +20,6 @@ import {
 
   FolderOutlined,
   FileOutlined,
-  ExclamationCircleOutlined,
   HomeOutlined,
   RightOutlined
 } from '@ant-design/icons'
@@ -27,7 +27,6 @@ import type { TableColumnsType, UploadProps } from 'antd'
 
 const { Title } = Typography
 const { Search } = Input
-const { confirm } = Modal
 
 // 文件数据类型定义
 interface OSSFile {
@@ -194,26 +193,15 @@ export default function FileManagement() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  // 删除文件
+  // 删除文件（由 Popconfirm 二次确认触发）
   const handleDelete = (file: OSSFile): void => {
-    confirm({
-      title: '确认删除文件',
-      icon: <ExclamationCircleOutlined />,
-      content: `确定要删除 "${file.name}" 吗？此操作不可恢复。`,
-      okText: '确认删除',
-      okType: 'danger',
-      cancelText: '取消',
-      onOk: () => {
-        setLoading(true)
-        // 模拟删除操作
-        setTimeout(() => {
-          const newFileList = fileList.filter(f => f.id !== file.id)
-          setFileList(newFileList)
-          setLoading(false)
-          message.success('文件删除成功')
-        }, 1000)
-      }
-    })
+    setLoading(true)
+    // 模拟删除操作
+    setTimeout(() => {
+      setFileList(prev => prev.filter(f => f.id !== file.id))
+      setLoading(false)
+      message.success('文件删除成功')
+    }, 500)
   }
 
   // 进入文件夹
@@ -354,14 +342,20 @@ export default function FileManagement() {
       key: 'actions',
       width: 100,
       render: (_, file) => (
-        <Button
-          type="link"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => handleDelete(file)}
-        >
-          删除
-        </Button>
+        <Space>
+          <Popconfirm
+            title="确认删除文件"
+            description={`确定要删除 "${file.name}" 吗？此操作不可恢复。`}
+            okText="确认删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(file)}
+          >
+            <Tooltip title="删除">
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       )
     }
   ]
