@@ -186,12 +186,6 @@ export default function Home() {
             style={{ height: '100%', borderRight: 0 }}
             items={[
               {
-                key: 'alert',
-                icon: <BellOutlined />,
-                label: '告警配置',
-                onClick: () => handleMenuClick('alert')
-              },
-              {
                 key: 'client',
                 icon: <MobileOutlined />,
                 label: '客户端',
@@ -281,8 +275,13 @@ export default function Home() {
                     onClick: () => handleMenuClick('container-database')
                   }
                 ]
-              }
-              ,
+              },
+              {
+                key: 'alert',
+                icon: <BellOutlined />,
+                label: '告警配置',
+                onClick: () => handleMenuClick('alert')
+              },
               {
                 key: 'Integration',
                 icon: <CodeOutlined />,
