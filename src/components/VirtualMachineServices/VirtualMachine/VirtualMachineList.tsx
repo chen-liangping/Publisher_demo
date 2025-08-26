@@ -420,11 +420,8 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
             style={{ width: '100%' }}
             value={selectedGroupIds}
             onChange={(v) => setSelectedGroupIds(v as string[])}
-          >
-            {mockSecurityGroups.map(g => (
-              <Select.Option key={g.id} value={g.id}>{g.name} ({g.id})</Select.Option>
-            ))}
-          </Select>
+            options={mockSecurityGroups.map(g => ({ value: g.id, label: `${g.name} (${g.id})` }))}
+          />
         </div>
       </Modal>
     </Card>

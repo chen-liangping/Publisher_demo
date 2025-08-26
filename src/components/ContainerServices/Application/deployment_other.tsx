@@ -89,7 +89,7 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
         cpuBase,
         cpuUnit
       }
-    })
+    });
   }
 
   // 表单中每一项的类型描述（用于从 Form.List 中读取值）
@@ -693,11 +693,12 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
                   {addingContainer && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, padding: '6px 0' }}>
                       <Input placeholder="容器名称" value={newContainerName} onChange={(e) => setNewContainerName(e.target.value)} style={{ flex: 1 }} />
-                      <Select value={newContainerImage} onChange={(v) => setNewContainerImage(v)} style={{ width: 160 }}>
-                        {['game','center','login'].map(img => (
-                          <Select.Option key={img} value={img}>{img}</Select.Option>
-                        ))}
-                      </Select>
+                      <Select
+                        value={newContainerImage}
+                        onChange={(v) => setNewContainerImage(v)}
+                        style={{ width: 160 }}
+                        options={['game','center','login'].map(img => ({ value: img, label: img }))}
+                      />
                     </div>
                   )}
 

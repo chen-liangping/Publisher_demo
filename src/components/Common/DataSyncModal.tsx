@@ -36,7 +36,7 @@ const { Title, Text, Paragraph } = Typography
 const { Step } = Steps
 
 interface DataSyncModalProps {
-  visible: boolean
+  open: boolean
   onCancel: () => void
 }
 
@@ -81,7 +81,7 @@ const mockData = {
   }
 }
 
-export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps) {
+export default function DataSyncModal({ open, onCancel }: DataSyncModalProps) {
   const [currentStep, setCurrentStep] = useState<number>(0)
   const [syncType, setSyncType] = useState<'full' | 'partial' | null>(null)
   const [syncing, setSyncing] = useState<boolean>(false)
@@ -1364,8 +1364,8 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
   return (
     <Modal
       title="数据同步"
-      open={visible}
-      onCancel={handleCancel}
+      open={open}
+      onCancel={onCancel}
       width={1000}
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1393,7 +1393,7 @@ export default function DataSyncModal({ visible, onCancel }: DataSyncModalProps)
               </Button>
             )}
             {currentStep === 3 && (
-              <Button onClick={handleCancel} disabled={syncing}>
+              <Button onClick={onCancel} disabled={syncing}>
                 关闭
               </Button>
             )}
