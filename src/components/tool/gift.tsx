@@ -38,9 +38,6 @@ interface GiftRow {
   payload: string
 }
 
-// 这段代码实现了“礼包道具/道具数据”页面，使用了 Ant Design 的 Tabs/Card/Table/Alert
-// - 两个 Tab：道具资源、礼包道具
-// - 顶部说明与礼管页面风格一致
 export default function GiftDataPage(): React.ReactElement {
   const [search, setSearch] = useState('')
   const [giftSearch, setGiftSearch] = useState('')
@@ -75,36 +72,8 @@ export default function GiftDataPage(): React.ReactElement {
   ]), [])
 
   const [gifts] = useState<GiftRow[]>([
-    {
-      key: '100006喵喵礼包测试',
-      display_id: '100006',
-      gift_name: '喵喵礼包测试',
-      ai_supported: true,
-      description: '周末限时特惠',
-      items: '高级引擎: 1\nLOCK碎片: 100',
-      price_jpy: 890,
-      price_value_ratio: 500,
-      purchase_limit_type: '每周限购',
-      purchase_limit_amount: 1,
-      amount_to_diamond: 15000,
-      vip_points: 15000,
-      payload: '12'
-    },
-    {
-      key: '1000051234',
-      display_id: '100005',
-      gift_name: '1234',
-      ai_supported: true,
-      description: '周末限时特惠',
-      items: 'LOCK碎片: 100\n高级引擎: 1',
-      price_jpy: 500,
-      price_value_ratio: 500,
-      purchase_limit_type: '每月限购',
-      purchase_limit_amount: 2,
-      amount_to_diamond: 15000,
-      vip_points: 15000,
-      payload: '21'
-    }
+    { key: '100006喵喵礼包测试', display_id: '100006', gift_name: '喵喵礼包测试', ai_supported: true, description: '周末限时特惠', items: '高级引擎: 1\nLOCK碎片: 100', price_jpy: 890, price_value_ratio: 500, purchase_limit_type: '每周限购', purchase_limit_amount: 1, amount_to_diamond: 15000, vip_points: 15000, payload: '12' },
+    { key: '1000051234', display_id: '100005', gift_name: '1234', ai_supported: true, description: '周末限时特惠', items: 'LOCK碎片: 100\n高级引擎: 1', price_jpy: 500, price_value_ratio: 500, purchase_limit_type: '每月限购', purchase_limit_amount: 2, amount_to_diamond: 15000, vip_points: 15000, payload: '21' }
   ])
 
   const filteredGifts = gifts.filter(g => `${g.display_id}${g.gift_name}`.includes(giftSearch))
@@ -141,17 +110,12 @@ export default function GiftDataPage(): React.ReactElement {
     </Space>
   )
 
-  const GiftTab = ( 
+  const GiftTab = (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-      <Card >
+      <Card>
         <Alert type="success" showIcon message={<span><Text>2025-06-30 10:26:49</Text> 已发布</span>} style={{ marginBottom: 12 }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Input.Search
-            allowClear
-            placeholder="搜索display_id、gift_name"
-            style={{ width: 260 }}
-            onSearch={setGiftSearch}
-          />
+          <Input.Search allowClear placeholder="搜索display_id、gift_name" style={{ width: 260 }} onSearch={setGiftSearch} />
           <Space size={12}>
             <Text style={{ fontSize: 12 }}>上次拉取时间 <Text style={{ fontSize: 12 }}>2025-08-25 08:00:03</Text></Text>
             <Button type="link" onClick={() => window.alert('原型：重新拉取')}>重新拉取</Button>
@@ -163,9 +127,10 @@ export default function GiftDataPage(): React.ReactElement {
       </Card>
     </Space>
   )
+
   const itemsTabs: TabsProps['items'] = [
-    { key: 'item', label: '道具资源', children: ItemTab },
-    { key: 'gift', label: '礼包资源', children: GiftTab }
+    { key: 'item', label: '道具', children: ItemTab },
+    { key: 'gift', label: '礼包', children: GiftTab }
   ]
 
   return (
@@ -181,13 +146,10 @@ export default function GiftDataPage(): React.ReactElement {
       </div>
       <Tabs
         items={itemsTabs}
-        tabBarExtraContent={{
-          right: (
-            <Button onClick={() => window.alert('原型：API 配置')}>自动化配置</Button>
-          )
-        }}
+        tabBarExtraContent={{ right: (<Button onClick={() => window.alert('原型：自动化配置')}>自动化配置</Button>) }}
       />
     </div>
   )
 }
+
 
