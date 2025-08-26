@@ -29,7 +29,6 @@ import type { TableColumnsType } from 'antd'
 
 const { Title } = Typography
 const { TextArea } = Input
-const { Option } = Select
 
 // 命令数据类型定义
 interface Command {
@@ -426,13 +425,10 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
             label="目标虚拟机"
             rules={[{ required: true, message: '请选择目标虚拟机' }]}
           >
-            <Select placeholder="请选择虚拟机">
-              {mockVMData.filter(vm => vm.status === 'running').map(vm => (
-                <Option key={vm.id} value={vm.alias}>
-                  {vm.alias}
-                </Option>
-              ))}
-            </Select>
+            <Select
+              placeholder="请选择虚拟机"
+              options={mockVMData.filter(vm => vm.status === 'running').map(vm => ({ value: vm.alias, label: vm.alias }))}
+            />
           </Form.Item>
 
           {executingCommand?.hasFileParam && (
@@ -441,13 +437,10 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
               label="关联文件"
               rules={[{ required: true, message: '请选择要关联的文件' }]}
             >
-              <Select placeholder="请选择OSS文件">
-                {mockOSSFiles.map(file => (
-                  <Option key={file.id} value={file.name}>
-                    {file.name}
-                  </Option>
-                ))}
-              </Select>
+              <Select
+                placeholder="请选择OSS文件"
+                options={mockOSSFiles.map(file => ({ value: file.name, label: file.name }))}
+              />
             </Form.Item>
           )}
         </Form>

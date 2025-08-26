@@ -21,7 +21,7 @@ import {
 import type { VirtualMachine } from './VirtualMachineList'
 
 const { Title } = Typography
-const { Option } = Select
+// v5 推荐使用 options 写法
 
 interface CreateVirtualMachineProps {
   onBack: () => void
@@ -124,13 +124,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 label="实例规格"
                 rules={[{ required: true, message: '请选择实例规格' }]}
               >
-                <Select placeholder="请选择实例规格">
-                  {instanceTypes.map(type => (
-                    <Option key={type.value} value={type.value}>
-                      {type.label}
-                    </Option>
-                  ))}
-                </Select>
+                <Select placeholder="请选择实例规格" options={instanceTypes} />
               </Form.Item>
             </Col>
             
@@ -140,13 +134,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 label="系统镜像"
                 rules={[{ required: true, message: '请选择系统镜像' }]}
               >
-                <Select placeholder="请选择系统镜像">
-                  {systemImages.map(image => (
-                    <Option key={image.value} value={image.value}>
-                      {image.label}
-                    </Option>
-                  ))}
-                </Select>
+                <Select placeholder="请选择系统镜像" options={systemImages} />
               </Form.Item>
             </Col>
             
@@ -169,10 +157,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 label="是否需要数据盘"
                 rules={[{ required: true, message: '请选择是否需要数据盘' }]}
               >
-                <Select>
-                  <Option value="yes">是</Option>
-                  <Option value="no">否</Option>
-                </Select>
+                <Select options={[{ value: 'yes', label: '是' }, { value: 'no', label: '否' }]} />
               </Form.Item>
             </Col>
             
@@ -212,9 +197,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 name="loginMethod"
                 label="登录方式"
               >
-                <Select disabled>
-                  <Option value="password">账号密码</Option>
-                </Select>
+                <Select disabled options={[{ value: 'password', label: '账号密码' }]} />
               </Form.Item>
             </Col>
 
@@ -272,10 +255,10 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 rules={[{ required: true, message: '请选择安全组' }]}
                 extra="选择安全组控制虚拟机的网络访问规则"
               >
-                <Select placeholder="请选择安全组">
-                  <Option value="sg-001">default-web (默认Web服务器安全组)</Option>
-                  <Option value="sg-002">database-group (数据库服务器安全组)</Option>
-                </Select>
+                <Select placeholder="请选择安全组" options={[
+                  { value: 'sg-001', label: 'default-web (默认Web服务器安全组)' },
+                  { value: 'sg-002', label: 'database-group (数据库服务器安全组)' }
+                ]} />
               </Form.Item>
             </Col>
 

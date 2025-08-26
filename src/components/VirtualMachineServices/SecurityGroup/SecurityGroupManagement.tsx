@@ -29,7 +29,7 @@ import SecurityGroupDetails from './SecurityGroupDetails'
 
 const { Title, Text } = Typography
 const { Search } = Input
-const { Option } = Select
+// v5 推荐使用 options 写法
 
 // 安全组数据类型定义
 interface SecurityGroup {
@@ -580,19 +580,19 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                           style={{ marginBottom: 16 }}
                         >
                       <Form.Item name="direction" rules={[{ required: true }]}>
-                        <Select placeholder="方向" style={{ width: 100 }}>
-                          <Option value="inbound">入方向</Option>
-                          <Option value="outbound">出方向</Option>
-                        </Select>
+                        <Select placeholder="方向" style={{ width: 100 }}
+                          options={[{ value: 'inbound', label: '入方向' }, { value: 'outbound', label: '出方向' }]} />
                       </Form.Item>
                       <Form.Item name="protocol" rules={[{ required: true }]}>
-                        <Select placeholder="协议" style={{ width: 100 }}>
-                          <Option value="TCP">TCP</Option>
-                          <Option value="UDP">UDP</Option>
-                          <Option value="ICMPv4">ICMP(ipv4)</Option>
-                          {/*注释IPV6 <Option value="ICMPv6">ICMP(ipv6)</Option> */}
-                          <Option value="ALL">ALL</Option>
-                        </Select>
+                        <Select placeholder="协议" style={{ width: 100 }}
+                          options={[
+                            { value: 'TCP', label: 'TCP' },
+                            { value: 'UDP', label: 'UDP' },
+                            { value: 'ICMPv4', label: 'ICMP(ipv4)' },
+                            // 注释 IPV6：{ value: 'ICMPv6', label: 'ICMP(ipv6)' }
+                            { value: 'ALL', label: 'ALL' },
+                          ]}
+                        />
                       </Form.Item>
                       <Form.Item name="portRange" rules={[{ required: true }]}>
                         <Select
@@ -612,10 +612,8 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                         />
                       </Form.Item>
                       <Form.Item name="action" rules={[{ required: true }]}>
-                        <Select placeholder="策略" style={{ width: 80 }}>
-                          <Option value="allow">允许</Option>
-                          <Option value="deny">拒绝</Option>
-                        </Select>
+                        <Select placeholder="策略" style={{ width: 80 }}
+                          options={[{ value: 'allow', label: '允许' }, { value: 'deny', label: '拒绝' }]} />
                       </Form.Item>
                       <Form.Item name="source" rules={[{ required: true }]}>
                         <Select

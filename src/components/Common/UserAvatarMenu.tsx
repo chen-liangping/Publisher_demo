@@ -188,7 +188,7 @@ export default function UserAvatarMenu({ user }: UserAvatarMenuProps) {
       
       {/* 数据同步弹窗 */}
       <DataSyncModal
-        visible={syncModalVisible}
+        open={syncModalVisible}
         onCancel={() => setSyncModalVisible(false)}
       />
     </>

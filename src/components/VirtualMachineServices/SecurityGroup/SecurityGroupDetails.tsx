@@ -28,10 +28,10 @@ import {
 
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
-import Item from 'antd/es/list/Item'
+// 移除未使用的导入
 
 const { Title, Text } = Typography
-const { Option } = Select
+// v5 推荐使用 options 写法
 
 // 安全规则数据类型定义
 interface SecurityRule {
@@ -426,10 +426,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                 label="方向"
                 rules={[{ required: true, message: '请选择方向' }]}
               >
-                <Select placeholder="请选择方向">
-                  <Option value="inbound">入方向</Option>
-                  <Option value="outbound">出方向</Option>
-                </Select>
+                <Select placeholder="请选择方向" options={[{ value: 'inbound', label: '入方向' }, { value: 'outbound', label: '出方向' }]} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -438,13 +435,15 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                 label="协议类型"
                 rules={[{ required: true, message: '请选择协议类型' }]}
               >
-                <Select placeholder="请选择协议类型">
-                  <Option value="TCP">TCP</Option>
-                  <Option value="UDP">UDP</Option>
-                  <Option value="ICMPv4">ICMP(ipv4)</Option>
-                 {/*注释IPV6 <Option value="ICMPv6">ICMP(ipv6)</Option> */}
-                  <Option value="ALL">ALL</Option>
-                </Select>
+                <Select placeholder="请选择协议类型"
+                  options={[
+                    { value: 'TCP', label: 'TCP' },
+                    { value: 'UDP', label: 'UDP' },
+                    { value: 'ICMPv4', label: 'ICMP(ipv4)' },
+                    // 注释 IPV6：{ value: 'ICMPv6', label: 'ICMP(ipv6)' }
+                    { value: 'ALL', label: 'ALL' },
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -479,10 +478,7 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                 label="授权策略"
                 rules={[{ required: true, message: '请选择授权策略' }]}
               >
-                <Select placeholder="请选择授权策略">
-                  <Option value="allow">允许</Option>
-                  <Option value="deny">拒绝</Option>
-                </Select>
+                <Select placeholder="请选择授权策略" options={[{ value: 'allow', label: '允许' }, { value: 'deny', label: '拒绝' }]} />
               </Form.Item>
             </Col>
           </Row>

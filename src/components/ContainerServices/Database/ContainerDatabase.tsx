@@ -19,7 +19,7 @@ import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudU
 import DatabaseDetails from './DatabaseDetails'
 
 const { Title } = Typography
-const { Option } = Select
+// v5 推荐使用 options 写法
 
 interface DBInstance {
   id: string
@@ -325,20 +325,14 @@ export default function ContainerDatabase() {
               if (val === 'MySQL') {
                 form.setFieldsValue({ version: 'MySQL 8.0.1',  arch: '标准' })
               }
-            }}>
-              <Option value="MySQL" disabled={(typeCounts['MySQL'] || 0) >= 2}>
-                <Tooltip title={(typeCounts['MySQL'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>
-              </Option>
-              <Option value="Redis" disabled={(typeCounts['Redis'] || 0) >= 2}>
-                <Tooltip title={(typeCounts['Redis'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Redis</span></Tooltip>
-              </Option>
-              <Option value="Mango" disabled={(typeCounts['Mango'] || 0) >= 2}>
-                <Tooltip title={(typeCounts['Mango'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Mango</span></Tooltip>
-              </Option>
-              <Option value="Zookeeper" disabled={(typeCounts['Zookeeper'] || 0) >= 2}>
-                <Tooltip title={(typeCounts['Zookeeper'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Zookeeper</span></Tooltip>
-              </Option>
-            </Select>
+            }}
+              options={[
+                { value: 'MySQL', label: (<Tooltip title={(typeCounts['MySQL'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>), disabled: (typeCounts['MySQL'] || 0) >= 2 },
+                { value: 'Redis', label: (<Tooltip title={(typeCounts['Redis'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Redis</span></Tooltip>), disabled: (typeCounts['Redis'] || 0) >= 2 },
+                { value: 'Mango', label: (<Tooltip title={(typeCounts['Mango'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Mango</span></Tooltip>), disabled: (typeCounts['Mango'] || 0) >= 2 },
+                { value: 'Zookeeper', label: (<Tooltip title={(typeCounts['Zookeeper'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Zookeeper</span></Tooltip>), disabled: (typeCounts['Zookeeper'] || 0) >= 2 },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item name="alias" label="别名" rules={[{ required: true }]}>
@@ -350,18 +344,15 @@ export default function ContainerDatabase() {
           {selectedType === 'MySQL' && (
             <>
               <Form.Item name="version" label="版本" rules={[{ required: true }]}>
-                <Select>
-                  <Option value="MySQL 5.7">MySQL 5.7</Option>
-                  <Option value="MySQL 8.0.1">MySQL 8.0.1</Option>
-                </Select>
+                <Select options={[{ value: 'MySQL 5.7', label: 'MySQL 5.7' }, { value: 'MySQL 8.0.1', label: 'MySQL 8.0.1' }]} />
               </Form.Item>
               <Form.Item name="spec" label="实例规格" initialValue="2核8G" rules={[{ required: true }]}>
-              <Select>
-                      <Option value="2核8G">2核8G</Option>
-                      <Option value="4核16G">4核16G</Option>
-                      <Option value="8核64G">8核64G</Option>
-                      <Option value="16核64G">16核64G</Option>
-                    </Select>
+              <Select options={[
+                { value: '2核8G', label: '2核8G' },
+                { value: '4核16G', label: '4核16G' },
+                { value: '8核64G', label: '8核64G' },
+                { value: '16核64G', label: '16核64G' },
+              ]} />
               </Form.Item>
             </>
           )}
@@ -370,19 +361,16 @@ export default function ContainerDatabase() {
           {selectedType === 'Redis' && (
             <>
               <Form.Item name="arch" label="架构类型" rules={[{ required: true }]}>
-                <Select placeholder="选择架构类型">
-                  <Option value="标准架构">标准架构</Option>
-                  <Option value="分片集群">分片集群</Option>
-                </Select>
+                <Select placeholder="选择架构类型" options={[{ value: '标准架构', label: '标准架构' }, { value: '分片集群', label: '分片集群' }]} />
               </Form.Item>
               <Form.Item name="spec" label="实例规格" initialValue="1G" rules={[{ required: true }]}>
-              <Select>
-                      <Option value="1G">1G</Option>
-                      <Option value="2G">2G</Option>
-                      <Option value="4G">4G</Option> 
-                      <Option value="8G">8G</Option> 
-                      <Option value="16G">16G</Option> 
-                    </Select>
+              <Select options={[
+                { value: '1G', label: '1G' },
+                { value: '2G', label: '2G' },
+                { value: '4G', label: '4G' },
+                { value: '8G', label: '8G' },
+                { value: '16G', label: '16G' },
+              ]} />
               </Form.Item>
               {/* 如果选择了分片集群，显示分片数量 */}
               {archValue === '分片集群' && (
@@ -397,53 +385,50 @@ export default function ContainerDatabase() {
           {selectedType === 'Mango' && (
             <>
               <Form.Item name="version" label="版本" rules={[{ required: true }]}>
-                <Select>
-                  <Option value="Mango5.0">Mango5.0</Option>
-                  <Option value="Mango6.0">Mango6.0</Option>
-                  <Option value="Mango7.0">Mango7.0</Option>
-                  <Option value="Mango8.0">Mango8.0</Option>
-                </Select>
+                <Select options={[
+                  { value: 'Mango5.0', label: 'Mango5.0' },
+                  { value: 'Mango6.0', label: 'Mango6.0' },
+                  { value: 'Mango7.0', label: 'Mango7.0' },
+                  { value: 'Mango8.0', label: 'Mango8.0' },
+                ]} />
               </Form.Item>
               <Form.Item name="arch" label="架构类型" rules={[{ required: true }]}>
-                <Select>
-                  <Option value="副本集实例">副本集实例</Option>
-                  <Option value="分片集群实例">分片集群实例</Option>
-                </Select>
+                <Select options={[{ value: '副本集实例', label: '副本集实例' }, { value: '分片集群实例', label: '分片集群实例' }]} />
               </Form.Item>
               {/* Mango 架构细节：副本集实例只展示规格；分片集群实例展示规格与数量（数量不可编辑） */}
               {archValue === '副本集实例' && (
                 <Form.Item name="mangoSpec" label="Mango 规格" initialValue="4核*16G" rules={[{ required: true }]}>
-                  <Select>
-                    <Option value="2核*16G">2核*16G</Option>
-                    <Option value="4核*8G">4核*8G</Option>
-                    <Option value="8核*16G">8核*16G</Option>
-                    <Option value="16核*16G">16核*16G</Option>
-                  </Select>
+                  <Select options={[
+                    { value: '2核*16G', label: '2核*16G' },
+                    { value: '4核*8G', label: '4核*8G' },
+                    { value: '8核*16G', label: '8核*16G' },
+                    { value: '16核*16G', label: '16核*16G' },
+                  ]} />
                 </Form.Item>
               )}
 
               {archValue === '分片集群实例' && (
                 <>
                   <Form.Item name="mangoSpec" label="Mango 规格" initialValue="4核*8G" rules={[{ required: true }]}>
-                    <Select>
-                    <Option value="2核*16G">2核*16G</Option>
-                    <Option value="4核*8G">4核*8G</Option>
-                    <Option value="4核*16G">4核*16G</Option>
-                    <Option value="8核*16G">8核*16G</Option>
-                    <Option value="16核*16G">16核*16G</Option>
-                    </Select>
+                    <Select options={[
+                      { value: '2核*16G', label: '2核*16G' },
+                      { value: '4核*8G', label: '4核*8G' },
+                      { value: '4核*16G', label: '4核*16G' },
+                      { value: '8核*16G', label: '8核*16G' },
+                      { value: '16核*16G', label: '16核*16G' },
+                    ]} />
                   </Form.Item>
                   <Form.Item name="mangoCount" label="Mango数量" initialValue={2} rules={[{ required: true }]}>
                     <Input placeholder="2" disabled />
                   </Form.Item>
                   <Form.Item name="shardSpec" label="shard 规格" initialValue="4核*8G" rules={[{ required: true }]}>
-                    <Select>
-                    <Option value="2核*16G">2核*16G</Option>
-                    <Option value="4核*8G">4核*8G</Option>
-                    <Option value="4核*16G">4核*16G</Option>
-                    <Option value="8核*16G">8核*16G</Option>
-                    <Option value="16核*16G">16核*16G</Option>
-                    </Select>
+                    <Select options={[
+                      { value: '2核*16G', label: '2核*16G' },
+                      { value: '4核*8G', label: '4核*8G' },
+                      { value: '4核*16G', label: '4核*16G' },
+                      { value: '8核*16G', label: '8核*16G' },
+                      { value: '16核*16G', label: '16核*16G' },
+                    ]} />
                   </Form.Item>
                   <Form.Item name="shardCount" label="shard 数量" initialValue={2} rules={[{ required: true }]}>
                     <Input placeholder="2" disabled />
@@ -457,15 +442,10 @@ export default function ContainerDatabase() {
           {selectedType === 'Zookeeper' && (
             <>
               <Form.Item name="version" label="版本" initialValue="Zookeeper 3.8.0">
-                <Select>
-                  <Option value="Zookeeper 3.8.0">Zookeeper 3.8.0</Option>
-                </Select>
+                <Select options={[{ value: 'Zookeeper 3.8.0', label: 'Zookeeper 3.8.0' }]} />
               </Form.Item>
               <Form.Item name="spec" label="实例规格" initialValue="2核4G" rules={[{ required: true }]}>
-              <Select>
-                      <Option value="1核2G">1核2G</Option>
-                      <Option value="2核4G">2核4G</Option>
-                    </Select>
+              <Select options={[{ value: '1核2G', label: '1核2G' }, { value: '2核4G', label: '2核4G' }]} />
               </Form.Item>
             </>
           )}
