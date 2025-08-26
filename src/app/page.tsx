@@ -1,7 +1,7 @@
 'use client'
 
 import { Layout, Menu, Typography } from 'antd'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { 
   CloudServerOutlined, 
   CodeOutlined,
@@ -157,6 +157,7 @@ export default function Home() {
   }
 
   return (
+    <Suspense fallback={null}>
     <Layout style={{ minHeight: '100vh' }}>
       {/* 顶部导航 */}
       <Header style={{ 
@@ -346,5 +347,6 @@ export default function Home() {
         </Layout>
       </Layout>
     </Layout>
+    </Suspense>
   )
 }
