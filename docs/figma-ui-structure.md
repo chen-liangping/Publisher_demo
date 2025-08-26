@@ -90,12 +90,7 @@
 - 数据来源：[Figma 设计文件（节点 46:4850）](https://www.figma.com/design/rDH0NOpnIxLOebfcX9liwI/my-design?node-id=46-4850)
 
 #### 页面大纲
-- 顶部 Navbar：
-  - 左侧应用选择（头像方块 + 应用名“Ginei” + 展开图标）。
-  - 右侧操作：
-    - 按钮：帮助文档（启用）、开发者论坛（禁用）。
-    - 环境切换 Switch（“测试环境”）+ 账号下拉（“CP@ctw.inc”）。
-- 左侧 Sidebar：分组菜单（我的工作台、客户端、服务端、镜像/应用/存储/共享文件/定时任务、告警配置/CDN告警、账号/支付/好友/国际化/礼包推送/数据埋点、活动数据/礼包数据 等），与“部署/监控/接入/运营”等组标签。
+
 - 主区域 Main：
   - 顶部信息卡：
     - 标题“客户端”+ 简短说明 + “了解更多”链接。
@@ -144,3 +139,18 @@
   - 新增/编辑源站：`Modal + Form`（域名、路径、端口、协议选择）。
   - 新增/编辑缓存规则：`Modal + Form`（pattern、协议、方法、压缩、TTL）。
 
+
+
+提示语：
+
+clientversion页面，
+- 游戏版本增加icon，写着"翻译同步中"，翻译完成的，增加小绿点，，hover展示内容“翻译完成，文本生效需要1-2分钟”
+- 切版版本弹窗，增加一个说明，说明内容为“请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启”
+- clientpage中，模拟数据
+  const cacheData: CacheRule[] = [
+  { pattern: '/errors/*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600 },
+  { pattern: '*.html', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600 },
+  { pattern: '/*/g123/i18n/*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 2592000 },
+  { pattern: '*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600 }
+
+点击“/*/g123/i18n/*”数据的编辑操作时，增加hover提示“此处修改的 CDN 缓存配置不会影响游戏内翻译文本的实时更新。在执行“翻译同步”时，系统已自动清理并刷新相关缓存，无需额外手动处理”

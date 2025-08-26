@@ -46,21 +46,20 @@ const mockResourceData: ResourceQuota[] = [
   {
     id: 'resource-002',
     appId: 'testgame',
-    cpuCores: 4,
+    cpuCores: 2,
     mysqlInstances: 2,
-    mongoInstances: 0,
+    mongoInstances: 1,
     redisInstances: 2,
     zookeeperInstances: 1
   },
   {
     id: 'resource-003',
     appId: 'demogame',
-    cpuCores: 1,
+    cpuCores: 8,
     mysqlInstances: 1,
     mongoInstances: 1,
-    redisInstances: 0,
-    zookeeperInstances: 0
-  }
+    redisInstances: 1,
+    zookeeperInstances: 1  }
 ]
 
 // 表单提交的值类型（仅包含可编辑字段）

@@ -25,6 +25,7 @@ import {
 
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
+import SecurityGroupDetails from './SecurityGroupDetails'
 
 const { Title, Text } = Typography
 const { Search } = Input
@@ -161,6 +162,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm()
   const [ruleForm] = Form.useForm()
+  const [selectedGroup, setSelectedGroup] = useState<SecurityGroup | null>(null)
 
   // 搜索功能
   const handleSearch = (value: string) => {
@@ -283,6 +285,14 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     message.success('规则删除成功！')
   }
 
+  const openDetails = (group: SecurityGroup) => {
+    if (onViewDetails) {
+      onViewDetails(group)
+    } else {
+      setSelectedGroup(group)
+    }
+  }
+
   // 安全组列表表格列配置
   const columns: TableColumnsType<SecurityGroup> = [
     {
@@ -292,7 +302,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
       render: (name: string, record: SecurityGroup) => (
         <div>
           <div style={{ fontWeight: 500, cursor: 'pointer', color: '#1677ff' }}
-               onClick={() => onViewDetails?.(record)}>
+               onClick={() => openDetails(record)}>
             {name}
           </div>
           <div style={{ color: '#666', fontSize: '12px' }}>ID: {record.id}</div>
@@ -421,6 +431,15 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
       )
     }
   ]
+
+  if (selectedGroup) {
+    return (
+      <SecurityGroupDetails
+        group={selectedGroup}
+        onBack={() => setSelectedGroup(null)}
+      />
+    )
+  }
 
   return (
     <div style={{ padding: '24px' }}>

@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
+import VirtualMachineDetails from './VirtualMachineDetails'
 
 const { Title, Link } = Typography
 
@@ -103,6 +104,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
   const [showBindModal, setShowBindModal] = useState<boolean>(false)
   const [bindTargetVm, setBindTargetVm] = useState<VirtualMachine | null>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+  const [selectedVm, setSelectedVm] = useState<VirtualMachine | null>(null)
 
   // 虚拟机状态标签渲染
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
@@ -161,6 +163,43 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
 
 
 
+  const openDetails = (vm: VirtualMachine) => {
+    // 如果父组件提供 onViewDetails，则保持兼容；否则在内部切换到详情
+    if (onViewDetails) {
+      onViewDetails(vm)
+    } else {
+      setSelectedVm(vm)
+    }
+  }
+
+  // 从详情页接收操作回调，在组件内部更新列表/详情
+  const handleOperationFromDetails = (vmId: string, operation: string, payload?: string) => {
+    if (operation === 'updatePublicIp') {
+      const updated = vmList.map(v => v.id === vmId ? { ...v, publicIp: payload } : v)
+      setVmList(updated)
+      if (selectedVm && selectedVm.id === vmId) {
+        setSelectedVm({ ...selectedVm, publicIp: payload })
+      }
+      return
+    }
+    if (operation === 'delete') {
+      const updated = vmList.filter(v => v.id !== vmId)
+      setVmList(updated)
+      if (selectedVm && selectedVm.id === vmId) setSelectedVm(null)
+      message.success('实例已删除')
+      return
+    }
+    // 其它操作：启动/停止/重启
+    const updated = vmList.map(v => {
+      if (v.id !== vmId) return v
+      if (operation === 'start') return { ...v, status: 'starting' as const }
+      if (operation === 'stop') return { ...v, status: 'stopping' as const }
+      if (operation === 'restart') return { ...v, status: 'starting' as const }
+      return v
+    })
+    setVmList(updated)
+  }
+
   // 表格列配置
   const columns: TableColumnsType<VirtualMachine> = [
     {
@@ -169,16 +208,12 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       render: (_: unknown, vm: VirtualMachine) => (
         <div>
           <div style={{ fontWeight: 500 }}>
-            {onViewDetails ? (
-              <Link 
-                onClick={() => onViewDetails(vm)}
-                style={{ color: '#1677ff' }}
-              >
-                {vm.alias}
-              </Link>
-            ) : (
-              vm.alias
-            )}
+            <Link 
+              onClick={() => openDetails(vm)}
+              style={{ color: '#1677ff' }}
+            >
+              {vm.alias}
+            </Link>
           </div>
           <div style={{ color: '#666', fontSize: '12px' }}>{vm.name}</div>
           <div style={{ color: '#999', fontSize: '11px' }}>ID: {vm.id}</div>
@@ -309,6 +344,17 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       <CreateVirtualMachine 
         onBack={handleBackToList}
         onCreate={handleCreateVM}
+      />
+    )
+  }
+
+  // 在组件内部渲染详情页
+  if (selectedVm) {
+    return (
+      <VirtualMachineDetails
+        vm={selectedVm}
+        onBack={() => setSelectedVm(null)}
+        onOperation={handleOperationFromDetails}
       />
     )
   }

@@ -8,6 +8,7 @@ import {
   Space,
   Typography,
   Modal,
+  Drawer,
   Form,
   Input,
   Select,
@@ -320,23 +321,26 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
         />
       </Card>
 
-      {/* 命令详情 Modal（嵌入 PromptManager） */}
-      <Modal
+      {/* 命令详情 Drawer（嵌入 PromptManager） */}
+      <Drawer
         title={viewingCommand ? `命令详情 - ${viewingCommand.name}` : ''}
         open={!!viewingCommand}
-        onCancel={() => setViewingCommand(null)}
-        footer={null}
         width={900}
+        destroyOnClose
+        onClose={() => setViewingCommand(null)}
       >
         {viewingCommand ? (
           <PromptManager
             command={viewingCommand}
+            // 点击返回：关闭抽屉
             onBack={() => setViewingCommand(null)}
+            // 在详情里点“编辑”：关闭抽屉后打开编辑弹窗
             onEdit={(cmd) => { setViewingCommand(null); handleEditCommand(cmd) }}
+            // 在详情里点“执行”：关闭抽屉后打开执行弹窗
             onExecute={(cmd) => { setViewingCommand(null); handleExecuteCommand(cmd) }}
           />
         ) : null}
-      </Modal>
+      </Drawer>
 
       {/* 新建/编辑命令弹窗 */}
       <Modal

@@ -33,19 +33,18 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
   const [loading, setLoading] = useState(false)
 
   const instanceTypes = [
-    { value: '1c.1G', label: '1核1GB' },
-    { value: '1c.2G', label: '1核2GB' },
-    { value: '2c.4G', label: '2核4GB' },
-    { value: '4c.8G', label: '4核8GB' },
-    { value: '8c.16G', label: '8核16GB' },
-    { value: '16c.32G', label: '16核32GB' }
+    { value: '4c.16G.10Mbps', label: 'ecs.g6.xlarge' },
+    { value: '8c.16G.200Mbps', label: 'ecs.c6.2xlarge' },
+    { value: '2c.8G.5Mbps', label: 'ecs.g7.large' },
+    { value: '2c.4G.200Mbps', label: 'ecs.c6.large' },
+    { value: '2c.4G.10Mbp', label: 'ecs.c7.large' }
   ]
 
   const systemImages = [
     { value: 'centos7.9', label: 'CentOS 7.9 64位' },
     { value: 'ubuntu18.04', label: 'Ubuntu 18.04 64位' },
     { value: 'ubuntu20.04', label: 'Ubuntu 20.04 64位' },
-    { value: 'debian10', label: 'Debian 10 64位' },
+    { value: 'Linux', label: 'Linux SP5 64位' },
     { value: 'windows2019', label: 'Windows Server 2019' }
   ]
 

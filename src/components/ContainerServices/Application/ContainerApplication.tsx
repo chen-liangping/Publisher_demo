@@ -1,57 +1,18 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Row, Col, Card, Button, Input, Typography, Space, Tag, Progress } from 'antd'
+import { Row, Col, Card, Button, Input, Typography, Space, Tag, Progress, Drawer } from 'antd'
+import Deployment from './deployment'
+import DeploymentOther from './deployment_other'
 import { MoreOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { apps, AppItem as AppItemType } from './apps'
 
 const { Title, Text } = Typography
 
-type AppItem = {
-  id: string
-  name: string
-  tags: string[]
-  status: 'running' | 'failed' | 'stopped'
-  pods: number
-  containers: string[]
-}
+// apps 数据从 ./apps.ts 导出并复用
 
-const apps: AppItem[] = [
-  {
-    id: '1',
-    name: 'kumo游服',
-    tags: ['游服'],
-    status: 'running',
-    pods: 3,
-    containers: ['game-server:v0.8.1', 'center-server:v2.3']
-  },
-  {
-    id: '2',
-    name: 'xcron-cloud',
-    tags: ['平台'],
-    status: 'running',
-    pods: 3,
-    containers: ['game-server:v0.8.2']
-  },
-  {
-    id: '3',
-    name: 'xcron-cloud2',
-    tags: ['游服'],
-    status: 'failed',
-    pods: 3,
-    containers: ['game-server:v0.8.10']
-  },  
-  {
-    id: '4',
-    name: 'xcron-cloud3',
-    tags: ['平台'],
-    status: 'running',
-    pods: 3,
-    containers: ['game-server:v0.8.2']
-  }
-]
-
-const statusColor = (s: AppItem['status']) => {
+const statusColor = (s: AppItemType['status']) => {
   if (s === 'running') return '#52c41a'
   if (s === 'failed') return '#ff4d4f'
   return '#9CA3AF'
@@ -59,6 +20,17 @@ const statusColor = (s: AppItem['status']) => {
 
 export default function ContainerApplication({ onOpenDeployment }: { onOpenDeployment?: (id: string) => void }) {
   const router = useRouter()
+  const [drawerOpen, setDrawerOpen] = useState<boolean>(false)
+  const [selectedApp, setSelectedApp] = useState<AppItemType | null>(null)
+
+  const openAppDetail = (app: AppItemType) => {
+    if (onOpenDeployment) {
+      onOpenDeployment(app.id)
+      return
+    }
+    setSelectedApp(app)
+    setDrawerOpen(true)
+  }
   // wrapper width: 3 * max card width (340) + 2 * gutter (24) = 1068
   const wrapperMaxWidth = 1432
   // layout widths (adjustable)
@@ -196,21 +168,15 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
         <div style={{ height: 24 }} />
 
         {/* 三列卡片区域（放在同一 wrapper 内，使宽度对齐） */}
-        <Row gutter={[24, 24]}>
+        <Row gutter={[12, 12]}>
           {apps.map(app => (
-            <Col key={app.id} xs={24} sm={12} md={8} lg={6} xl={6}>
+            <Col key={app.id} xs={24} sm={12} md={12} lg={8} xl={6}>
               <Card
                 hoverable
                 style={{ borderRadius: 8, width: '100%', maxWidth: 340 }}
                 styles={{ body: { padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 220 } }}
                 actions={[]}
-                onClick={() => {
-                  if (onOpenDeployment) {
-                    onOpenDeployment(app.id)
-                  } else {
-                    router.push(`/container-app/${app.id}`)
-                  }
-                }}
+                onClick={() => openAppDetail(app)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ minWidth: 0 }}>
@@ -234,8 +200,11 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
                 {/* 主体 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(app.status) }} />
-                    <Text>{app.status === 'running' ? '运行中' : app.status === 'failed' ? '故障中' : '未启动'}</Text>
+                    <Text>
+                      <strong style={{ marginRight: 6 }}>状态</strong>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(app.status), display: 'inline-block', margin: '0 8px' }} />
+                      {app.status === 'running' ? '运行中' : app.status === 'failed' ? '故障中' : '未启动'}
+                    </Text>
                   </div>
 
                   <div>
@@ -256,6 +225,15 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
             </Col>
           ))}
         </Row>
+        <Drawer width={1000} placement="right" onClose={() => setDrawerOpen(false)} open={drawerOpen} destroyOnClose>
+          {selectedApp && (
+            selectedApp.tags.includes('游服') ? (
+              <Deployment appId={selectedApp.id} appName={selectedApp.name} tags={selectedApp.tags} />
+            ) : (
+              <DeploymentOther appId={selectedApp.id} appName={selectedApp.name} tags={selectedApp.tags} />
+            )
+          )}
+        </Drawer>
       </div>
     </div>
   )
