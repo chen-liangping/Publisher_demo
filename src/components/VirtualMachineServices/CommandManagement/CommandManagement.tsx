@@ -244,9 +244,9 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
       title: '标签',
       dataIndex: 'tags',
       key: 'tags',
-      render: (tags: string[]) => (
+      render: (tags?: string[]) => (
         <>
-          {tags.map(tag => (
+          {(Array.isArray(tags) ? tags : []).map(tag => (
             <Tag key={tag} color="blue">{tag}</Tag>
           ))}
         </>

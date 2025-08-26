@@ -58,7 +58,7 @@ export default function ActivityPage(): React.ReactElement {
     { title: '名称', dataIndex: 'name', key: 'name' },
     { title: '添加时间', dataIndex: 'time', key: 'time', width: 200 },
     { title: '大小', dataIndex: 'size', key: 'size', width: 120 },
-    { title: '操作', key: 'actions', width: 160, render: (_, r) => <CsvActions {...r} /> }
+    { title: '操作', key: 'actions', width: 160, render: (_, r) => <CsvActions key={r.key} name={r.name} time={r.time} size={r.size} /> }
   ]
 
   const AllTab = (

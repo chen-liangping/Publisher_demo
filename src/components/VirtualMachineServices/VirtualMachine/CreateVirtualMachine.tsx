@@ -73,9 +73,16 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
         message.success('虚拟机创建成功！')
       }, 2000)
       
-    } catch (error) {
+    } catch (error: unknown) {
+      // 表单校验失败：重置加载、滚动到第一个错误项并提示
       setLoading(false)
-      console.error('Create failed:', error)
+      const err = error as { errorFields?: Array<{ name: (string | number)[] }> }
+      if (err && Array.isArray(err.errorFields) && err.errorFields.length > 0) {
+        try {
+          form.scrollToField(err.errorFields[0].name)
+        } catch {}
+      }
+      message.error('表单校验未通过，请完善必填项')
     }
   }
 
@@ -216,7 +223,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 label="密码"
                 rules={[
                   { required: true, message: '请输入密码' },
-                  { min: 8, message: '密码至少8位' }
+                  { min: 8, message: '8-30个字符,支持英文大小写字母、数字、特殊字符()`~!@#$%^&*-_+=|{}[]:;<>,.?/' }
                 ]}
               >
                 <Input.Password placeholder="请输入密码" />
