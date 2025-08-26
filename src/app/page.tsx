@@ -34,11 +34,12 @@ import GiftManagment from '../components/tool/gift_managment'
 import MessagePush from '../components/message/MessagePush'
 import ActivityPage from '../components/tool/activity'
 import GiftDataPage from '../components/tool/gift'
+import I18nPage from '../components/tool/i18n'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n'
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
 
@@ -125,6 +126,8 @@ export default function Home() {
         return <ActivityPage />
       case 'gift-data':
         return <GiftDataPage />
+      case 'i18n':
+        return <I18nPage />
       default:
         return <VirtualMachineList />
     }
@@ -266,6 +269,12 @@ export default function Home() {
                     icon: <AppstoreOutlined />,
                     label: '消息推送',
                     onClick: () => handleMenuClick('message-push')
+                  },
+                  {
+                    key: 'i18n',
+                    icon: <AppstoreOutlined />,
+                    label: '国际化',
+                    onClick: () => handleMenuClick('i18n')
                   }
                 ]
               },
