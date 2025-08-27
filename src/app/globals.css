@@ -1,3 +1,12 @@
+/* 配置按钮缺少机器人时的轻微呼吸动效 */
+.alert-config-pulse {
+  animation: alertPulse 1.2s ease-in-out infinite;
+}
+@keyframes alertPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
