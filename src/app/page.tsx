@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Menu, Typography } from 'antd'
+import { Layout, Menu, Typography, Segmented } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
 import { 
   CloudServerOutlined, 
@@ -36,13 +36,14 @@ import MessagePush from '../components/message/MessagePush'
 import ActivityPage from '../components/tool/activity'
 import GiftDataPage from '../components/tool/gift'
 import I18nPage from '../components/tool/i18n'
-import AlertPage from '../components/alert'
+import AlertPage from '../components/alert/alert'
+import AlertHistory from '../components/alert/alert_history'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history'
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
 
@@ -64,11 +65,18 @@ export default function Home() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  type Mode = 'container' | 'vm'
+  const initialMode: Mode = ((): Mode => {
+    const m = (searchParams.get('mode') as Mode | null)
+    return m ?? 'vm'
+  })()
+
   const initialMenu = ((): MenuKey => {
     const m = searchParams.get('menu') as MenuKey | null
     return m ?? 'vm-management'
   })()
   const [selectedMenu, setSelectedMenu] = useState<MenuKey>(initialMenu)
+  const [mode, setMode] = useState<Mode>(initialMode)
   // 命令列表/详情由组件内部自管理
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
 
@@ -87,6 +95,7 @@ export default function Home() {
     // 将菜单写入 URL 的查询参数，避免新建路由文件
     const params = new URLSearchParams(searchParams.toString())
     params.set('menu', key)
+    params.set('mode', mode)
     router.push(`${pathname}?${params.toString()}`)
   }
 
@@ -100,6 +109,8 @@ export default function Home() {
   useEffect(() => {
     const m = searchParams.get('menu') as MenuKey | null
     if (m && m !== selectedMenu) setSelectedMenu(m)
+    const mm = searchParams.get('mode') as Mode | null
+    if (mm && mm !== mode) setMode(mm)
   }, [searchParams])
 
   // 渲染右侧内容区域
@@ -151,6 +162,8 @@ export default function Home() {
         return <I18nPage />
       case 'alert':
         return <AlertPage />
+      case 'alert-history':
+        return <AlertHistory />
       default:
         return <VirtualMachineList />
     }
@@ -168,9 +181,26 @@ export default function Home() {
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <Title level={3} style={{ margin: 0, lineHeight: '64px' }}>
-          Publisher 用户平台
-        </Title>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Title level={3} style={{ margin: 0, lineHeight: '64px' }}>
+            Publisher 用户平台
+          </Title>
+          <Segmented
+            value={mode}
+            options={[
+              { label: '容器', value: 'container' },
+              { label: '虚机', value: 'vm' }
+            ]}
+            onChange={(val) => {
+              const v = val as Mode
+              setMode(v)
+              const params = new URLSearchParams(searchParams.toString())
+              params.set('mode', v)
+              // 保持当前菜单不变，仅写入模式
+              router.push(`${pathname}?${params.toString()}`)
+            }}
+          />
+        </div>
         
         {/* 用户头像菜单 */}
         <UserAvatarMenu user={currentUser} />
@@ -182,7 +212,7 @@ export default function Home() {
           <Menu
             mode="inline"
             selectedKeys={[selectedMenu]}
-            defaultOpenKeys={['vm-app', 'container-app']}
+            defaultOpenKeys={['service', 'command']}
             style={{ height: '100%', borderRight: 0 }}
             items={[
               {
@@ -205,39 +235,49 @@ export default function Home() {
                 ]
               },
               {
-                key: 'vm-app',
+                key: 'service',
                 icon: <CloudServerOutlined />,
                 label: '服务端',
                 children: [
+                  ...(mode === 'vm' ? [
+                    {
+                      key: 'vm-management',
+                      icon: <CloudServerOutlined />,
+                      label: '虚机',
+                      onClick: () => handleMenuClick('vm-management')
+                    },
+                    {
+                      key: 'security-group',
+                      icon: <SecurityScanOutlined />,
+                      label: '安全组',
+                      onClick: () => handleMenuClick('security-group')
+                    },
+                    {
+                      key: 'command-management',
+                      icon: <CodeOutlined />,
+                      label: '命令',
+                      onClick: () => handleMenuClick('command-management')
+                    }
+                  ] : []),
+                  ...(mode === 'container' ? [
+                    {
+                      key: 'container-app',
+                      icon: <AppstoreOutlined />,
+                      label: '应用',
+                      onClick: () => handleMenuClick('container-app')
+                    },
+                  ] : []),
                   {
-                    key: 'vm-management',
+                    key: 'storage',
                     icon: <CloudServerOutlined />,
-                    label: '虚机',
-                    onClick: () => handleMenuClick('vm-management')
-                  },
-                  {
-                    key: 'security-group',
-                    icon: <SecurityScanOutlined />,
-                    label: '安全组',
-                    onClick: () => handleMenuClick('security-group')
+                    label: '存储',
+                    onClick: () => handleMenuClick('container-database')
                   },
                   {
                     key: 'file-management',
                     icon: <EyeOutlined />,
                     label: '共享文件',
                     onClick: () => handleMenuClick('file-management')
-                  },
-                  {
-                    key: 'command-management',
-                    icon: <CodeOutlined />,
-                    label: '命令',
-                    onClick: () => handleMenuClick('command-management')
-                  },
-                  {
-                    key: 'storage',
-                    icon: <CloudServerOutlined />,
-                    label: '存储',
-                    onClick: () => handleMenuClick('container-database')
                   },
                   {
                     key: 'cron-job',
@@ -258,29 +298,16 @@ export default function Home() {
                 ]
               },
               {
-                key: 'container',
-                icon: <ContainerOutlined />,
-                label: '容器服务',
-                children: [
-                  {
-                    key: 'container-app',
-                    icon: <AppstoreOutlined />,
-                    label: '应用',
-                    onClick: () => handleMenuClick('container-app')
-                  },
-                  {
-                    key: 'container-database',
-                    icon: <DatabaseOutlined />,
-                    label: '数据库',
-                    onClick: () => handleMenuClick('container-database')
-                  }
-                ]
-              },
-              {
                 key: 'alert',
                 icon: <BellOutlined />,
                 label: '告警配置',
                 onClick: () => handleMenuClick('alert')
+              },
+              {
+                key: 'alert-history',
+                icon: <BellOutlined />,
+                label: '告警事件',
+                onClick: () => handleMenuClick('alert-history')
               },
               {
                 key: 'Integration',
