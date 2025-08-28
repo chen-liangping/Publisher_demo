@@ -99,8 +99,8 @@ const reminderNoticeList: NoticeItem[] = [
   { key: 'prepareDeployFail', name: '预备服部署失败' },
   { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败' },
   { key: 'autoOpenPolicyChange', name: '自动开服策略变更' },
-  { key: 'serverDeployStart', name: '服务端部署' },
-  { key: 'serverDeployDone', name: '服务端部署完成' },
+  { key: 'serverDeployFail', name: '服务端部署失败' },
+  { key: 'serverDeploySuccess', name: '服务端部署成功' },
   { key: 'grayRollback', name: '灰度回滚' },
   { key: 'grayRollbackDone', name: '灰度回滚完成' },
   { key: 'grayAppend', name: '追加灰度' },
@@ -118,7 +118,7 @@ const CDNNoticeList: NoticeItem[] = [
 export default function AlertPage(): React.ReactElement {
   // Webhook：支持多个（默认包含一名机器人 kumo_cp）
   const [webhooks, setWebhooks] = useState<WebhookItem[]>([
-    { id: 'kumo_cp', name: 'kumo_cp', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
+    { id: 'kumo_cp', name: 'kumo_webhook', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
   ])
   const [addWebhookOpen, setAddWebhookOpen] = useState<boolean>(false)
   const [editWebhookOpen, setEditWebhookOpen] = useState<boolean>(false)
@@ -128,7 +128,8 @@ export default function AlertPage(): React.ReactElement {
 
   // 人员配置（默认包含一名联系人 slime）
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: 'slime员工', dingId: 'dingtalk:slime' }
+    { id: 'slime', name: '史迪仔', dingId: 'dingtalk:slime' },
+    { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin' }
   ])
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
   const [personForm] = Form.useForm<Person>()
@@ -323,7 +324,7 @@ export default function AlertPage(): React.ReactElement {
         title={
           <Space>
             <RobotOutlined />
-            <span style={{ fontSize: 18 }}>Webhook 管理</span>
+            <span style={{ fontSize: 18 }}>机器人管理</span>
           </Space>
         }
         extra={
@@ -335,7 +336,7 @@ export default function AlertPage(): React.ReactElement {
         styles={{ body: { paddingTop: 8 } }}
       >
         <div style={{ marginBottom: 12 }}>
-          <Text type="secondary">支持配置多个 webhook 机器人，用于将告警/提醒发送到不同群。</Text>
+          <Text type="secondary">支持配置多个自建群机器人，用于将告警/提醒发送到不同群。</Text>
         </div>
 
         {webhooks.length === 0 ? (
@@ -584,6 +585,8 @@ export default function AlertPage(): React.ReactElement {
   const [personChannelMatrix, setPersonChannelMatrix] = useState<Record<string, Record<string, boolean>>>({})
   // 机器人勾选状态（消息类型 -> 是否启用机器人渠道）
   const [robotMatrix, setRobotMatrix] = useState<Record<string, boolean>>({})
+  // 小包开关状态（消息类型 -> 是否启用小包）
+  const [packageMatrix, setPackageMatrix] = useState<Record<string, boolean>>({})
   // 行级 webhook 选择（key -> webhookId 数组，支持多选；空数组=不触发）
   const [rowWebhookByKey, setRowWebhookByKey] = useState<Record<string, string[]>>({})
   
@@ -666,8 +669,8 @@ export default function AlertPage(): React.ReactElement {
         {
           key: 'server-deploy', name: '服务端', level: 2, robot: false,
           children: [
-            { key: 'serverDeployStart', name: '服务端部署', level: 3, robot: false },
-            { key: 'serverDeployDone', name: '服务端部署完成', level: 3, robot: false }
+            { key: 'serverDeployFail', name: '服务端部署失败', level: 3, robot: false },
+            { key: 'serverDeploySuccess', name: '服务端部署成功', level: 3, robot: false }
           ]
         },
         {
@@ -703,82 +706,7 @@ export default function AlertPage(): React.ReactElement {
     }
   ]), [])
 
-  // 客户端与服务端树数据（按文档层级）
-  const clientTreeDataB: TreeRow[] = useMemo(() => ([
-    {
-      key: 'client-root', name: '客户端告警', level: 1, robot: false,
-      children: [
-        {
-          key: 'client-version', name: '客户端版本', level: 2, robot: false,
-          children: [
-            { key: 'clientNewVersion', name: '客户端创建新版本', level: 3, robot: false },
-            { key: 'clientVersionSwitch', name: '客户端版本切换', level: 3, robot: false },
-            { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'client-s3', name: 'S3 解压', level: 2, robot: false,
-          children: [
-            { key: 's3UnzipSuccess', name: 'S3 zip解压成功', level: 3, robot: false },
-            { key: 's3UnzipFail', name: 'S3 zip解压失败', level: 3, robot: false }
-          ]
-        },
-        { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', level: 2, robot: false },
-        { key: 'ossConfigChange', name: 'oss配置文件变更', level: 2, robot: false }
-      ]
-    }
-  ]), [])
-
-  const serverTreeDataB: TreeRow[] = useMemo(() => ([
-    {
-      key: 'server-root', name: '服务端告警', level: 1, robot: false,
-      children: [
-        {
-          key: 'server-auto-open', name: '自动开服', level: 2, robot: false,
-          children: [
-            { key: 'autoOpenServerSuccess', name: '自动开服成功', level: 3, robot: false },
-            { key: 'autoOpenServerFail', name: '自动开服失败', level: 3, robot: false },
-            { key: 'notifyCPFail', name: '通知CP新预备服失败', level: 3, robot: false },
-            { key: 'prepareDeployFail', name: '预备服部署失败', level: 3, robot: false },
-            { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败', level: 3, robot: false },
-            { key: 'autoOpenPolicyChange', name: '自动开服策略变更', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-deploy', name: '服务端', level: 2, robot: false,
-          children: [
-            { key: 'serverDeployStart', name: '服务端部署', level: 3, robot: false },
-            { key: 'serverDeployDone', name: '服务端部署完成', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-gray', name: '灰度发布', level: 2, robot: false,
-          children: [
-            { key: 'grayRollback', name: '灰度回滚', level: 3, robot: false },
-            { key: 'grayRollbackDone', name: '灰度回滚完成', level: 3, robot: false },
-            { key: 'grayAppend', name: '追加灰度', level: 3, robot: false },
-            { key: 'grayAppendDone', name: '灰度追加完成', level: 3, robot: false },
-            { key: 'grayFullDeploy', name: '灰度全量部署', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-pod', name: 'pod 状态', level: 2, robot: false,
-          children: [
-            { key: 'podHealthCheckFail', name: 'pod健康检查失败', level: 3, robot: false },
-            { key: 'podFailure', name: 'Pod故障', level: 3, robot: false },
-            { key: 'podUpdateAbnormal', name: 'Pod更新异常', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-CDN', name: 'CDN 部署告警', level: 1, robot: false,
-          children: [
-            { key: 'CDNDeploySuccess', name: 'CDN部署成功', level: 2, robot: false },
-            { key: 'CDNDeployFail', name: 'CDN部署失败', level: 2, robot: false }
-          ]
-        }
-      ]
-    }
-  ]), [])
+  
 
   // 辅助：构建 key -> node、父子关系，用于级联与三态计算
   type NodeMaps = {
@@ -845,6 +773,19 @@ export default function AlertPage(): React.ReactElement {
     return hasTrue ? true : false
   }
 
+  // 小包三态：从叶子汇总
+  const getPackageTri = (key: string): TriState => {
+    const keys = [key, ...getDescendants(key)]
+    let hasTrue = false
+    let hasFalse = false
+    for (const k of keys) {
+      const base = packageMatrix[k] ?? false
+      if (base) hasTrue = true; else hasFalse = true
+      if (hasTrue && hasFalse) return 'indeterminate'
+    }
+    return hasTrue ? true : false
+  }
+
   // 人员三态：从叶子汇总（不考虑机器人，仅计算开关状态）
   const getPersonTri = (key: string, personId: string): TriState => {
     const keys = [key, ...getDescendants(key)]
@@ -879,6 +820,30 @@ export default function AlertPage(): React.ReactElement {
     }
   }
 
+  const setPackageCascade = (key: string, value: boolean): void => {
+    const keys = [key, ...getDescendants(key)]
+    setPackageMatrix(prev => {
+      const next = { ...prev }
+      keys.forEach(k => { next[k] = value })
+      return next
+    })
+    if (!value) {
+      // 当小包也关闭，且机器人同样关闭时，人员默认关闭
+      const robotOffEverywhere = (k: string) => (robotMatrix[k] ?? false) === false
+      setPersonChannelMatrix(prev => {
+        const next = { ...prev }
+        keys.forEach(k => {
+          if (robotOffEverywhere(k)) {
+            const row = { ...(next[k] ?? {}) }
+            people.forEach(p => { row[p.id] = false })
+            next[k] = row
+          }
+        })
+        return next
+      })
+    }
+  }
+
   const setPersonCascade = (key: string, personId: string, value: boolean): void => {
     const keys = [key, ...getDescendants(key)]
     setPersonChannelMatrix(prev => {
@@ -895,7 +860,7 @@ export default function AlertPage(): React.ReactElement {
   const treeColumns: ColumnsType<TreeRow> = useMemo(() => {
     const base: ColumnsType<TreeRow> = [
       {
-        title: '消息类型', dataIndex: 'name', key: 'name', width: 60, fixed: 'left',
+        title: '消息类型', dataIndex: 'name', key: 'name', width: 40, fixed: 'left',
         render: (_: unknown, r: TreeRow) => (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ paddingLeft: r.level === 1 ? 0 : r.level === 2 ? 16 : 24, flex: '0 1 auto' }}>{r.name}</div>
@@ -916,7 +881,19 @@ export default function AlertPage(): React.ReactElement {
           </div>
         )
       },
-      { title: 'webhook', key: 'robot', width: 60, render: (_: unknown, r: TreeRow) => {
+      { title: '小包', key: 'smallpkg', width: 40, render: (_: unknown, r: TreeRow) => {
+        const tri = getPackageTri(r.key)
+        const enabled = tri === true
+        return (
+          <Switch
+            checkedChildren="on"
+            unCheckedChildren="off"
+            checked={enabled}
+            onChange={(checked) => setPackageCascade(r.key, checked)}
+          />
+        )
+      } },
+      { title: '自建群机器人', key: 'robot', width: 40, render: (_: unknown, r: TreeRow) => {
         const tri = getRobotTri(r.key)
         const enabled = tri === true
         const configuredIds = rowWebhookByKey[r.key] ?? []
@@ -928,7 +905,7 @@ export default function AlertPage(): React.ReactElement {
               checked={enabled}
               onChange={(e) => setRobotCascade(r.key, e.target.checked)}
             />
-            <Tooltip title={enabled ? (needConfig ? '请配置机器人' : '配置机器人') : '请先开启 webhook'}>
+            <Tooltip title={enabled ? (needConfig ? '请配置机器人' : '配置机器人') : '请先开启自建群机器人'}>
               <Button
                 size="small"
                 type="text"
@@ -951,25 +928,26 @@ export default function AlertPage(): React.ReactElement {
     const personCols: ColumnsType<TreeRow> = people.map((p: Person): ColumnType<TreeRow> => ({
       title: p.name,
       key: `person_${p.id}`,
-      width: 60,
+      width: 40,
       render: (_: unknown, r: TreeRow) => {
-        const robotTri = getRobotTri(r.key)
-        const robotEnabled = robotTri === true
+        const robotEnabled = getRobotTri(r.key) === true
+        const packageEnabled = getPackageTri(r.key) === true
+        const channelEnabled = robotEnabled || packageEnabled
         const personTri = getPersonTri(r.key, p.id)
         const personChecked = personTri === true
         return (
           <Switch
             checkedChildren="on"
             unCheckedChildren="off"
-            checked={robotEnabled && personChecked}
-            disabled={!robotEnabled}
+            checked={channelEnabled && personChecked}
+            disabled={!channelEnabled}
             onChange={(checked) => setPersonCascade(r.key, p.id, checked)}
           />
         )
       }
     }))
     return [...base, ...personCols]
-  }, [people, personChannelMatrix, robotMatrix, rowWebhookByKey])
+  }, [people, personChannelMatrix, robotMatrix, packageMatrix, rowWebhookByKey])
 
   const clientTreeData: TreeRow[] = useMemo(() => ([
     {
@@ -1080,7 +1058,7 @@ export default function AlertPage(): React.ReactElement {
   const items: TabsProps['items'] = [
     { key: 'notice', label: '告警管理', children: NoticeSection },
     { key: 'people', label: '人员配置', children: PeopleSection },
-    { key: 'webhook', label: 'Webhook 管理', children: WebhookSection }
+    { key: 'webhook', label: '自建群机器人', children: WebhookSection }
   ]
 
   return (
