@@ -11,37 +11,88 @@ interface AnnouncementItem {
   type: string
   status: '已发布' | '未发布'
   publishAt?: string
+  gameScope: string[]  // 新增：发送范围（游戏列表）
+  publishHistory?: string[]  // 新增：发布历史记录
 }
 
 // 这段代码实现了：公告列表 + 新建公告表单 + Markdown 预览与发布，全部为前端本地演示
 export default function Announcement() {
   const [items, setItems] = useState<AnnouncementItem[]>([
-    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: 'system', status: '未发布' },
-    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: 'system', status: '已发布', publishAt: '2024/09/01 10:00:00' },
-    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: 'system', status: '未发布' }
+    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: 'system', status: '未发布', gameScope: ['全部游戏'] },
+    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: 'system', status: '已发布', publishAt: '2024/09/01 10:00:00', gameScope: ['gamedemo', 'kumo'], publishHistory: ['2024/09/01 10:00:00'] },
+    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: 'system', status: '未发布', gameScope: ['slime'] }
   ])
   const [creating, setCreating] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)  // 新增：记录正在编辑的公告ID
   const [form] = Form.useForm()
   const [previewVisible, setPreviewVisible] = useState(false)
   const [previewContent, setPreviewContent] = useState<string>('')
   const [previewTitle, setPreviewTitle] = useState<string | null>(null)
+  const [previewGameScope, setPreviewGameScope] = useState<string[]>([])  // 新增：预览时显示发送范围
   const [previewOnConfirm, setPreviewOnConfirm] = useState<(() => void) | null>(null)
+
+  // 游戏选项列表
+  const gameOptions = [
+    { label: '全部游戏', value: '全部游戏' },
+    { label: 'gamedemo', value: 'gamedemo' },
+    { label: 'kumo', value: 'kumo' },
+    { label: 'slime', value: 'slime' }
+  ]
+
+  // 处理游戏范围选择的互斥逻辑：选择"全部游戏"时清除其他选项，选择其他游戏时移除"全部游戏"
+  const handleGameScopeChange = (values: string[]) => {
+    const hasAllGames = values.includes('全部游戏')
+    const otherGames = values.filter(v => v !== '全部游戏')
+    
+    if (hasAllGames && otherGames.length > 0) {
+      // 如果同时选择了"全部游戏"和其他游戏，判断最后选择的是哪个
+      const currentValues = form.getFieldValue('gameScope') || []
+      const wasAllGamesSelected = currentValues.includes('全部游戏')
+      
+      if (wasAllGamesSelected) {
+        // 之前已选择"全部游戏"，现在选择了其他游戏，移除"全部游戏"
+        form.setFieldValue('gameScope', otherGames)
+      } else {
+        // 之前选择了其他游戏，现在选择"全部游戏"，只保留"全部游戏"
+        form.setFieldValue('gameScope', ['全部游戏'])
+      }
+    } else {
+      // 正常情况，直接设置值
+      form.setFieldValue('gameScope', values)
+    }
+  }
 
   const openCreate = () => {
     setCreating(true)
+    setEditingId(null)
     form.resetFields()
   }
 
   const cancelCreate = () => {
     setCreating(false)
+    setEditingId(null)
+  }
+
+  // 编辑公告（包括已发布的）
+  const openEdit = (record: AnnouncementItem) => {
+    setCreating(true)
+    setEditingId(record.id)
+    form.setFieldsValue({
+      title: record.title,
+      content: record.content,
+      method: record.method,
+      type: record.type,
+      gameScope: record.gameScope
+    })
   }
 
   const handlePreview = async () => {
     try {
       const values = await form.validateFields()
-      // 在预览时同时带上标题一起预览（仅预览，不触发发布）
+      // 在预览时同时带上标题和发送范围一起预览（仅预览，不触发发布）
       setPreviewTitle(values.title)
       setPreviewContent(values.content)
+      setPreviewGameScope(values.gameScope || [])
       setPreviewOnConfirm(null)
       setPreviewVisible(true)
     } catch {
@@ -52,10 +103,31 @@ export default function Announcement() {
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-      const id = String(Date.now())
-      setItems(prev => [{ id, title: values.title, content: values.content, method: values.method, type: values.type, status: '未发布' }, ...prev])
-      message.success('保存成功（示例）')
+      
+      if (editingId) {
+        // 编辑现有公告
+        setItems(prev => prev.map(item => 
+          item.id === editingId 
+            ? { ...item, title: values.title, content: values.content, method: values.method, type: values.type, gameScope: values.gameScope }
+            : item
+        ))
+        message.success('编辑保存成功（示例）')
+      } else {
+        // 新建公告
+        const id = String(Date.now())
+        setItems(prev => [{ 
+          id, 
+          title: values.title, 
+          content: values.content, 
+          method: values.method, 
+          type: values.type, 
+          gameScope: values.gameScope || ['全部游戏'],
+          status: '未发布' 
+        }, ...prev])
+        message.success('保存成功（示例）')
+      }
       setCreating(false)
+      setEditingId(null)
     } catch {
       // ignore
     }
@@ -67,13 +139,19 @@ export default function Announcement() {
     return `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
   }
 
-  // 通过预览弹窗进行发布：如果传入 row，则对该行发布；否则对当前表单数据发布
+  // 通过预览弹窗进行发布：支持多次发布
   const openPublishPreviewForRow = (row: AnnouncementItem) => {
     setPreviewTitle(row.title)
     setPreviewContent(row.content)
+    setPreviewGameScope(row.gameScope)
     setPreviewOnConfirm(() => () => {
       const now = formatNow()
-      setItems(prev => prev.map(it => it.id === row.id ? { ...it, status: '已发布', publishAt: now } : it))
+      setItems(prev => prev.map(it => it.id === row.id ? { 
+        ...it, 
+        status: '已发布', 
+        publishAt: now,
+        publishHistory: [...(it.publishHistory || []), now]
+      } : it))
       message.success('发布成功（示例）')
       setPreviewVisible(false)
     })
@@ -85,13 +163,47 @@ export default function Announcement() {
       const values = await form.validateFields()
       setPreviewTitle(values.title)
       setPreviewContent(values.content)
+      setPreviewGameScope(values.gameScope || [])
       setPreviewOnConfirm(() => () => {
-        const id = String(Date.now())
         const now = formatNow()
-        setItems(prev => [{ id, title: values.title, content: values.content, method: values.method, type: values.type, status: '已发布', publishAt: now }, ...prev])
+        
+        if (editingId) {
+          // 编辑中的公告发布
+          setItems(prev => prev.map(item => 
+            item.id === editingId 
+              ? { 
+                  ...item, 
+                  title: values.title, 
+                  content: values.content, 
+                  method: values.method, 
+                  type: values.type, 
+                  gameScope: values.gameScope,
+                  status: '已发布', 
+                  publishAt: now,
+                  publishHistory: [...(item.publishHistory || []), now]
+                }
+              : item
+          ))
+        } else {
+          // 新建公告发布
+          const id = String(Date.now())
+          setItems(prev => [{ 
+            id, 
+            title: values.title, 
+            content: values.content, 
+            method: values.method, 
+            type: values.type, 
+            gameScope: values.gameScope || ['全部游戏'],
+            status: '已发布', 
+            publishAt: now,
+            publishHistory: [now]
+          }, ...prev])
+        }
+        
         message.success('发布成功（示例）')
         form.resetFields()
         setCreating(false)
+        setEditingId(null)
         setPreviewVisible(false)
       })
       setPreviewVisible(true)
@@ -104,8 +216,15 @@ export default function Announcement() {
     { title: '标题', dataIndex: 'title', key: 'title' },
     { title: '通知方式', dataIndex: 'method', key: 'method', width: 120 },
     { title: '通知类型', dataIndex: 'type', key: 'type', width: 120 },
+    { 
+      title: '发送范围', 
+      dataIndex: 'gameScope', 
+      key: 'gameScope', 
+      width: 150,
+      render: (gameScope: string[]) => gameScope?.join(', ') || '-'
+    },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-    { title: '发布时间', dataIndex: 'publishAt', key: 'publishAt', width: 180 },
+    { title: '最近发布时间', dataIndex: 'publishAt', key: 'publishAt', width: 180 },
     {
       title: '操作',
       key: 'actions',
@@ -116,15 +235,12 @@ export default function Announcement() {
             // 打开仅用于预览的弹窗（无发布确认）
             setPreviewTitle(record.title)
             setPreviewContent(record.content)
+            setPreviewGameScope(record.gameScope)
             setPreviewOnConfirm(null)
             setPreviewVisible(true)
           }}>预览</Button>
-          <Button type="link" onClick={() => {
-            // 进入编辑（示例：把内容加载到表单）
-            setCreating(true)
-            form.setFieldsValue({ title: record.title, content: record.content, method: record.method, type: record.type })
-          }} disabled={record.status === '已发布'}>编辑</Button>
-          <Button type="link" onClick={() => openPublishPreviewForRow(record)} disabled={record.status === '已发布'}>发布</Button>
+          <Button type="link" onClick={() => openEdit(record)}>编辑</Button>
+          <Button type="link" onClick={() => openPublishPreviewForRow(record)}>发布</Button>
         </Space>
       )
     }
@@ -139,10 +255,13 @@ export default function Announcement() {
       )}
 
       {creating ? (
-        <Card size="small">
+        <Card size="small" title={editingId ? "编辑公告" : "新建公告"}>
           <Form form={form} layout="vertical">
             <Form.Item label="标题" name="title" rules={[{ required: true, message: '请输入标题' }, { max: 24, message: '最多 24 字' }] }>
               <Input />
+            </Form.Item>
+            <Form.Item label="发送范围" name="gameScope" initialValue={['全部游戏']} rules={[{ required: true, message: '请选择发送范围' }]}>
+              <Select mode="multiple" placeholder="请选择游戏范围" options={gameOptions} onChange={handleGameScopeChange} />
             </Form.Item>
             <Form.Item label="通知方式" name="method" initialValue="modal">
               <Select>
@@ -183,6 +302,12 @@ export default function Announcement() {
         ] : [<Button key="close" onClick={() => setPreviewVisible(false)}>关闭</Button>]}
       >
         <div style={{ padding: 12 }}>
+          {/* 显示发送范围信息 */}
+          {previewGameScope.length > 0 && (
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f5f5f5', borderRadius: 6 }}>
+              <strong>发送范围：</strong>{previewGameScope.join(', ')}
+            </div>
+          )}
           {/* 使用简单的 Markdown -> HTML 转换器进行渲染（原型用，非完全兼容） */}
           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
         </div>
