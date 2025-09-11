@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Button, Form, Input, Select, Modal, message, Card, Table, Space } from 'antd'
+import { Button, Form, Input, Select, Modal, message, Card, Table, Space, Checkbox } from 'antd'
 
 const { TextArea } = Input
 
@@ -9,7 +9,6 @@ interface AnnouncementItem {
   content: string
   method: string
   type: string
-  status: '已发布' | '未发布'
   publishAt?: string
   gameScope: string[]  // 新增：发送范围（游戏列表）
   publishHistory?: string[]  // 新增：发布历史记录
@@ -18,9 +17,9 @@ interface AnnouncementItem {
 // 这段代码实现了：公告列表 + 新建公告表单 + Markdown 预览与发布，全部为前端本地演示
 export default function Announcement() {
   const [items, setItems] = useState<AnnouncementItem[]>([
-    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: 'system', status: '未发布', gameScope: ['全部游戏'] },
-    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: 'system', status: '已发布', publishAt: '2024/09/01 10:00:00', gameScope: ['gamedemo', 'kumo'], publishHistory: ['2024/09/01 10:00:00'] },
-    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: 'system', status: '未发布', gameScope: ['slime'] }
+    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: 'system',  gameScope: ['全部游戏'] },
+    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: 'system', publishAt: '2024/09/01 10:00:00', gameScope: ['gamedemo', 'kumo'], publishHistory: ['2024/09/01 10:00:00'] },
+    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: 'system', gameScope: ['slime'] }
   ])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)  // 新增：记录正在编辑的公告ID
@@ -30,6 +29,8 @@ export default function Announcement() {
   const [previewTitle, setPreviewTitle] = useState<string | null>(null)
   const [previewGameScope, setPreviewGameScope] = useState<string[]>([])  // 新增：预览时显示发送范围
   const [previewOnConfirm, setPreviewOnConfirm] = useState<(() => void) | null>(null)
+  // 新增：是否同时发布到钉钉群（仅在发布弹窗中使用）
+  const [publishToDingTalk, setPublishToDingTalk] = useState<boolean>(false)
 
   // 游戏选项列表
   const gameOptions = [
@@ -51,14 +52,14 @@ export default function Announcement() {
       
       if (wasAllGamesSelected) {
         // 之前已选择"全部游戏"，现在选择了其他游戏，移除"全部游戏"
-        form.setFieldValue('gameScope', otherGames)
+        form.setFieldsValue({ gameScope: otherGames })
       } else {
         // 之前选择了其他游戏，现在选择"全部游戏"，只保留"全部游戏"
-        form.setFieldValue('gameScope', ['全部游戏'])
+        form.setFieldsValue({ gameScope: ['全部游戏'] })
       }
     } else {
       // 正常情况，直接设置值
-      form.setFieldValue('gameScope', values)
+      form.setFieldsValue({ gameScope: values })
     }
   }
 
@@ -122,7 +123,6 @@ export default function Announcement() {
           method: values.method, 
           type: values.type, 
           gameScope: values.gameScope || ['全部游戏'],
-          status: '未发布' 
         }, ...prev])
         message.success('保存成功（示例）')
       }
@@ -144,15 +144,20 @@ export default function Announcement() {
     setPreviewTitle(row.title)
     setPreviewContent(row.content)
     setPreviewGameScope(row.gameScope)
+    // 打开发布弹窗时，重置钉钉选择为“否”
+    setPublishToDingTalk(false)
     setPreviewOnConfirm(() => () => {
       const now = formatNow()
       setItems(prev => prev.map(it => it.id === row.id ? { 
         ...it, 
-        status: '已发布', 
         publishAt: now,
         publishHistory: [...(it.publishHistory || []), now]
       } : it))
       message.success('发布成功（示例）')
+      // 如果选择了同时发布到钉钉群，这里仅做示例提示
+      if (publishToDingTalk) {
+        message.success('已同步到钉钉群（示例）')
+      }
       setPreviewVisible(false)
     })
     setPreviewVisible(true)
@@ -164,6 +169,8 @@ export default function Announcement() {
       setPreviewTitle(values.title)
       setPreviewContent(values.content)
       setPreviewGameScope(values.gameScope || [])
+      // 打开发布弹窗时，重置钉钉选择为“否”
+      setPublishToDingTalk(false)
       setPreviewOnConfirm(() => () => {
         const now = formatNow()
         
@@ -178,7 +185,6 @@ export default function Announcement() {
                   method: values.method, 
                   type: values.type, 
                   gameScope: values.gameScope,
-                  status: '已发布', 
                   publishAt: now,
                   publishHistory: [...(item.publishHistory || []), now]
                 }
@@ -194,13 +200,16 @@ export default function Announcement() {
             method: values.method, 
             type: values.type, 
             gameScope: values.gameScope || ['全部游戏'],
-            status: '已发布', 
             publishAt: now,
             publishHistory: [now]
           }, ...prev])
         }
         
         message.success('发布成功（示例）')
+        // 如果选择了同时发布到钉钉群，这里仅做示例提示
+        if (publishToDingTalk) {
+          message.success('已同步到钉钉群')
+        }
         form.resetFields()
         setCreating(false)
         setEditingId(null)
@@ -223,7 +232,6 @@ export default function Announcement() {
       width: 150,
       render: (gameScope: string[]) => gameScope?.join(', ') || '-'
     },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
     { title: '最近发布时间', dataIndex: 'publishAt', key: 'publishAt', width: 180 },
     {
       title: '操作',
@@ -310,6 +318,18 @@ export default function Announcement() {
           )}
           {/* 使用简单的 Markdown -> HTML 转换器进行渲染（原型用，非完全兼容） */}
           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
+          {/* 勾选框放在内容最下方，类似“我已知晓风险”的呈现风格 */}
+          {previewOnConfirm && (
+            <div style={{ marginTop: 16, padding: 12, backgroundColor: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+              {/* 交互：勾选后会在发布时同步到钉钉群（仅示例提示） */}
+              <Checkbox
+                checked={publishToDingTalk}
+                onChange={(e) => setPublishToDingTalk(e.target.checked)}
+              >
+                同时发布到钉钉群
+              </Checkbox>
+            </div>
+          )}
         </div>
       </Modal>
     </Card>
