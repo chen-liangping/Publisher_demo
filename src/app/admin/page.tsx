@@ -8,14 +8,16 @@ import {
   DatabaseOutlined,
   ExperimentOutlined
 } from '@ant-design/icons'
+import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
 import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
+import Announcement from '../../components/Admin/Announcement'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
-type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization'
+type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization' | 'announcement'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -43,6 +45,8 @@ export default function AdminPage() {
         return <ResourceConfiguration />
       case 'test-initialization':
         return <TestInitialization />
+      case 'announcement':
+        return <Announcement />
       default:
         return <GameManagement />
     }
@@ -97,6 +101,12 @@ export default function AdminPage() {
                 icon: <ExperimentOutlined />,
                 label: '测试初始化',
                 onClick: () => handleMenuClick('test-initialization')
+              },
+              {
+                key: 'announcement',
+                icon: <NotificationOutlined />,
+                label: '公告管理',
+                onClick: () => handleMenuClick('announcement')
               }
             ]}
           />

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert } from 'antd'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined } from '@ant-design/icons'
 import { useRouter } from 'next/navigation'
@@ -14,6 +14,10 @@ interface VersionRow {
   createdAt: string
   isCurrent?: boolean
   translationStatus?: 'syncing' | 'done'
+  // 新增：表示是否开启自动同步翻译（用于控制按钮可用性）
+  autoSync?: boolean
+  // 新增：最近一次翻译同步时间（用于展示）
+  lastSyncAt?: string
 }
 
 // 文件/文件夹数据类型
@@ -31,7 +35,9 @@ const versionData: VersionRow[] = [
     details: '初始化部署；1.先切换版本然后再进行这个配置以及那个配置反正字数上限大概就是这样了我觉得...',
     createdAt: '2024/07/22  23:56:08',
     isCurrent: true,
-    translationStatus: 'done'
+    translationStatus: 'done',
+    autoSync: true,
+    lastSyncAt: '2024/09/01 12:30:00'
   },
   { version: 'v1.0.2', details: '8/28上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing' },
   { version: 'v1.0.3', details: '9/02上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'done' },
@@ -47,6 +53,14 @@ export default function ClientVersionPage() {
   const [switchModalVisible, setSwitchModalVisible] = useState<boolean>(false)
   const [selectedVersion, setSelectedVersion] = useState<VersionRow | null>(null)
   const [form] = Form.useForm()
+  // 本地控制：记录每个版本的自动同步状态和最近同步时间
+  const [localVersions, setLocalVersions] = useState<Record<string, { autoSync: boolean; lastSyncAt?: string }>>(() => {
+    const map: Record<string, { autoSync: boolean; lastSyncAt?: string }> = {}
+    versionData.forEach(v => {
+      map[v.version] = { autoSync: v.autoSync ?? false, lastSyncAt: v.lastSyncAt }
+    })
+    return map
+  })
 
   const openSwitchModal = (record: VersionRow): void => {
     setSelectedVersion(record)
@@ -83,6 +97,33 @@ export default function ClientVersionPage() {
         message.success('已删除')
       }
     })
+  }
+
+  // 切换自动同步开关
+  const handleToggleAutoSync = (version: string, checked: boolean): void => {
+    setLocalVersions(prev => ({ ...prev, [version]: { ...prev[version], autoSync: checked } }))
+    message.success(`${version} 自动同步已${checked ? '开启' : '关闭'}`)
+  }
+
+  // 同步翻译（示例行为：模拟异步操作并设置最后同步时间与状态）
+  const handleSyncTranslation = async (version: string): Promise<void> => {
+    const v = versions.find(x => x.version === version)
+    if (!v) return
+    // 如果自动同步未开启，则阻止操作（额外保险）
+    if (!localVersions[version]?.autoSync) {
+      message.warning('请先开启自动同步')
+      return
+    }
+    // 模拟开始同步
+    setVersions(prev => prev.map(item => item.version === version ? { ...item, translationStatus: 'syncing' } : item))
+    // 模拟异步请求
+    setTimeout(() => {
+      const now = new Date()
+      const formatted = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
+      setVersions(prev => prev.map(item => item.version === version ? { ...item, translationStatus: 'done' } : item))
+      setLocalVersions(prev => ({ ...prev, [version]: { ...prev[version], lastSyncAt: formatted } }))
+      message.success(`${version} 翻译同步完成`)
+    }, 1200)
   }
 
   const handleEnterVersion = (version: string): void => {
@@ -197,16 +238,56 @@ export default function ClientVersionPage() {
         </Space>
       )
     },
-    { title: '发版详情', dataIndex: 'details', key: 'details' },
+    { 
+      title: '发版详情',
+      dataIndex: 'details',
+      key: 'details',
+      width: 320,
+      // 通过 Tooltip 展示全文，表格内限制为两行并省略，减小行高让行内文本更紧凑
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft">
+          <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+            {text}
+          </div>
+        </Tooltip>
+      )
+    },
+    // 新增列：自动同步开关
+    {
+      title: '自动同步翻译',
+      key: 'autoSync',
+      width: 160,
+      // 使用 Ant Design 的 Switch 组件作为开关控件，外层用 Tooltip 提示
+      render: (_: unknown, record: VersionRow) => (
+        <Tooltip title="切换自动同步翻译（仅示例，本地状态）">
+          <Switch
+            checked={!!localVersions[record.version]?.autoSync}
+            onChange={(checked) => handleToggleAutoSync(record.version, checked)}
+            size="small"
+          />
+        </Tooltip>
+      )
+    },
+    // 新增列：最近翻译同步时间
+    { title: '翻译同步时间', dataIndex: 'lastSyncAt', key: 'lastSyncAt', width: 200, render: (_: unknown, record: VersionRow) => (localVersions[record.version]?.lastSyncAt ?? '-') },
     { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 200 },
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 260,
       render: (_: unknown, record: VersionRow) => (
         <Space size={8}>
           <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
           <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
+          {/* 新增：同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
+          <Button
+            type="link"
+            onClick={() => handleSyncTranslation(record.version)}
+            // 只有在自动同步关闭时才允许手动触发同步，因此 disabled 逻辑取反
+            disabled={!!localVersions[record.version]?.autoSync}
+          >
+            同步翻译
+          </Button>
         </Space>
       )
     }
@@ -282,12 +363,18 @@ export default function ClientVersionPage() {
             />
           </>
         ) : (
-          <Table<VersionRow>
-            columns={columns}
-            dataSource={versions}
-            rowKey={(r) => r.version}
-            pagination={false}
-          />
+          <div style={{ overflowX: 'auto' }}>
+            {/* 为了支持左右滑动，外层加 overflow-x: auto；并给 Table 设置较大的 minWidth 以触发横向滚动 */}
+            <Table<VersionRow>
+              columns={columns}
+              dataSource={versions}
+              rowKey={(r) => r.version}
+              pagination={false}
+              // Ant Design 的 scroll 可保证表头与内容横向对齐
+              scroll={{ x: 1100 }}
+              style={{ minWidth: 1100 }}
+            />
+          </div>
         )}
       </Card>
 
