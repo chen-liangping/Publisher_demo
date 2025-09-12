@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Menu, Typography, Segmented } from 'antd'
+import { Layout, Menu, Typography, Segmented, Button, Tooltip } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
 import { 
   CloudServerOutlined, 
@@ -11,7 +11,8 @@ import {
   ContainerOutlined,
   SecurityScanOutlined,
   MobileOutlined,
-  BellOutlined
+  BellOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
 import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
@@ -38,12 +39,13 @@ import GiftDataPage from '../components/tool/gift'
 import I18nPage from '../components/tool/i18n'
 import AlertPage from '../components/alert/alert'
 import AlertHistory from '../components/alert/alert_history'
+import LogPage from '../components/log'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log'
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
 
@@ -164,6 +166,8 @@ export default function Home() {
         return <AlertPage />
       case 'alert-history':
         return <AlertHistory />
+      case 'log':
+        return <LogPage />
       default:
         return <VirtualMachineList />
     }
@@ -200,6 +204,15 @@ export default function Home() {
               router.push(`${pathname}?${params.toString()}`)
             }}
           />
+          {/* 日志图标，仅图标不显示文字：点击后路由到日志页 */}
+          <Tooltip title="日志">
+            <Button
+              type="text"
+              icon={<FileSearchOutlined />}
+              onClick={() => handleMenuClick('log')}
+              aria-label="日志"
+            />
+          </Tooltip>
         </div>
         
         {/* 用户头像菜单 */}
