@@ -117,7 +117,7 @@ export default function ClientPage() {
   const [editVisible, setEditVisible] = React.useState<boolean>(false)
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
   // 新增：编辑表单实例
-  const [editForm] = Form.useForm<any>()
+  const [editForm] = Form.useForm<CacheRuleFormValues>()
   // 交互：添加源站
   const handleAddOrigin = (): void => {
     message.info('点击了添加源站（示例）')
@@ -422,8 +422,6 @@ export default function ClientPage() {
                       <div style={{ paddingLeft: 12 }}>TTL = 0 → 强制实时回源。</div>
                       <div style={{ marginTop: 8, marginBottom: 4 }}><strong>低时效性内容</strong>（如图片、静态资源）：</div>
                       <div style={{ paddingLeft: 12 }}>TTL ≥ 10 分钟 → 提升缓存命中率，减少回源压力。</div>
-                      <div style={{ marginTop: 8, marginBottom: 4 }}><strong>特殊规则</strong>：</div>
-                      <div style={{ paddingLeft: 12 }}>当 源站返回<code>no-cache</code> 且 TTL=0 时，CDN 将强制实时回源（0 秒）。</div>
                     </div>
                   )}
                   trigger="click"
