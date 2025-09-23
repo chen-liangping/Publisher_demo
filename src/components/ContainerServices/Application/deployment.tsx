@@ -20,7 +20,10 @@ import {
   InputNumber,
   Select,
   Input,
-  Modal
+  Modal,
+  Switch,
+  Checkbox,
+  Divider
 } from 'antd'
 import { MoreOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons'
 
@@ -60,6 +63,21 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   const [cpuModalVisible, setCpuModalVisible] = useState<boolean>(false)
   const [pendingContainerKey, setPendingContainerKey] = useState<string | null>(null)
   const [cpuForm] = Form.useForm()
+  // HPA 配置
+  const [hpaVisible, setHpaVisible] = useState<boolean>(false)
+  const [hpaForm] = Form.useForm<{
+    enabled: boolean;
+    minReplicas: number;
+    maxReplicas: number;
+    cpuEnabled: boolean;
+    cpuScaleOut?: number;
+    cpuScaleIn?: number;
+    memEnabled: boolean;
+    memScaleOut?: number;
+    memScaleIn?: number;
+    scaleInWait?: number;
+    scaleOutWait?: number;
+  }>()
   // refs for resource rows inside Drawer to reliably scroll/focus
   const rowRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
   // 当打开抽屉时需要聚焦的新增资源 key
@@ -456,6 +474,110 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
           ]} />
         </div>
       </div>
+      {/* HPA 配置弹窗（全局挂载，任意 Tab 都可打开） */}
+      <Modal
+        title="HPA 弹性伸缩"
+        open={hpaVisible}
+        width={820}
+        onCancel={() => setHpaVisible(false)}
+        onOk={async () => {
+          try {
+            const v = await hpaForm.validateFields()
+            if (!v.enabled) { Modal.success({ title: '已保存', content: '未开启 HPA' }); setHpaVisible(false); return }
+            if (v.minReplicas > v.maxReplicas) { Modal.error({ title: '校验失败', content: '最小副本数不能大于最大副本数' }); return }
+            if (!(v.cpuEnabled || v.memEnabled)) { Modal.error({ title: '校验失败', content: '请至少选择一个伸缩指标' }); return }
+            Modal.success({ title: '已保存', content: `副本范围 ${v.minReplicas}-${v.maxReplicas}；` +
+              `${v.cpuEnabled ? `CPU[扩容>${v.cpuScaleOut}% / 缩容<${v.cpuScaleIn}%]；` : ''}` +
+              `${v.memEnabled ? `内存[扩容>${v.memScaleOut}% / 缩容<${v.memScaleIn}%]` : ''}` })
+            setHpaVisible(false)
+          } catch {}
+        }}
+        destroyOnClose
+      >
+        <Form form={hpaForm} layout="vertical" initialValues={{ enabled: true, minReplicas: 1, maxReplicas: 2, cpuEnabled: true, cpuScaleOut: 80, cpuScaleIn: 30, memEnabled: false, scaleInWait: 300, scaleOutWait: 300 }}>
+          <div style={{ marginBottom: 6, fontWeight: 500 }}>是否开启 HPA</div>
+          <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 16 }}>
+            <Switch />
+          </Form.Item>
+
+          <div style={{ marginBottom: 6, fontWeight: 500 }}>副本数范围</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <span style={{ color: '#999' }}>最小</span>
+            <Form.Item shouldUpdate noStyle>
+              {({ getFieldValue }) => (
+                <Form.Item name="minReplicas" style={{ marginBottom: 0 }}>
+                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+              )}
+            </Form.Item>
+            <span style={{ color: '#999' }}>~</span>
+            <span style={{ color: '#999' }}>最大</span>
+            <Form.Item shouldUpdate noStyle>
+              {({ getFieldValue }) => (
+                <Form.Item name="maxReplicas" style={{ marginBottom: 0 }}>
+                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+              )}
+            </Form.Item>
+          </div>
+
+          <div style={{ marginBottom: 6, fontWeight: 500 }}><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>选择伸缩指标与阈值</div>
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Form.Item name="cpuEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Checkbox>CPU 使用率</Checkbox>
+              </Form.Item>
+              <Form.Item shouldUpdate noStyle>
+                {({ getFieldValue }) => (
+                  <Space size={8} style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ color: '#999' }}>扩容阈值（&gt;）</span>
+                    <Form.Item name="cpuScaleOut" style={{ marginBottom: 0 }}>
+                      <InputNumber min={1} max={100} addonAfter="%" placeholder="扩容阈值 &gt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('cpuEnabled')} />
+                    </Form.Item>
+                    <span style={{ color: '#999' }}>缩容阈值（&lt;）</span>
+                    <Form.Item name="cpuScaleIn" style={{ marginBottom: 0 }}>
+                      <InputNumber min={1} max={100} addonAfter="%" placeholder="缩容阈值 &lt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('cpuEnabled')} />
+                    </Form.Item>
+                  </Space>
+                )}
+              </Form.Item>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Form.Item name="memEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Checkbox>内存 使用率</Checkbox>
+              </Form.Item>
+              <Form.Item shouldUpdate noStyle>
+                {({ getFieldValue }) => (
+                  <Space size={8} style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ color: '#999' }}>扩容阈值（&gt;）</span>
+                    <Form.Item name="memScaleOut" style={{ marginBottom: 0 }}>
+                      <InputNumber min={1} max={100} addonAfter="%" placeholder="扩容阈值 &gt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('memEnabled')} />
+                    </Form.Item>
+                    <span style={{ color: '#999' }}>缩容阈值（&lt;）</span>
+                    <Form.Item name="memScaleIn" style={{ marginBottom: 0 }}>
+                      <InputNumber min={1} max={100} addonAfter="%" placeholder="缩容阈值 &lt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('memEnabled')} />
+                    </Form.Item>
+                  </Space>
+                )}
+              </Form.Item>
+            </div>
+          </div>
+
+          <Divider orientation="left">高级配置</Divider>
+          <Form.Item shouldUpdate noStyle>
+            {({ getFieldValue }) => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Form.Item label="扩容等待时间" name="scaleOutWait" style={{ marginBottom: 12 }}>
+                  <InputNumber min={0} addonAfter="s" style={{ width: 120 }} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+                <Form.Item label="缩容等待时间" name="scaleInWait" style={{ marginBottom: 12 }}>
+                  <InputNumber min={0} addonAfter="s" style={{ width: 120 }} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+              </div>
+            )}
+          </Form.Item>
+        </Form>
+      </Modal>
       {activeKey === 'overview' ? (
         <div>
           <div style={{
@@ -551,7 +673,13 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                   {
                     key: '1',
                     label: <span style={{ color: '#2f54eb', fontWeight: 500 }}>更多高级配置</span>,
-                    children: <div style={{ color: '#666' }}>高级配置项（示意）</div>
+                    children: (
+                      <div style={{ color: '#666' }}>
+                        <Space>
+                          <Button type="default" onClick={() => setHpaVisible(true)}>HPA 弹性伸缩</Button>
+                        </Space>
+                      </div>
+                    )
                   }
                 ]}
               />

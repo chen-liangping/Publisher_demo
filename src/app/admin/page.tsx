@@ -6,18 +6,20 @@ import {
   ArrowLeftOutlined,
   AppstoreOutlined,
   DatabaseOutlined,
-  ExperimentOutlined
+  ExperimentOutlined,
+  FileTextOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
 import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
 import Announcement from '../../components/Admin/Announcement'
+import YamlViewer from '../../components/Admin/yaml'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
-type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization' | 'announcement'
+type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization' | 'announcement' | 'yaml'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -47,6 +49,9 @@ export default function AdminPage() {
         return <TestInitialization />
       case 'announcement':
         return <Announcement />
+      case 'yaml':
+        // YAML 备份页面
+        return <YamlViewer />
       default:
         return <GameManagement />
     }
@@ -107,6 +112,12 @@ export default function AdminPage() {
                 icon: <NotificationOutlined />,
                 label: '公告管理',
                 onClick: () => handleMenuClick('announcement')
+              },
+              {
+                key: 'yaml',
+                icon: <FileTextOutlined />,
+                label: 'YAML 备份',
+                onClick: () => handleMenuClick('yaml')
               }
             ]}
           />
