@@ -21,7 +21,12 @@ import {
   InputNumber,
   Select,
   Input,
-  Modal
+  Modal,
+  message,
+  Slider,
+  Switch,
+  Checkbox,
+  Divider
 } from 'antd'
 import { MoreOutlined, EditOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons'
 
@@ -66,6 +71,19 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
   const rowRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
   // 当打开抽屉时需要聚焦的新增资源 key
   const [focusResourceKey, setFocusResourceKey] = useState<string | null>(null)
+
+  // 多副本 & 弹性伸缩 配置
+  const [scaleModalVisible, setScaleModalVisible] = useState<boolean>(false)
+  const [scaleForm] = Form.useForm<{
+    preCheck: boolean;
+    enabled: boolean;
+    minReplicas: number;
+    maxReplicas: number;
+    cpuEnabled: boolean;
+    cpuTarget?: number;
+    memEnabled: boolean;
+    memTarget?: number;
+  }>()
 
   // 将资源字符串解析为表单友好结构
   const parseResourcesForForm = (items: ResourceItem[]) => {
@@ -415,6 +433,142 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
           ]} />
         </div>
       </div>
+      {/* 多副本 & 弹性伸缩配置弹窗（全局挂载，任意 Tab 都可打开） */}
+      <Modal
+        title="多副本 & 弹性伸缩"
+        open={scaleModalVisible}
+        onCancel={() => setScaleModalVisible(false)}
+        onOk={async () => {
+          try {
+            const values = await scaleForm.validateFields()
+            if (!values.enabled) {
+              message.success('已保存：未开启弹性伸缩')
+              setScaleModalVisible(false)
+              return
+            }
+            if (!(values.cpuEnabled || values.memEnabled)) {
+              message.error('请至少选择一个伸缩指标')
+              return
+            }
+            if (values.minReplicas > values.maxReplicas) {
+              message.error('最小副本数不能大于最大副本数')
+              return
+            }
+            const parts: string[] = [`副本范围 ${values.minReplicas}-${values.maxReplicas}`]
+            if (values.cpuEnabled) parts.push(`CPU阈值 ${values.cpuTarget ?? 0}%`)
+            if (values.memEnabled) parts.push(`内存阈值 ${values.memTarget ?? 0}%`)
+            message.success(`已保存：${parts.join('，')}`)
+            setScaleModalVisible(false)
+          } catch {
+            // ignore
+          }
+        }}
+        destroyOnClose
+      >
+        <Form form={scaleForm} layout="vertical" initialValues={{ preCheck: true, enabled: true, minReplicas: 1, maxReplicas: 2, cpuEnabled: true, cpuTarget: 60, memEnabled: false }}>
+          {/* 顶部提示与前置条件确认 */}
+          <div style={{ marginBottom: 8, color: '#666' }}>开启多副本或弹性扩/缩容（HPA）</div>
+          <Form.Item name="preCheck" valuePropName="checked" style={{ marginBottom: 16 }}>
+            <Checkbox>
+              请先确保已满足
+              <Button type="link" size="small" style={{ paddingLeft: 4 }} onClick={() => window.open('https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/', '_blank')}>《多副本与HPA开启条件》</Button>
+            </Checkbox>
+          </Form.Item>
+
+          {/* 开关 */}
+          <div style={{ marginBottom: 6, fontWeight: 500 }}>是否开启弹性伸缩</div>
+          <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 16 }}>
+            <Switch />
+          </Form.Item>
+
+          {/* 副本范围 */}
+          <div style={{ marginBottom: 6, fontWeight: 500 }}>副本数范围</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <span style={{ color: '#999' }}>最小</span>
+            <Form.Item shouldUpdate={(prev, cur) => prev.enabled !== cur.enabled} noStyle>
+              {({ getFieldValue }) => (
+                <Form.Item name="minReplicas" style={{ marginBottom: 0 }}>
+                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+              )}
+            </Form.Item>
+            <span style={{ color: '#999' }}>~</span>
+            <span style={{ color: '#999' }}>最大</span>
+            <Form.Item shouldUpdate={(prev, cur) => prev.enabled !== cur.enabled} noStyle>
+              {({ getFieldValue }) => (
+                <Form.Item name="maxReplicas" style={{ marginBottom: 0 }}>
+                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
+                </Form.Item>
+              )}
+            </Form.Item>
+          </div>
+
+          {/* 选择伸缩指标 */}
+          <div style={{ marginBottom: 6, fontWeight: 500 }}><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>选择伸缩指标</div>
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Form.Item name="cpuEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Checkbox>CPU使用率稳定值</Checkbox>
+              </Form.Item>
+              <Form.Item shouldUpdate={(prev, cur) => prev.enabled !== cur.enabled || prev.cpuEnabled !== cur.cpuEnabled} noStyle>
+                {({ getFieldValue }) => (
+                  <Form.Item name="cpuTarget" style={{ marginBottom: 0 }}>
+                    <InputNumber min={1} max={100} addonAfter="%" placeholder="请输入" disabled={!getFieldValue('enabled') || !getFieldValue('cpuEnabled')} />
+                  </Form.Item>
+                )}
+              </Form.Item>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Form.Item name="memEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Checkbox>内存使用率稳定值</Checkbox>
+              </Form.Item>
+              <Form.Item shouldUpdate={(prev, cur) => prev.enabled !== cur.enabled || prev.memEnabled !== cur.memEnabled} noStyle>
+                {({ getFieldValue }) => (
+                  <Form.Item name="memTarget" style={{ marginBottom: 0 }}>
+                    <InputNumber min={1} max={100} addonAfter="%" placeholder="请输入" disabled={!getFieldValue('enabled') || !getFieldValue('memEnabled')} />
+                  </Form.Item>
+                )}
+              </Form.Item>
+            </div>
+          </div>
+          <Collapse
+            items={[{
+              key: 'adv',
+              label: <span>高级配置</span>,
+              children: (
+                <Form.Item shouldUpdate noStyle>
+                  {({ getFieldValue }) => (
+                    <div>
+                      <Form.Item label="扩容等待时间" name="scaleOutWait" initialValue={300} style={{ marginBottom: 12 }}>
+                        <InputNumber min={0} addonAfter="s" style={{ width: 160 }} disabled={!getFieldValue('enabled')} />
+                      </Form.Item>
+                      <Form.Item label="缩容等待时间" name="scaleInWait" initialValue={300} style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} addonAfter="s" style={{ width: 160 }} disabled={!getFieldValue('enabled')} />
+                      </Form.Item>
+                    </div>
+                  )}
+                </Form.Item>
+              )
+            }]}
+            style={{ marginBottom: 8 }}
+          />
+          <Form.Item shouldUpdate={(prev, cur) =>
+            prev.enabled !== cur.enabled ||
+            prev.cpuEnabled !== cur.cpuEnabled || prev.cpuTarget !== cur.cpuTarget ||
+            prev.memEnabled !== cur.memEnabled || prev.memTarget !== cur.memTarget
+          } noStyle>
+            {({ getFieldValue }) => {
+              if (!getFieldValue('enabled')) return null
+              const cpuOn = !!getFieldValue('cpuEnabled')
+              const memOn = !!getFieldValue('memEnabled')
+              const target = cpuOn ? (getFieldValue('cpuTarget') ?? 60) : memOn ? (getFieldValue('memTarget') ?? 60) : 60
+              return (
+                <div style={{ color: '#999', marginTop: 8 }}>pod平均使用率将稳定在 {target}%</div>
+              )
+            }}
+          </Form.Item>
+        </Form>
+      </Modal>
       {activeKey === 'overview' ? (
         <div>
           <div style={{
@@ -509,7 +663,13 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
                 items={[{
                   key: '1',
                   label: <span style={{ color: '#2f54eb', fontWeight: 500 }}>更多高级配置</span>,
-                  children: <div style={{ color: '#666' }}>高级配置项（示意）</div>
+                  children: (
+                    <div style={{ color: '#666' }}>
+                      <Space>
+                        <Button type="default" onClick={() => setScaleModalVisible(true)}>多副本 & 弹性伸缩</Button>
+                      </Space>
+                    </div>
+                  )
                 }]}
               />
             </div>
