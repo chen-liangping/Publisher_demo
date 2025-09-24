@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Menu, Typography, Segmented, Button, Tooltip } from 'antd'
+import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
 import { 
   CloudServerOutlined, 
@@ -12,8 +12,10 @@ import {
   SecurityScanOutlined,
   MobileOutlined,
   BellOutlined,
-  FileSearchOutlined
+  FileSearchOutlined,
+  BarChartOutlined
 } from '@ant-design/icons'
+import PlausibleLikeDashboard from '../components/Analytics/PlausibleLikeDashboard'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
 import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
 // 详情由组件内部自管理
@@ -81,6 +83,7 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>(initialMode)
   // 命令列表/详情由组件内部自管理
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
+  const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
 
   // 模拟当前用户信息
   const currentUser = {
@@ -213,11 +216,32 @@ export default function Home() {
               aria-label="日志"
             />
           </Tooltip>
+          {/* Analytics 图表入口 */}
+          <Tooltip title="数据看板">
+            <Button
+              type="text"
+              icon={<BarChartOutlined />}
+              onClick={() => setAnalyticsOpen(true)}
+              aria-label="数据看板"
+            />
+          </Tooltip>
         </div>
         
         {/* 用户头像菜单 */}
         <UserAvatarMenu user={currentUser} />
       </Header>
+
+      {/* 数据看板 Drawer */}
+      <Drawer
+        title={<span>埋点数据仪表盘</span>}
+        placement="left"
+        width={'100%'}
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
+        destroyOnClose
+      >
+        <PlausibleLikeDashboard />
+      </Drawer>
 
       <Layout>
         {/* 左侧导航栏 */}

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Tree, Table, Input, Drawer, Space, Button, Tooltip, Typography, message, Card, Select } from 'antd'
+import { Tree, Table, Input, Drawer, Space, Button, Tooltip, Typography, message, Card, Select, Modal, Checkbox, Tag } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import type { ColumnsType } from 'antd/es/table'
 import { EyeOutlined, CopyOutlined, FolderOpenOutlined, ClusterOutlined, DeploymentUnitOutlined } from '@ant-design/icons'
@@ -53,7 +53,7 @@ spec:
     key: 'dep-1',
     name: 'web-frontend',
     createdAt: '2025-09-01 10:20:00',
-    version: '2',
+    version: '3',
     namespace: 'default',
     cluster: 'k8s-io',
     yaml: `apiVersion: apps/v1
@@ -81,7 +81,7 @@ spec:
     key: 'dep-1',
     name: 'web-frontend',
     createdAt: '2025-09-02 09:00:00',
-    version: '3',
+    version: '2',
     namespace: 'default',
     cluster: 'k8s-io',
     yaml: `apiVersion: apps/v1
@@ -109,7 +109,7 @@ spec:
     key: 'dep-2',
     name: 'game-service',
     createdAt: '2025-09-10 08:05:00',
-    version: '1',
+    version: '4',
     namespace: 'game',
     cluster: 'k8s-io',
     yaml: `apiVersion: apps/v1
@@ -137,7 +137,7 @@ spec:
     key: 'dep-2',
     name: 'game-service',
     createdAt: '2025-09-12 08:05:00',
-    version: '2',
+    version: '5',
     namespace: 'game',
     cluster: 'k8s-io',
     yaml: `apiVersion: apps/v1
@@ -194,7 +194,7 @@ spec:
 
 export default function YamlViewer() {
   // 使用 mock 数据；后续可替换为后端接口
-  const allItems = mockDeployments
+  const [items, setItems] = useState<DeploymentItem[]>(mockDeployments)
 
   // 资源类型列表
   const resourceTypes: Array<{ label: string; key: string; isFolder?: boolean }> = [
@@ -231,23 +231,140 @@ export default function YamlViewer() {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false)
   const [currentYaml, setCurrentYaml] = useState<string>('')
   const [currentTitle, setCurrentTitle] = useState<string>('')
+  const [currentRecord, setCurrentRecord] = useState<DeploymentItem | null>(null)
+  const [compareVersion, setCompareVersion] = useState<string | undefined>(undefined)
+  const [compareYaml, setCompareYaml] = useState<string>('')
+  // 编辑 YAML 抽屉
+  const [editOpen, setEditOpen] = useState<boolean>(false)
+  const [editTitle, setEditTitle] = useState<string>('')
+  const [editYaml, setEditYaml] = useState<string>('')
+  const [editBase, setEditBase] = useState<DeploymentItem | null>(null)
+  // 更新确认弹窗（受控）
+  const [publishOpen, setPublishOpen] = useState<boolean>(false)
+  const [publishChecked, setPublishChecked] = useState<boolean>(false)
 
   // 历史版本抽屉状态
   const [historyOpen, setHistoryOpen] = useState<boolean>(false)
   const [historyTitle, setHistoryTitle] = useState<string>('')
   const [historyList, setHistoryList] = useState<DeploymentItem[]>([])
+  // 回滚确认弹窗（受控）
+  const [rollbackOpen, setRollbackOpen] = useState<boolean>(false)
+  const [rollbackTarget, setRollbackTarget] = useState<DeploymentItem | null>(null)
+  const [rollbackChecked, setRollbackChecked] = useState<boolean>(false)
+  // 每个服务当前“生效”的版本号（默认取最大版本）
+  const computeMaxVersionMap = (list: DeploymentItem[]): Record<string, string> => {
+    const map: Record<string, string> = {}
+    list.forEach(i => {
+      const cur = map[i.name]
+      if (!cur || Number(i.version) > Number(cur)) map[i.name] = i.version
+    })
+    return map
+  }
+  const [currentVersionByName, setCurrentVersionByName] = useState<Record<string, string>>(
+    () => computeMaxVersionMap(items)
+  )
 
   // 全量命名空间下拉选项
   const namespaceOptions = useMemo(() => {
     const set = new Set<string>()
-    allItems.forEach(i => set.add(i.namespace))
+    items.forEach(i => set.add(i.namespace))
     return Array.from(set).map(ns => ({ label: ns, value: ns }))
-  }, [])
+  }, [items])
+
+  // 小工具：时间/版本与 Diff
+  const formatNow = (): string => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
+  const nextVersionFor = (name: string): string => {
+    const versions = items.filter(i => i.name === name).map(i => Number(i.version))
+    const maxv = versions.length ? Math.max(...versions) : 0
+    return String(maxv + 1)
+  }
+  const computeUnifiedDiff = (a: string, b: string): Array<{ type: 'same' | 'add' | 'del'; text: string }> => {
+    const A = a.split('\n')
+    const B = b.split('\n')
+    const n = A.length, m = B.length
+    const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0))
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+      }
+    }
+    const out: Array<{ type: 'same' | 'add' | 'del'; text: string }> = []
+    let i = 0, j = 0
+    while (i < n && j < m) {
+      if (A[i] === B[j]) { out.push({ type: 'same', text: A[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: 'del', text: A[i++] }) }
+      else { out.push({ type: 'add', text: B[j++] }) }
+    }
+    while (i < n) out.push({ type: 'del', text: A[i++] })
+    while (j < m) out.push({ type: 'add', text: B[j++] })
+    return out
+  }
+
+  // 复制工具
+  const copyText = async (text: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text)
+      message.success('已复制到剪贴板')
+    } catch {
+      message.error('复制失败，请手动复制')
+    }
+  }
+
+  // 模拟应用到 K8s 集群（示例：真实实现需调用后端 API）
+  const applyYamlToCluster = async (name: string, namespace: string, yaml: string): Promise<void> => {
+    // 这里可替换为实际的 API 请求
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  // 侧边并排 Diff 行对齐：左=当前，右=对比
+  const sideBySide = useMemo(() => {
+    if (!compareYaml) return [] as Array<{ left?: { t: string; k: 'same' | 'add' | 'del' }, right?: { t: string; k: 'same' | 'add' | 'del' } }>
+    const ops = computeUnifiedDiff(currentYaml, compareYaml)
+    const rows: Array<{ left?: { t: string; k: 'same' | 'add' | 'del' }, right?: { t: string; k: 'same' | 'add' | 'del' } }> = []
+    ops.forEach(o => {
+      if (o.type === 'same') {
+        rows.push({ left: { t: o.text, k: 'same' }, right: { t: o.text, k: 'same' } })
+      } else if (o.type === 'del') {
+        rows.push({ left: { t: o.text, k: 'del' }, right: undefined })
+      } else {
+        rows.push({ left: undefined, right: { t: o.text, k: 'add' } })
+      }
+    })
+    return rows
+  }, [currentYaml, compareYaml])
+
+  // 当前服务所有版本选项
+  const compareOptions = useMemo(() => {
+    if (!currentRecord) return [] as { label: string; value: string }[]
+    return items
+      .filter(i => i.name === currentRecord.name)
+      .sort((a,b)=> Number(b.version)-Number(a.version))
+      .map(v => ({ label: `v${v.version}`, value: v.version }))
+  }, [items, currentRecord])
+
+  const initCompareFor = (record: DeploymentItem): void => {
+    const versions = items
+      .filter(i => i.name === record.name)
+      .sort((a,b)=> Number(b.version)-Number(a.version))
+    if (versions.length <= 1) {
+      setCompareVersion(undefined)
+      setCompareYaml('')
+      return
+    }
+    const latest = versions[0]
+    const candidate = latest.version === record.version ? versions[1] : latest
+    setCompareVersion(candidate.version)
+    setCompareYaml(candidate.yaml)
+  }
 
   // 右侧表格数据：根据 Tree 选择与搜索进行过滤
   const filteredItems = useMemo(() => {
     // 仅当选择 deployment 分类时展示（示例逻辑，可扩展）
-    const inScope = activeTreeKey === 'deployment' ? allItems : []
+    const inScope = activeTreeKey === 'deployment' ? items : []
     const byName = (() => {
       const kw = searchKeyword.trim().toLowerCase()
       if (!kw) return inScope
@@ -256,21 +373,25 @@ export default function YamlViewer() {
     const byNs = selectedNamespace
       ? byName.filter(item => item.namespace === selectedNamespace)
       : byName
-    // 取最新版本：按 name 分组，取 version 最大或 createdAt 最新
-    const latestMap = new Map<string, DeploymentItem>()
+    // 选择“当前生效版本”：若存在 currentVersionByName 指定则优先，否则取最大版本
+    const selectedMap = new Map<string, DeploymentItem>()
     byNs.forEach(item => {
-      const existing = latestMap.get(item.name)
-      if (!existing) {
-        latestMap.set(item.name, item)
+      const preferred = currentVersionByName[item.name]
+      if (preferred) {
+        if (item.version === preferred) selectedMap.set(item.name, item)
+        else if (!selectedMap.get(item.name)) {
+          // 先占位，后续若遇到指定版本会覆盖
+          selectedMap.set(item.name, item)
+        }
       } else {
-        // 简单按 version 字符比较；若需改可用日期
-        if (Number(item.version) > Number(existing.version)) {
-          latestMap.set(item.name, item)
+        const existing = selectedMap.get(item.name)
+        if (!existing || Number(item.version) > Number(existing.version)) {
+          selectedMap.set(item.name, item)
         }
       }
     })
-    return Array.from(latestMap.values())
-  }, [activeTreeKey, searchKeyword, selectedNamespace])
+    return Array.from(selectedMap.values()).filter(i => i && currentVersionByName[i.name] ? i.version === currentVersionByName[i.name] : true)
+  }, [activeTreeKey, searchKeyword, selectedNamespace, items, currentVersionByName])
 
   const columns: ColumnsType<DeploymentItem> = [
     {
@@ -289,7 +410,13 @@ export default function YamlViewer() {
       title: '版本',
       dataIndex: 'version',
       key: 'version',
-      width: 160
+      width: 160,
+      render: (v: string, r) => (
+        <Space>
+          <span>v{v}</span>
+          {currentVersionByName[r.name] === v && <Tag color="processing">当前生效</Tag>}
+        </Space>
+      )
     },
     {
       title: '更新时间',
@@ -300,20 +427,31 @@ export default function YamlViewer() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 300,
       render: (_, record) => (
         <Space>
           <Tooltip title="查看 YAML">
             <Button type="link" onClick={() => {
               setCurrentYaml(record.yaml)
               setCurrentTitle(record.name)
+              setCurrentRecord(record)
+              initCompareFor(record)
               setDrawerOpen(true)
-            }}>查看yaml</Button>
+            }}>查看</Button>
+          </Tooltip>
+          {/* 移除单独“对比”弹窗入口，保留并排查看中的对比 */}
+          <Tooltip title="编辑 YAML">
+            <Button type="link" onClick={() => {
+              setEditOpen(true)
+              setEditTitle(`${record.name} v${record.version}`)
+              setEditYaml(record.yaml)
+              setEditBase(record)
+            }}>编辑</Button>
           </Tooltip>
           <Tooltip title="历史版本">
             <Button type="link" onClick={() => {
               // 收集同名历史版本并打开历史抽屉
-              const history = allItems.filter(i => i.name === record.name && i.version !== record.version)
+              const history = items.filter(i => i.name === record.name && i.version !== record.version)
               setHistoryList(history.sort((a,b)=> Number(b.version)-Number(a.version)))
               setHistoryTitle(record.name)
               setHistoryOpen(true)
@@ -326,7 +464,7 @@ export default function YamlViewer() {
 
   return (
     <Space align="start" size={16} style={{ width: '100%' }}>
-      <Card style={{ width: 280, flexShrink: 0 }} bodyStyle={{ padding: 12 }}>
+      <Card style={{ width: 280, flexShrink: 0 }} styles={{ body: { padding: 12 } }}>
         <div style={{ marginBottom: 8, fontWeight: 600 }}>Yaml列表</div>
         <Tree
           showIcon
@@ -344,7 +482,7 @@ export default function YamlViewer() {
         />
       </Card>
 
-      <Card style={{ flex: 1, minWidth: 0 }} bodyStyle={{ padding: 12 }}>
+      <Card style={{ flex: 1, minWidth: 0 }} styles={{ body: { padding: 12 } }}>
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Space wrap>
           <Select
@@ -365,7 +503,7 @@ export default function YamlViewer() {
             />
           </Space>
           <Table
-            rowKey="key"
+            rowKey={(r) => `${r.key}-${r.version}`}
             columns={columns}
             dataSource={filteredItems}
             // 开启横向自适应，在列内容较多或容器变窄时可横向滚动
@@ -386,68 +524,117 @@ export default function YamlViewer() {
           </Space>
         }
         placement="right"
-        width={560}
+        width={980}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        extra={
-          // 图标按钮：CopyOutlined 表示“复制全部 YAML”
-          <Tooltip title="复制 YAML">
-            <Button
-              type="text"
-              icon={<CopyOutlined />}
-              onClick={async () => {
-                // 一键复制：将 YAML 文本写入剪贴板，给出反馈
-                try {
-                  await navigator.clipboard.writeText(currentYaml)
-                  message.success('已复制到剪贴板')
-                } catch {
-                  message.error('复制失败，请手动复制')
-                }
-              }}
-            />
-          </Tooltip>
-        }
+        // Drawer 级别复制按钮移除，改到右侧 YAML 卡片的右上角
       >
-        {/* 使用等宽字体与轻微动效增强可读性与质感 */}
-        <Typography.Paragraph style={{
-          background: 'rgba(197, 216, 235, 0.35)',
-          color: '#2d3436',
-          borderRadius: 8,
-          padding: 16,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          boxShadow: 'inset 0 0 0 1px rgba(211, 220, 229, 0.55)',
-          transition: 'box-shadow 0.25s ease',
-        }}
-          onMouseEnter={e => (e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(197, 216, 235, 0.81)')}
-          onMouseLeave={e => (e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(211, 220, 229, 0.66)')}
-        >
-{currentYaml}
-        </Typography.Paragraph>
+        {/* 顶部选择对比版本 */}
+        <Space style={{ marginBottom: 12 }}>
+          <span style={{ color: '#697b8c' }}>对比版本：</span>
+          <Select
+            style={{ minWidth: 160 }}
+            placeholder="选择版本"
+            value={compareVersion}
+            options={compareOptions}
+            onChange={(v) => {
+              setCompareVersion(v)
+              const found = items.find(i => i.name === currentRecord?.name && i.version === v)
+              setCompareYaml(found?.yaml || '')
+            }}
+          />
+        </Space>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {/* 左：当前版本 */}
+          <div>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>当前版本 {currentRecord ? `v${currentRecord.version}` : ''}</div>
+            <div style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              fontSize: 12,
+              background: '#0b1020', color: '#e6f7ff', borderRadius: 8, padding: 12,
+              maxHeight: 520, overflow: 'auto', boxShadow: 'inset 0 0 0 1px rgba(211,220,229,0.35)', position: 'relative'
+            }}>
+              <Tooltip title="复制左侧 YAML">
+                <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => copyText(currentYaml)}
+                  style={{ position: 'absolute', top: 6, right: 6, color: '#fff', background: 'transparent' }}
+                />
+              </Tooltip>
+              {sideBySide.map((row, idx) => (
+                <div key={idx} style={{
+                  whiteSpace: 'pre-wrap',
+                  background: row.left?.k === 'del' ? 'rgba(245,34,45,0.18)' : 'transparent',
+                  color: row.left?.k === 'del' ? '#ffccc7' : '#e6f7ff'
+                }}>
+                  {(row.left?.k === 'del' ? '- ' : '  ') + (row.left?.t ?? '')}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 右：对比版本 */}
+          <div>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>对比版本 {compareVersion ? `v${compareVersion}` : ''}</div>
+            <div style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+              fontSize: 12,
+              background: '#0b1020', color: '#e6f7ff', borderRadius: 8, padding: 12,
+              maxHeight: 520, overflow: 'auto', boxShadow: 'inset 0 0 0 1px rgba(211,220,229,0.35)', position: 'relative'
+            }}>
+              <Tooltip title="复制右侧 YAML">
+                <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => copyText(compareYaml)}
+                  style={{ position: 'absolute', top: 6, right: 6, color: '#fff', background: 'transparent' }}
+                />
+              </Tooltip>
+              {sideBySide.map((row, idx) => (
+                <div key={idx} style={{
+                  whiteSpace: 'pre-wrap',
+                  background: row.right?.k === 'add' ? 'rgba(209, 228, 236, 0.37)' : 'transparent',
+                  color: row.right?.k === 'add' ? '#b7eb8f' : '#e6f7ff'
+                }}>
+                  {(row.right?.k === 'add' ? '+ ' : '  ') + (row.right?.t ?? '')}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </Drawer>
 
-      {/* 历史版本 Drawer */}
+      {/* 历史版本 Drawer（样式与查看 Drawer 保持一致） */}
       <Drawer
         title={<Space><HistoryOutlined /><span>{`历史版本 - ${historyTitle}`}</span></Space>}
         placement="right"
-        width={560}
+        width={980}
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
       >
         <Table
-          rowKey="key"
+          rowKey={(r) => `${r.key}-${r.version}`}
           size="small"
           columns={[
-            { title: '版本', dataIndex: 'version', key: 'version', width: 120 },
+            { title: '版本', dataIndex: 'version', key: 'version', width: 160, render: (v: string, r: DeploymentItem) => (
+              <Space>
+                <span>v{v}</span>
+                {currentVersionByName[r.name] === v && <Tag color="processing">当前生效</Tag>}
+              </Space>
+            ) },
             { title: '更新时间', dataIndex: 'createdAt', key: 'createdAt', width: 200 },
             {
-              title: '操作', key: 'op', width: 120, render: (_, r) => (
-                <Button type="link" onClick={() => {
-                  setCurrentYaml(r.yaml)
-                  setCurrentTitle(`${r.name} v${r.version}`)
-                  setDrawerOpen(true)
-                }}>查看</Button>
+              title: '操作', key: 'op', width: 220, render: (_, r) => (
+                <Space>
+                  <Button type="link" onClick={() => {
+                    setHistoryOpen(false)
+                    setCurrentYaml(r.yaml)
+                    setCurrentTitle(`${r.name} v${r.version}`)
+                    setCurrentRecord(r)
+                    initCompareFor(r)
+                    setDrawerOpen(true)
+                  }}>查看</Button>
+                  <Button type="link" onClick={() => {
+                    setRollbackTarget(r)
+                    setRollbackChecked(false)
+                    setRollbackOpen(true)
+                  }}>回滚</Button>
+                </Space>
               )
             }
           ]}
@@ -455,6 +642,116 @@ export default function YamlViewer() {
           pagination={false}
         />
       </Drawer>
+
+      {/* 回滚确认 Modal（使用受控方式，避免被 Drawer 遮挡） */}
+      <Modal
+        open={rollbackOpen}
+        onCancel={() => setRollbackOpen(false)}
+        title={rollbackTarget ? `确认回滚至 v${rollbackTarget.version}？` : '确认回滚'}
+        okText="确认回滚"
+        cancelText="取消"
+        centered
+        maskClosable={false}
+        zIndex={2000}
+        onOk={() => {
+          if (!rollbackTarget) return
+          if (!rollbackChecked) { message.warning('请先勾选确认复选框'); return }
+          const serviceName = rollbackTarget.name
+          const toVersion = rollbackTarget.version
+          setCurrentVersionByName(prev => ({ ...prev, [serviceName]: toVersion }))
+          setRollbackOpen(false)
+          message.success(`已将 ${serviceName} 回滚至 v${toVersion}`)
+          // 回滚后：若查看抽屉处于打开状态且当前记录为此服务，则刷新默认对比目标为最新版本或上一个版本
+          if (drawerOpen && currentRecord && currentRecord.name === serviceName) {
+            const cur = items.find(i => i.name === serviceName && i.version === (currentRecord?.version || ''))
+            if (cur) {
+              initCompareFor(cur)
+            }
+          }
+        }}
+      >
+        <div>
+          <div>
+            本次将把「{rollbackTarget?.name}」在「{rollbackTarget?.namespace}」环境的当前生效版本切换为 v{rollbackTarget?.version}。
+          </div>
+          <div style={{ marginTop: 8 }}>
+            回滚会立即生效，可能引发短时不可用或功能回退，请确认业务已评估风险。
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Checkbox checked={rollbackChecked} onChange={(e)=> setRollbackChecked(e.target.checked)}>
+              我已评估影响并确认业务可回滚
+            </Checkbox>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 编辑 Drawer */}
+      <Drawer
+        title={<span>编辑 YAML - {editTitle}</span>}
+        placement="right"
+        width={720}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        extra={
+          <Space>
+            <Button onClick={() => setEditOpen(false)}>取消</Button>
+            <Button type="primary" onClick={() => { setPublishChecked(false); setPublishOpen(true) }}>更新</Button>
+          </Space>
+        }
+      >
+        <Input.TextArea
+          value={editYaml}
+          onChange={(e) => setEditYaml(e.target.value)}
+          rows={22}
+          style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}
+          placeholder="在此编辑 YAML 内容..."
+        />
+      </Drawer>
+
+      {/* 更新确认 Modal（发布并生效） */}
+      <Modal
+        open={publishOpen}
+        onCancel={() => setPublishOpen(false)}
+        title={editBase ? `确认更新至 v${nextVersionFor(editBase.name)}？` : '确认更新'}
+        okText="确认更新"
+        cancelText="取消"
+        centered
+        maskClosable={false}
+        zIndex={2000}
+        onOk={async () => {
+          if (!editBase) { setPublishOpen(false); return }
+          if (!publishChecked) { message.warning('请先勾选确认复选框'); return }
+          const newItem: DeploymentItem = {
+            ...editBase,
+            yaml: editYaml,
+            version: nextVersionFor(editBase.name),
+            createdAt: formatNow()
+          }
+          // 写入新版本并切换生效版本
+          setItems(prev => [newItem, ...prev])
+          setCurrentVersionByName(prev => ({ ...prev, [newItem.name]: newItem.version }))
+          await applyYamlToCluster(newItem.name, newItem.namespace, newItem.yaml)
+          if (drawerOpen && currentRecord && currentRecord.name === newItem.name) {
+            setCurrentRecord(newItem)
+            setCurrentYaml(newItem.yaml)
+            initCompareFor(newItem)
+          }
+          setEditOpen(false)
+          setPublishOpen(false)
+          message.success(`已更新至 v${newItem.version} 并应用到 K8s（示例）`)
+        }}
+      >
+        <div>
+          <div>
+            将更新「{editBase?.name}」（{editBase?.namespace}），更新会立即生效，可能影响业务，请确认风险已评估。
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Checkbox checked={publishChecked} onChange={(e)=> setPublishChecked(e.target.checked)}>我已评估影响并确认更新</Checkbox>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 独立 Diff 弹窗已去除，保留在查看 Drawer 中的并排对比 */}
     </Space>
   )
 }
