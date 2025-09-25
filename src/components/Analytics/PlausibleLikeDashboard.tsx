@@ -427,13 +427,13 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
                 innerRadius={0.4}
                 label={{
                   type: 'outer',
-                  formatter: (datum: any) => `${datum.type}: ${datum.count || 0} (${datum.percent || 0}%)`,
+                  formatter: (datum: ErrorTypeData) => `${datum.type}: ${datum.count ?? 0} (${datum.percent ?? 0}%)`,
                   style: { fontSize: 12 }
                 }}
                 tooltip={{
-                  formatter: (datum: any) => ({
+                  formatter: (datum: ErrorTypeData) => ({
                     name: datum.type,
-                    value: `${datum.count || 0} 次 (${datum.percent || 0}%)`
+                    value: `${datum.count ?? 0} 次 (${datum.percent ?? 0}%)`
                   })
                 }}
                 color={['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6']}
