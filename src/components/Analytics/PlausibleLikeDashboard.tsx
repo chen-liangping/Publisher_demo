@@ -14,6 +14,8 @@ interface ActiveTrendData { date: string; dau: number; wau: number; mau: number 
 interface SuccessRateData { operation: string; success: number; failure: number; rate: number }
 interface ErrorTypeData { type: string; count: number; percent: number }
 interface FunctionRankData { function: string; count: number; trend: 'up' | 'down' | 'stable' }
+// 分组柱状图数据类型
+interface SuccessFailDatum { operation: string; amount: number; category: '成功' | '失败' }
 
 // 保留原有接口用于兼容
 interface SourceRow { source: string; visitors: number; percent: number }
@@ -49,13 +51,25 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
     return points
   }, [site, period, range])
 
-  const lineConfig = {
+  const lineConfig: {
+    data: Point[]
+    xField: 't'
+    yField: 'v'
+    smooth: boolean
+    legend: boolean
+    padding: [number, number, number, number]
+    xAxis: { tickCount: number; nice: boolean; grid: { line: { style: { stroke: string } } }; label: null }
+    yAxis: { nice: boolean; grid: { line: { style: { stroke: string } } }; label: null }
+    lineStyle: { stroke: string; lineWidth: number }
+    area: { style: { fill: string } }
+    tooltip: { showMarkers: boolean }
+  } = {
     data: lineData,
     xField: 't',
     yField: 'v',
     smooth: true,
     legend: false,
-    padding: [8, 8, 8, 8] as any,
+    padding: [8, 8, 8, 8],
     xAxis: {
       tickCount: 8,
       nice: true,
@@ -118,7 +132,7 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
   const actions: ActionRow[] = useMemo(() => actionNames.map(a => ({ action: a, count: Math.round(Math.random()*300+10) })), [])
 
   // 成功/失败 分组柱状图数据（显式定义，避免运行时被覆盖）
-  const successFailData = useMemo(() => (
+  const successFailData: SuccessFailDatum[] = useMemo(() => (
     [
       { operation: '文件上传', amount: 85, category: '成功' },
       { operation: '文件上传', amount: 15, category: '失败' },
@@ -140,8 +154,9 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
   console.log('successFailData', successFailData)
   // 方便在浏览器控制台查看：输入 __successFailData 回车
   if (typeof window !== 'undefined') {
-    ;(window as any).__successFailData = successFailData
-    ;(window as any).successFailData = successFailData
+    const w = window as unknown as { __successFailData?: SuccessFailDatum[]; successFailData?: SuccessFailDatum[] }
+    w.__successFailData = successFailData
+    w.successFailData = successFailData
   }
 
   // AppID 点击次数 TOP10（使用指定的 10 个 AppID）
@@ -382,14 +397,14 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
                 seriesField="category"
                 isGroup
                 height={300}
-                padding={[4, 4, 4, 4] as any}
+                padding={[4, 4, 4, 4]}
                 xAxis={{ label: { autoRotate: true } }}
                 yAxis={{ grid: { line: { style: { stroke: '#eef2f7' } } } }}
-                color={(d: any) => (d.category === '成功' ? '#10b981' : '#ef4444')}
+                color={(d: SuccessFailDatum) => (d.category === '成功' ? '#10b981' : '#ef4444')}
                 legend={{ position: 'top' }}
                 label={{
                   position: 'top',
-                  text: (d: any) => `${d?.amount ?? 0}`
+                  text: (d: SuccessFailDatum) => `${d.amount ?? 0}`
                 }}
                 meta={{
                   amount: { alias: '次数', type: 'linear', nice: true },
@@ -407,7 +422,7 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
                 angleField="count"
                 colorField="type"
                 height={300}
-                padding={[4, 4, 4, 4] as any}
+                padding={[4, 4, 4, 4]}
                 radius={0.8}
                 innerRadius={0.4}
                 label={{
