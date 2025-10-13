@@ -389,7 +389,7 @@ export default function ContainerDatabase() {
                 <Button
                   type="primary"
                   onClick={() => setShowAddWL(true)}
-                  disabled={(whitelistInstance && (whitelistMap[whitelistInstance.id]?.length || 0) >= 10)}
+                  disabled={!!whitelistInstance && ( (whitelistMap[whitelistInstance.id]?.length || 0) >= 10 )}
                 >
                   添加白名单
                 </Button>
