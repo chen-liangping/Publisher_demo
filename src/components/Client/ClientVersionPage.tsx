@@ -221,20 +221,12 @@ export default function ClientVersionPage() {
       width: 320,
       render: (v: string, record) => (
         <Space size={8}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}> {/* 游戏版本 */}
             <Button type="link" onClick={() => handleEnterVersion(record.version)}>
               <Text strong>{v}</Text>
             </Button>
-            {record.translationStatus === 'done' && (
-              <Tooltip title="翻译完成，文本生效需要1-2分钟" placement="right" trigger={["click"]}>
-                <Text style={{ marginLeft: 20, color: '#52c41a', cursor: 'pointer' }}>翻译完成</Text>
-              </Tooltip>
-            )}
+          {record.isCurrent && <Tag color="blue">当前版本</Tag>} {/* 当前版本 */}
           </span>
-          {record.translationStatus === 'syncing' && (
-            <Tag color="gold">翻译同步中</Tag>
-          )}
-          {record.isCurrent && <Tag color="blue">当前版本</Tag>}
         </Space>
       )
     },

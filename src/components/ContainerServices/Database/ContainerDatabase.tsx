@@ -14,6 +14,10 @@ import {
   Input,
   Select,
   message,
+  Drawer,
+  Tabs,
+  Alert,
+  Avatar
 } from 'antd'
 import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
@@ -46,6 +50,24 @@ interface DBInstance {
   shardSpec?: string
   mangoCount?: number
   shardCount?: number
+}
+
+// 白名单条目类型
+interface WhitelistItem {
+  ip: string
+  user: string
+  timeISO: string
+  remark?: string
+}
+
+// 审计条目类型（简化）
+interface AuditItem {
+  action: 'add' | 'delete'
+  ip: string
+  timeISO: string
+  user: string
+  remark?: string
+  status?: '成功' | '失败'
 }
 
 // 模拟自动注入的 gameId（原型）
@@ -93,6 +115,15 @@ export default function ContainerDatabase() {
   }, [selectedType, archValue, form])
   // message hook to avoid global message.destroy compatibility issues
   const [messageApi, contextHolder] = message.useMessage()
+
+  // 白名单 Drawer 相关状态
+  const [whitelistOpen, setWhitelistOpen] = useState<boolean>(false)
+  const [whitelistInstance, setWhitelistInstance] = useState<DBInstance | null>(null)
+  const [whitelistMap, setWhitelistMap] = useState<Record<string, WhitelistItem[]>>({})
+  const [auditMap, setAuditMap] = useState<Record<string, AuditItem[]>>({})
+  const [wlActiveTab, setWlActiveTab] = useState<'whiteList' | 'audit'>('whiteList')
+  const [showAddWL, setShowAddWL] = useState<boolean>(false)
+  const [wlForm] = Form.useForm()
 
   // 复制密码的安全封装函数（兼容无 clipboard 的环境）
   const copyPassword = (pwd?: string) => {
@@ -203,7 +234,15 @@ export default function ContainerDatabase() {
             <Button type="text" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${record.alias}（模拟）`)} />
           </Tooltip>
           <Tooltip title="加白名单">
-            <Button type="text" icon={<UserAddOutlined />} onClick={() => message.info(`为 ${record.alias} 加白名单（模拟）`)} />
+            <Button
+              type="text"
+              icon={<UserAddOutlined />}
+              onClick={() => {
+                setWhitelistInstance(record)
+                setWhitelistOpen(true)
+                setWlActiveTab('whiteList')
+              }}
+            />
           </Tooltip>
           <Tooltip title="数据库恢复">
             <Button type="text" icon={<RollbackOutlined />} onClick={() => message.info(`恢复 ${record.alias}（模拟）`)} />
@@ -314,6 +353,159 @@ export default function ContainerDatabase() {
 
         </>
       )}
+
+      {/* 白名单 Drawer */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar shape="square" style={{ background: 'rgba(0,0,0,0.04)' }}>
+              {whitelistInstance?.type?.[0] || 'DB'}
+            </Avatar>
+            <div>
+              <span style={{ fontSize: 16, color: '#111928', fontWeight: 600 }}>
+                {whitelistInstance?.type}
+                <span style={{ color: 'rgba(0,0,0,0.45)', marginLeft: 4 }}>{whitelistInstance?.alias}</span>
+              </span>
+            </div>
+          </div>
+        }
+        open={whitelistOpen}
+        onClose={() => setWhitelistOpen(false)}
+        width={720}
+        destroyOnClose
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="最多支持添加10条白名单IP地址"
+          style={{ marginBottom: 12 }}
+        />
+        <Tabs
+          activeKey={wlActiveTab}
+          onChange={(key) => setWlActiveTab(key as 'whiteList' | 'audit')}
+          tabBarExtraContent={{
+            right: (
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={() => setShowAddWL(true)}
+                  disabled={(whitelistInstance && (whitelistMap[whitelistInstance.id]?.length || 0) >= 10)}
+                >
+                  添加白名单
+                </Button>
+              </Space>
+            )
+          }}
+          items={[
+            {
+              key: 'whiteList',
+              label: 'IP白名单',
+              children: (
+                <Table<WhitelistItem>
+                  columns={[
+                    { title: 'IP地址', dataIndex: 'ip', key: 'ip' },
+                    { title: '添加人', dataIndex: 'user', key: 'user', width: 160 },
+                    { title: '添加时间', dataIndex: 'timeISO', key: 'timeISO', width: 200, render: (t: string) => new Date(t).toLocaleString() },
+                    { title: '备注', dataIndex: 'remark', key: 'remark' },
+                    {
+                      title: '操作', key: 'actions', width: 100,
+                      render: (_: unknown, recordRow: WhitelistItem) => (
+                        <Space size={8}>
+                          <Button type="link" danger onClick={() => {
+                            const inst = whitelistInstance
+                            if (!inst) return
+                            setWhitelistMap((prev) => {
+                              const list = (prev[inst.id] || []).filter(it => it.ip !== recordRow.ip)
+                              return { ...prev, [inst.id]: list }
+                            })
+                            setAuditMap((prev) => {
+                              const list = prev[inst.id] || []
+                              const next: AuditItem = { action: 'delete', ip: recordRow.ip, timeISO: new Date().toISOString(), user: recordRow.user, remark: recordRow.remark }
+                              return { ...prev, [inst.id]: [next, ...list] }
+                            })
+                          }}>删除</Button>
+                        </Space>
+                      )
+                    }
+                  ]}
+                  dataSource={whitelistInstance ? (whitelistMap[whitelistInstance.id] || []) : []}
+                  rowKey={(r) => r.ip}
+                  locale={{ emptyText: '暂无内容' }}
+                  pagination={false}
+                />
+              )
+            },
+            {
+              key: 'audit',
+              label: '操作日志',
+              children: (
+                <Table<AuditItem>
+                  columns={[
+                    { title: 'IP地址', dataIndex: 'ip', key: 'ip', width: 180 },
+                    { title: '操作人', dataIndex: 'user', key: 'user', width: 120 },
+                    { title: '状态', dataIndex: 'status', key: 'status', width: 120, render: (s?: '成功'|'失败') => s ? <Tag color={s === '成功' ? 'green' : 'red'}>{s}</Tag> : '-' },
+                    { title: '操作', dataIndex: 'action', key: 'action', width: 100, render: (a: 'add'|'delete') => a === 'add' ? <Tag color="green">添加</Tag> : <Tag color="red">删除</Tag> },
+                    { title: '操作时间', dataIndex: 'timeISO', key: 'timeISO', width: 200, render: (t: string) => new Date(t).toLocaleString() },
+                  ]}
+                  dataSource={whitelistInstance ? (auditMap[whitelistInstance.id] || []) : []}
+                  rowKey={(_r, idx) => String(idx)}
+                  locale={{ emptyText: '暂无内容' }}
+                  pagination={false}
+                />
+              )
+            }
+          ]}
+        />
+      </Drawer>
+
+      {/* 添加白名单弹窗 */}
+      <Modal
+        title="添加白名单"
+        open={showAddWL}
+        onCancel={() => setShowAddWL(false)}
+        onOk={async () => {
+          try {
+            const vals = await wlForm.validateFields()
+            const inst = whitelistInstance
+            if (!inst) return
+            const entry: WhitelistItem = {
+              ip: vals.ip.trim(),
+              user: 'admin',
+              timeISO: new Date().toISOString(),
+              remark: vals.remark?.trim()
+            }
+            setWhitelistMap((prev) => {
+              const list = prev[inst.id] || []
+              // 去重
+              if (list.some(it => it.ip === entry.ip)) {
+                messageApi.warning('该 IP 已存在')
+                return prev
+              }
+              const next = [entry, ...list].slice(0, 10)
+              return { ...prev, [inst.id]: next }
+            })
+            setAuditMap((prev) => {
+              const list = prev[inst.id] || []
+              const next: AuditItem = { action: 'add', ip: entry.ip, timeISO: entry.timeISO, user: entry.user, remark: entry.remark }
+              return { ...prev, [inst.id]: [next, ...list] }
+            })
+            setShowAddWL(false)
+            wlForm.resetFields()
+            messageApi.success('添加成功')
+          } catch {
+            // ignore
+          }
+        }}
+      >
+        <Form form={wlForm} layout="vertical">
+          <Form.Item name="ip" label="IP地址" rules={[{ required: true, message: '请输入 IP 地址' }, { pattern: /^(?:\d{1,3}\.){3}\d{1,3}$/, message: 'IP 地址格式不正确' }]}>
+            <Input placeholder="例如：192.168.1.10" />
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <Input placeholder="选填" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal title="添加数据库实例" open={showCreate} onOk={handleCreate} onCancel={() => setShowCreate(false)}>
         <Form form={form} layout="vertical">
