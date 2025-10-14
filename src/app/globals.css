@@ -1,3 +1,4 @@
+@reference 'tailwindcss';
 /* 配置按钮缺少机器人时的轻微呼吸动效 */
 .alert-config-pulse {
   animation: alertPulse 1.2s ease-in-out infinite;
@@ -16,7 +17,7 @@
 
 /* 全局样式 */
 body {
-  @apply bg-gray-50;
+  @apply bg-slate-50;
 }
 
 /* 自定义工具类 */

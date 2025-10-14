@@ -43,6 +43,7 @@ interface AddTaskFormValues {
   name: string
   imageRepoName: string
   tag: string
+  scheduleType: 'daily' | 'manual'
   hour: number
   minute: number
   entrypoint: string
@@ -61,13 +62,23 @@ export default function Task(): React.ReactElement {
     imageVersion: 'proxyman:v1.0.5',
     schedule: '每天 0 时 0 分',
     // 这里模拟最近 10 次执行状态历史（红点代表失败）
-    statusHistory: ['error','error','error','error','error','error','error','error','error','error'],
+    statusHistory: ['error','error','success','success','success','error','error','error','error','error'],
+    enabled: true
+  },{
+    id: 'demo2',
+    name: 'demo2',
+    entrypoint: 'echo "demo2"',
+    imageVersion: 'proxyman:v1.0.5',
+    schedule: '手动执行',
+    // 这里模拟最近 10 次执行状态历史（红点代表失败）
+    statusHistory: ['success','success','error','error','success','success','success','success','success','success'],
     enabled: true
   }])
 
   // 添加任务 Drawer 状态
   const [addOpen, setAddOpen] = useState(false)
   const [form] = Form.useForm<AddTaskFormValues>()
+  const scheduleType = Form.useWatch('scheduleType', form) as 'daily' | 'manual' | undefined
 
   // 详情 Drawer 状态
   const [detailOpen, setDetailOpen] = useState(false)
@@ -83,7 +94,7 @@ export default function Task(): React.ReactElement {
   const handleSubmitAdd = async () => {
     // 交互说明：校验表单并写入表格数据
     const values = await form.validateFields()
-    const scheduleText = `每天 ${values.hour} 时 ${values.minute} 分`
+    const scheduleText = values.scheduleType === 'manual' ? '手动执行' : `每天 ${values.hour} 时 ${values.minute} 分`
     const newTask: TaskItem = {
       id: `${values.name}-${Date.now()}`,
       name: values.name,
@@ -111,7 +122,6 @@ export default function Task(): React.ReactElement {
   // 更多操作菜单项
   const moreMenuItems = useMemo(() => ([
     { key: 'view', label: '查看记录' },
-    { key: 'run-once', label: '执行一次' },
     { key: 'edit', label: '编辑' },
     { key: 'delete', label: '删除' }
   ]), [])
@@ -140,8 +150,9 @@ export default function Task(): React.ReactElement {
         name: record.name,
         imageRepoName: record.imageVersion.split(':')[0],
         tag: record.imageVersion.split(':')[1] || 'latest',
-        hour: extractHour(record.schedule),
-        minute: extractMinute(record.schedule),
+        scheduleType: record.schedule === '手动执行' ? 'manual' : 'daily',
+        hour: record.schedule === '手动执行' ? 0 : extractHour(record.schedule),
+        minute: record.schedule === '手动执行' ? 0 : extractMinute(record.schedule),
         entrypoint: record.entrypoint,
         concurrencyPolicy: 'Forbid'
       })
@@ -210,12 +221,16 @@ export default function Task(): React.ReactElement {
       width: 120,
       render: (_: unknown, record: TaskItem) => (
         <Space size={12}>
-          {/* 仅图标开关：开启/关闭任务 */}
-          <Switch
-            checked={record.enabled}
-            onChange={(checked) => handleToggleEnabled(record.id, checked)}
-          />
-          {/* 仅图标按钮：更多操作（编辑、删除、执行一次） */}
+          {/* 当为“手动执行”时，开关替换为“执行任务”按钮；否则保留开关 */}
+          {record.schedule === '手动执行' ? (
+            <Button type="link" onClick={() => handleMoreAction('run-once', record)}>执行任务</Button>
+          ) : (
+            <Switch
+              checked={record.enabled}
+              onChange={(checked) => handleToggleEnabled(record.id, checked)}
+            />
+          )}
+          {/* 仅图标按钮：更多操作（查看记录、编辑、删除） */}
           <Dropdown
             menu={{
               items: moreMenuItems,
@@ -292,6 +307,7 @@ export default function Task(): React.ReactElement {
           initialValues={{
             imageRepoName: 'proxyman',
             tag: 'v1.0.5',
+          scheduleType: 'daily',
             hour: 0,
             minute: 0,
             concurrencyPolicy: 'Forbid'
@@ -336,29 +352,40 @@ export default function Task(): React.ReactElement {
           <Form.Item label="执行计划" required>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                <Select
-                  value="每天定时执行（北京时间）"
-                  options={[{ value: '每天定时执行（北京时间）', label: '每天定时执行（北京时间）' }]}
-                  style={{ width: 240 }}
-                />
-                <Space.Compact>
-                  <Button disabled style={{ color: 'rgba(0,0,0,0.88)', cursor: 'default' }}>每 天</Button>
-                  <Form.Item name="hour" noStyle rules={[{ required: true, message: '请输入时' }]}>
-                    <InputNumber min={0} max={23} />
-                  </Form.Item>
-                  <div className="g123-input-number-group-addon">时</div>
-                </Space.Compact>
-                <Space.Compact>
-                  <Form.Item name="minute" noStyle rules={[{ required: true, message: '请输入分' }]}>
-                    <InputNumber min={0} max={59} />
-                  </Form.Item>
-                  <div className="g123-input-number-group-addon">分</div>
-                  <Button disabled style={{ color: 'rgba(0,0,0,0.88)', cursor: 'default' }}>定时执行</Button>
-                </Space.Compact>
+                <Form.Item name="scheduleType" noStyle rules={[{ required: true, message: '请选择执行计划' }]}> 
+                  <Select
+                    placeholder="请选择执行计划"
+                    options={[
+                      { value: 'daily', label: '每天定时执行（北京时间）' },
+                      { value: 'manual', label: '手动执行' }
+                    ]}
+                    style={{ width: 240 }}
+                  />
+                </Form.Item>
+                {scheduleType !== 'manual' && (
+                  <>
+                    <Space.Compact>
+                      <Button disabled style={{ color: 'rgba(0,0,0,0.88)', cursor: 'default' }}>每 天</Button>
+                      <Form.Item name="hour" noStyle rules={[{ required: true, message: '请输入时' }]}> 
+                        <InputNumber min={0} max={23} />
+                      </Form.Item>
+                      <div className="g123-input-number-group-addon">时</div>
+                    </Space.Compact>
+                    <Space.Compact>
+                      <Form.Item name="minute" noStyle rules={[{ required: true, message: '请输入分' }]}> 
+                        <InputNumber min={0} max={59} />
+                      </Form.Item>
+                      <div className="g123-input-number-group-addon">分</div>
+                      <Button disabled style={{ color: 'rgba(0,0,0,0.88)', cursor: 'default' }}>定时执行</Button>
+                    </Space.Compact>
+                  </>
+                )}
               </div>
-              <div>
-                <a target="_blank" rel="noreferrer">预览执行时间（最近7次）</a>
-              </div>
+              {scheduleType !== 'manual' && (
+                <div>
+                  <a target="_blank" rel="noreferrer">预览执行时间（最近7次）</a>
+                </div>
+              )}
             </div>
           </Form.Item>
 
@@ -377,15 +404,17 @@ export default function Task(): React.ReactElement {
             <Input placeholder="使用空格分隔，例：executable param1 param2" />
           </Form.Item>
 
-          <Form.Item label="并发逻辑" name="concurrencyPolicy">
-            <Select
-              options={[
-                { value: 'Forbid', label: '阻止并发' },
-                { value: 'Allow', label: '允许并发' },
-                { value: 'Replace', label: '替换并发' }
-              ]}
-            />
-          </Form.Item>
+          {scheduleType !== 'manual' && (
+            <Form.Item label="并发逻辑" name="concurrencyPolicy">
+              <Select
+                options={[
+                  { value: 'Forbid', label: '阻止并发' },
+                  { value: 'Allow', label: '允许并发' },
+                  { value: 'Replace', label: '替换并发' }
+                ]}
+              />
+            </Form.Item>
+          )}
         </Form>
       </Drawer>
       {/* 任务详情 Drawer */}
@@ -411,7 +440,9 @@ export default function Task(): React.ReactElement {
               <Descriptions.Item label="名称">{detailTask.name}</Descriptions.Item>
               <Descriptions.Item label="镜像版本">{detailTask.imageVersion}</Descriptions.Item>
               <Descriptions.Item label="执行计划">{detailTask.schedule}</Descriptions.Item>
-              <Descriptions.Item label="并发逻辑">阻止并发</Descriptions.Item>
+              {detailTask.schedule !== '手动执行' && (
+                <Descriptions.Item label="并发逻辑">阻止并发</Descriptions.Item>
+              )}
             </Descriptions>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -1,37 +1,91 @@
-管理台新增菜单，yaml 备份
-点击菜单后，进入内容页，内容页由tree架构组成，
+#  需求详情
+
+## 3.1 功能概述
+
+管理台新增 **【K8s YAML 管理】** 菜单，集中展示和管理平台内的 Kubernetes 资源 YAML 文件，支持分类展示、搜索，方便研发、运维统一查看。
+
+## 3.2 功能范围
+
+**支持的 YAML 类型（按资源类型分组展示）：**
+
+* Service
+* Deployment
+* Job
+* CronJob
+* Namespace
+* ConfigMap
+* PersistentVolumeClaim (PVC)
+* PersistentVolume (PV)
+* MseIngressConfig
+* IngressClass
+* Ingress
+* NetworkPolicy
+* HorizontalPodAutoscaler (HPA)
+
+> 注：后续可根据业务需要扩展更多资源类型。
+
+## 3.3 页面功能点（前端原型已实现）
+
+* **列表展示**
+  * 按资源类型分组
+  * 展示字段：资源名称、AppID（游戏）、版本号、最后更新时间
+  * 提供“查看 YAML”、“复制 YAML”操作按钮。
+* **搜索功能**
+  * **AppID 维度搜索**：按游戏维度快速定位相关资源。
+  * **名称模糊搜索**：模糊匹配资源名称。
+* **版本管理**
+  * 每次更新生成新版本，保留每一次 YAML 的快照，版本号从 1 开始递增。
+  * 支持“当前生效版本”标识：列表与历史版本中为生效版本显示徽标（current）。
+  * 支持“回滚为某历史版本（切换生效版本）”：选择历史版本 Vx 后，可确认回滚，生效版本切换为 Vx，历史仍保留其他版本（如 1 和 3）。
+  * 已经删除的 k8s 资源仍保留 YAML，可供查看与复制。
+* **YAML 操作**
+  * **查看**：在页面弹窗中并排展示“当前版本”和“对比版本”，默认与最新/上一个版本对比，行级差异高亮（左侧删除、右侧新增）。
+  * **切换对比版本**：在顶部下拉选择任意历史版本作为对比目标。
+  * **复制**：复制按钮位于每个 YAML 卡片内的右上角（分别复制当前/对比版本）。
+  * （可选）“只看差异”“同步滚动”等增强项按需扩展。
+* **YAML 展示规范**
+  * 使用等宽字体，保留缩进和空格。
+  * 支持语法高亮、行号、关键字折叠。
+  * 大文件采用懒加载或折叠显示数组字段（如 containers、rules）。
+
+    
+
+## 3.4 后端逻辑说明
+
+* **资源创建**
+  * 后端通过 **Kubernetes SDK** 直接在集群内创建和管理资源对象。
+  * 资源对象的实际 YAML 与版本号在数据库中留存一份记录，确保与集群状态一致。
+* **资源监听与收集**
+  * 阿里云侧实时 **监听集群资源变化**，同步最新状态。
+  * 对于自定义资源（CRD），平台会收集其 YAML 配置，统一存档。
+  * 确保“平台展示内容”与“K8s 实际资源”一致。
+* **数据一致性**
+  * 平台保存的 YAML 版本作为历史追溯，不会主动覆盖集群现有资源。
+  * 如果用户直接在集群修改了资源（绕过平台），平台监听逻辑会自动捕获并更新。
+
+## 3.5 交互与风控
+
+* **回滚确认**（文案已定为“方案A”）
+  * 标题：确认回滚至 v{toVersion}？
+  * 正文：
+    * 将「{serviceName}」（{namespace}）从 v{fromVersion} 切换为 v{toVersion}。
+    * 回滚立即生效，可能引发短时不可用或功能回退，请确认业务已评估风险。
+    * 历史版本不会删除，可再次切换。
+  * 复选框：我已评估影响并确认业务可回滚（必须勾选）
+  * 按钮：确认回滚｜取消
+
+* **状态联动**
+  * 回滚成功后，列表“当前生效版本”徽标同步更新；若正在查看 YAML，对比版本默认值自动刷新（与最新/上一个版本比对）。
 
 
-const treeData: TreeDataNode[] = [
-  {
-    title: 'k8s-io',
-    key: 'service',
-    children: [
-      {
-        title: 'deployment',
-        key: 'deployment',}
-]
-}
-]
 
-tree左侧是列表页，列表字段
-- 名称
-- 创建时间
-- 查看yaml
-支持通过名称进行搜索
-点击查看yaml，drawer展示yaml内容，支持一键复制
 
----
 
-对文件层级重新定义
-namespace、
-service、
-ConfigMap、
-PersistentVolumeClaim、
-PersistentVolume
-MseIngressConfig
-networking.k8s.io
-IngressClass、
-Ingress、
-NetworkPolicy
-HorizontalPodAUtoscaler
+
+
+
+
+hpa：分组
+headless：分组
+镜像版本：分组
+资源：服务
