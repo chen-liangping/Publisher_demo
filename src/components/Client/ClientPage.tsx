@@ -119,7 +119,7 @@ const cacheData: CacheRule[] = [
   { pattern: '*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' }
 ]
 
-export default function ClientPage() {
+export default function ClientPage({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
   // 新增：缓存规则本地状态，用于支持行内编辑后的刷新
   const [cacheList, setCacheList] = React.useState<CacheRule[]>(cacheData)
@@ -418,34 +418,38 @@ export default function ClientPage() {
 
   return (
     <div>
-      {/* 顶部信息与导航 */}
-      <Card
-        style={{ marginBottom: 16 }}
-        styles={{ body: { padding: 16 } }}
-      >
-        <Title level={3} style={{ margin: 0 }}>客户端</Title>
-        <Paragraph style={{ color: '#666', marginTop: 8, marginBottom: 0 }}>
-          客户端用于存储不同游戏版本的图片以及文本等静态资源进行配置信息，您可以在此页面进行版本管理。
-          <Button type="link" style={{ paddingLeft: 4 }} onClick={() => message.info('打开帮助（示例）')}>了解更多</Button>
-        </Paragraph>
-      </Card>
+      {/* 顶部信息与导航（嵌入模式下隐藏） */}
+      {!embedded && (
+        <>
+          <Card
+            style={{ marginBottom: 16 }}
+            styles={{ body: { padding: 16 } }}
+          >
+            <Title level={3} style={{ margin: 0 }}>客户端</Title>
+            <Paragraph style={{ color: '#666', marginTop: 8, marginBottom: 0 }}>
+              客户端用于存储不同游戏版本的图片以及文本等静态资源进行配置信息，您可以在此页面进行版本管理。
+              <Button type="link" style={{ paddingLeft: 4 }} onClick={() => message.info('打开帮助（示例）')}>了解更多</Button>
+            </Paragraph>
+          </Card>
 
-      {/* 顶部 Tabs */}
-      <Card style={{ marginBottom: 16 }}>
-        <Tabs
-          activeKey="cdn"
-          onChange={(key) => {
-            if (key === 'version') router.push('/client/version')
-            if (key === 'cdn') router.push('/client/cdn')
-          }}
-          items={[
-            { key: 'version', label: '版本' },
-            { key: 'config', label: '配置文件' },
-            { key: 'cdn', label: 'CDN' },
-            { key: 'cors', label: '跨域配置' }
-          ]}
-        />
-      </Card>
+          {/* 顶部 Tabs */}
+          <Card style={{ marginBottom: 16 }}>
+            <Tabs
+              activeKey="cdn"
+              onChange={(key) => {
+                if (key === 'version') router.push('/client/version')
+                if (key === 'cdn') router.push('/client/cdn')
+              }}
+              items={[
+                { key: 'version', label: '版本' },
+                { key: 'config', label: '配置文件' },
+                { key: 'cdn', label: 'CDN' },
+                { key: 'cors', label: '跨域配置' }
+              ]}
+            />
+          </Card>
+        </>
+      )}
 
       {/* Toast：检测到新的缓存配置（位于 Tabs 与 基础信息之间） */}
       {detectedFileTypes.length > 0 && (
