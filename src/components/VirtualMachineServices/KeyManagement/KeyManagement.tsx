@@ -274,7 +274,6 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
             size="small"
             icon={<CopyOutlined />}
             onClick={() => handleCopyPublicKey(record.publicKey)}
-            icon={<CopyOutlined />}
           />
         </div>
       )
@@ -291,7 +290,6 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
             size="small"
             icon={<CopyOutlined />}
             onClick={() => handleCopyPublicKey(record.publicKey)}
-            icon={<CopyOutlined />}
           />
         </div>
       )
