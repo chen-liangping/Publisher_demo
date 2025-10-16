@@ -17,9 +17,12 @@ import {
   Drawer,
   Tabs,
   Alert,
-  Avatar
+  Avatar,
+  Descriptions,
+  Card,
+  Progress
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 
 const { Title } = Typography
@@ -35,6 +38,16 @@ interface DBInstance {
   status?: string
   password?: string
   gameId?: string
+  // 最近一次备份时间（用于"从备份点创建实例"）
+  backupTime?: string
+  // 是否为备份实例
+  isBackup?: boolean
+  // 创建时间
+  createdAt?: string
+  // 删除时间（备份实例自动销毁时间）
+  deleteAt?: string
+  // 累积延长时间（小时）
+  totalExtendedHours?: number
   // 创建进度相关（原型模拟）
   creatingProgress?: number
   creatingStep?: string
@@ -46,9 +59,9 @@ interface DBInstance {
   qos?: string
   bandwidth?: string
   evictionPolicy?: string
-  mangoSpec?: string
+  MongoSpec?: string
   shardSpec?: string
-  mangoCount?: number
+  MongoCount?: number
   shardCount?: number
 }
 
@@ -74,10 +87,39 @@ interface AuditItem {
 const AUTO_GAME_ID = 'gamedemo'
 
 const mockData: DBInstance[] = [
-  { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB' },
-  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru'},
-  { id: '3', type: 'Mango', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mango 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', mangoSpec: '2核4GB', mangoCount: 2, shardSpec: '4核8G', shardCount: 2},
-  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181 }
+  { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
+  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
+  { id: '3', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
+  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' },
+  // 测试用备份实例
+  { 
+    id: '5', 
+    type: 'MySQL', 
+    alias: 'mysql-backup-test', 
+    spec: '2核8GB', 
+    arch: '集群版', 
+    username: 'gamedemo_test', 
+    status: 'running', 
+    password: 'admin123', 
+    gameId: AUTO_GAME_ID, 
+    version: 'MySQL 5.7', 
+    connectionCount: 10000, 
+    defaultPort: 3306, 
+    capacity: '100GB', 
+    backupTime: '2024/09/01 12:30:00',
+    isBackup: true,
+    createdAt: new Date().toISOString(),
+    deleteAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleString('zh-CN', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: false 
+    }).replace(/\//g, '-'),
+    totalExtendedHours: 0
+  }
 ]
 
 export default function ContainerDatabase() {
@@ -87,6 +129,7 @@ export default function ContainerDatabase() {
   const [form] = Form.useForm()
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined)
   const [searchAlias, setSearchAlias] = useState<string>('')
+  const [modal, modalContextHolder] = Modal.useModal()
   // 每种类型当前实例数统计
   const typeCounts: Record<string, number> = data.reduce((acc: Record<string, number>, it) => {
     acc[it.type] = (acc[it.type] || 0) + 1
@@ -102,14 +145,14 @@ export default function ContainerDatabase() {
     }
   }, [archValue, form])
 
-  // Mango 特殊：当架构为分片集群实例时，注入默认规格与数量（不可编辑的数量）
+  // Mongo 特殊：当架构为分片集群实例时，注入默认规格与数量（不可编辑的数量）
   useEffect(() => {
-    if (selectedType === 'Mango') {
+    if (selectedType === 'Mongo') {
       if (archValue === '分片集群实例') {
-        form.setFieldsValue({ mangoSpec: '4核*8G', mangoCount: 2, shardSpec: '4核*8G', shardCount: 2 })
+        form.setFieldsValue({ MongoSpec: '4核*8G', MongoCount: 2, shardSpec: '4核*8G', shardCount: 2 })
       } else if (archValue === '副本集实例') {
         // 副本集实例默认规格为 4核*16G，数量不展示
-        form.setFieldsValue({ mangoSpec: '4核*16G', mangoCount: undefined, shardSpec: undefined, shardCount: undefined })
+        form.setFieldsValue({ MongoSpec: '4核*16G', MongoCount: undefined, shardSpec: undefined, shardCount: undefined })
       }
     }
   }, [selectedType, archValue, form])
@@ -124,6 +167,23 @@ export default function ContainerDatabase() {
   const [wlActiveTab, setWlActiveTab] = useState<'whiteList' | 'audit'>('whiteList')
   const [showAddWL, setShowAddWL] = useState<boolean>(false)
   const [wlForm] = Form.useForm()
+  // 从备份点创建实例 Drawer
+  const [cloneOpen, setCloneOpen] = useState<boolean>(false)
+  const [cloneForm] = Form.useForm()
+  const cloneSourceIds = Form.useWatch('sourceIds', cloneForm) as string[] | undefined
+  // 批量创建进度状态
+  const [batchCreating, setBatchCreating] = useState<boolean>(false)
+  const [creationProgress, setCreationProgress] = useState<{
+    total: number
+    current: number
+    currentStep: string
+    currentInstance: string
+    details: Array<{
+      instanceName: string
+      status: 'pending' | 'creating' | 'backup' | 'restoring' | 'completed' | 'failed'
+      progress: number
+    }>
+  } | null>(null)
 
   // 复制密码的安全封装函数（兼容无 clipboard 的环境）
   const copyPassword = (pwd?: string) => {
@@ -167,6 +227,350 @@ export default function ContainerDatabase() {
     }
   }
 
+  // 延长备份实例时间
+  const handleExtendBackupTime = (instance: DBInstance) => {
+    const currentExtendedHours = instance.totalExtendedHours || 0
+    const maxExtendHours = 6
+    const remainingHours = maxExtendHours - currentExtendedHours
+    
+    if (remainingHours <= 0) {
+      messageApi.warning('该实例已达到最大延长时间限制（6小时）')
+      return
+    }
+    
+    let extendHours = Math.min(1, remainingHours) // 默认延长1小时，但不超过剩余时间
+    
+    modal.confirm({
+      title: '延长存活时间',
+      content: (
+        <div>
+          <Input
+            type="number"
+            min={1}
+            max={remainingHours}
+            defaultValue={extendHours}
+            suffix="小时"
+            onChange={(e) => {
+              const value = parseInt(e.target.value)
+              if (value >= 1 && value <= remainingHours) {
+                extendHours = value
+              }
+            }}
+            style={{ width: '120px' }}
+          />
+          <div style={{ marginTop: 12, fontSize: '12px', color: '#666' }}>
+            <p>当前销毁时间：{instance.deleteAt}</p>
+            {/* <p>已延长时间：{currentExtendedHours} 小时</p> */}
+            <span style={{ color: '#ff4d4f' }}>最大延长时间限制：6 小时</span> ,剩余可延长：{remainingHours} 小时
+          </div>
+        </div>
+      ),
+      okText: '确认延长',
+      cancelText: '取消',
+      onOk() {
+        // 计算新的删除时间（当前删除时间 + 用户选择的小时数）
+        const currentDeleteTime = new Date(instance.deleteAt?.replace(/-/g, '/') || new Date())
+        const newDeleteTime = new Date(currentDeleteTime.getTime() + extendHours * 60 * 60 * 1000)
+        const newDeleteTimeStr = newDeleteTime.toLocaleString('zh-CN', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit', 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false 
+        }).replace(/\//g, '-')
+
+        // 更新累积延长时间
+        const newTotalExtendedHours = currentExtendedHours + extendHours
+
+        // 更新数据
+        setData(prev => prev.map(item => 
+          item.id === instance.id 
+            ? { 
+                ...item, 
+                deleteAt: newDeleteTimeStr,
+                totalExtendedHours: newTotalExtendedHours
+              }
+            : item
+        ))
+        
+        messageApi.success(`已延长 ${instance.alias} 的销毁时间 ${extendHours} 小时，累积延长 ${newTotalExtendedHours} 小时，新的销毁时间：${newDeleteTimeStr}`)
+      },
+      onCancel() {
+        console.log('用户取消了延长操作')
+      }
+    })
+  }
+
+  // 批量从备份创建实例
+  const handleBatchCreateFromBackup = async (): Promise<void> => {
+    try {
+      const sids = cloneForm.getFieldValue('sourceIds') as string[] | undefined
+      if (!sids || sids.length === 0) { 
+        message.warning('请选择至少一个备份实例')
+        return 
+      }
+      
+      const sourceInstances = sids.map(sid => data.find(d => d.id === sid)).filter(Boolean) as DBInstance[]
+      if (sourceInstances.length === 0) {
+        message.warning('选择的备份实例不存在')
+        return
+      }
+
+      // 显示二次确认弹窗
+      modal.confirm({
+        title: '确认创建备份实例',
+        width: 500,
+        content: (
+          <div>
+            <p style={{ marginBottom: 16 }}>确认为以下存储创建备份实例：</p>
+            <div style={{ 
+              maxHeight: '200px', 
+              overflowY: 'auto',
+              border: '1px solid #f0f0f0',
+              borderRadius: '6px',
+              padding: '12px',
+              backgroundColor: '#fafafa'
+            }}>
+              {sourceInstances.map((src, index) => (
+                <div key={src.id} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  padding: '8px 0',
+                  borderBottom: index < sourceInstances.length - 1 ? '1px solid #f0f0f0' : 'none'
+                }}>
+                  <div style={{ 
+                    width: '8px', 
+                    height: '8px', 
+                    backgroundColor: '#1890ff', 
+                    borderRadius: '50%', 
+                    marginRight: '12px' 
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, color: '#262626' }}>
+                      {src.type} / {src.alias}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '2px' }}>
+                      规格：{src.spec} | 架构：{src.arch}
+                    </div>
+                  </div>
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: '#1890ff',
+                    backgroundColor: '#e6f7ff',
+                    padding: '2px 8px',
+                    borderRadius: '4px'
+                  }}>
+                    → {src.type}-backup
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ 
+              marginTop: 16, 
+              padding: '12px', 
+              backgroundColor: '#fff7e6', 
+              border: '1px solid #ffd591',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: '#d46b08'
+            }}>
+              <div>备份实例将在创建后 24 小时自动销毁，销毁后数据不可恢复，请及时完成相关操作</div>
+            </div>
+          </div>
+        ),
+        okText: '确认创建',
+        cancelText: '取消',
+        onOk: () => {
+          // 确认后立即关闭弹窗，然后执行创建逻辑
+          executeBatchCreation(sourceInstances)
+        }
+      })
+    } catch (error) {
+      message.error('操作失败')
+    }
+  }
+
+  // 执行批量创建的具体逻辑
+  const executeBatchCreation = async (sourceInstances: DBInstance[]): Promise<void> => {
+    try {
+      // 关闭抽屉
+      setCloneOpen(false)
+      cloneForm.resetFields()
+
+      // 立即显示进度条
+      setBatchCreating(true)
+      setCreationProgress({
+        total: sourceInstances.length,
+        current: 0,
+        currentStep: '准备创建...',
+        currentInstance: `批量创建 ${sourceInstances.length} 个备份实例`,
+        details: []
+      })
+
+      // 关闭对话框但保持进度显示
+      setCloneOpen(false)
+      cloneForm.resetFields()
+
+      // 模拟并行创建过程
+      const steps = [
+        { step: '创建新实例...', progress: 25, duration: 2000 },
+        { step: '创建备份...', progress: 50, duration: 3000 },
+        { step: '恢复备份数据到新实例...', progress: 75, duration: 4000 },
+        { step: '完成创建...', progress: 100, duration: 1000 }
+      ]
+
+      for (const { step, progress, duration } of steps) {
+        setCreationProgress(prev => prev ? {
+          ...prev,
+          currentStep: step,
+          current: Math.round((progress / 100) * sourceInstances.length)
+        } : null)
+        
+        await new Promise(resolve => setTimeout(resolve, duration))
+      }
+
+      // 批量创建所有实例数据
+      const newInstances: DBInstance[] = []
+      for (let i = 0; i < sourceInstances.length; i++) {
+        const src = sourceInstances[i]
+        const instanceName = `${src.type}-backup`
+        const now = new Date()
+        const deleteTime = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 24小时后
+        
+        const newItem: DBInstance = {
+          id: `${Date.now()}-${i}`,
+          type: src.type,
+          alias: instanceName,
+          spec: src.spec,
+          arch: src.arch,
+          username: src.username,
+          password: src.password,
+          status: 'running',
+          isBackup: true,
+          createdAt: now.toISOString(),
+          deleteAt: deleteTime.toLocaleString('zh-CN', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: false 
+          }).replace(/\//g, '-'),
+          totalExtendedHours: 0,
+          gameId: src.gameId,
+          version: src.version,
+          connectionCount: src.connectionCount,
+          defaultPort: src.defaultPort,
+          capacity: src.capacity,
+          qos: src.qos,
+          bandwidth: src.bandwidth,
+          evictionPolicy: src.evictionPolicy,
+          MongoSpec: src.MongoSpec,
+          shardSpec: src.shardSpec,
+          MongoCount: src.MongoCount,
+          shardCount: src.shardCount,
+          backupTime: src.backupTime
+        }
+        
+        newInstances.push(newItem)
+      }
+
+      // 一次性添加所有新实例到数据列表
+      setData(prev => [...newInstances, ...prev])
+
+      // 全部完成
+      setCreationProgress(prev => prev ? {
+        ...prev,
+        currentStep: '全部完成',
+        currentInstance: ''
+      } : null)
+
+      message.success(`成功创建 ${sourceInstances.length} 个备份实例`)
+      
+      // 3秒后隐藏进度条
+      setTimeout(() => {
+        setBatchCreating(false)
+        setCreationProgress(null)
+      }, 3000)
+    } catch (error) {
+      message.error('创建备份实例失败')
+      setBatchCreating(false)
+      setCreationProgress(null)
+    }
+  }
+
+  // 通用复制文本（与密码复制逻辑一致）
+  const copyText = (text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        try { messageApi.success('已复制') } catch { alert('已复制') }
+      }).catch(() => {
+        try { messageApi.error('复制失败') } catch { alert('复制失败') }
+      })
+    } else {
+      try {
+        const textarea = document.createElement('textarea') as HTMLTextAreaElement
+        textarea.value = text
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        try { messageApi.success('已复制') } catch { alert('已复制') }
+      } catch {
+        try { messageApi.warning('当前环境不支持复制') } catch { alert('当前环境不支持复制') }
+      }
+    }
+  }
+
+  // 掩码密码展示
+  const maskPassword = (pwd?: string): string => {
+    if (!pwd) return '****'
+    if (pwd.length <= 4) return '*'.repeat(pwd.length)
+    return `${'*'.repeat(Math.max(4, Math.min(12, pwd.length - 4)))}${pwd.slice(-2)}`
+  }
+
+  // 基于实例构造（示例）公网/内网连接串（按类型区分四种）
+  const buildConn = (inst: DBInstance): { pub: string, pri: string } => {
+    const user = inst.username || `${AUTO_GAME_ID}_user`
+    const masked = '****************'
+    const type = (inst.type || 'db').toLowerCase()
+    const hostBase = `${inst.alias}.${type}.stg.g123-cpp.com`
+    const port = String(inst.defaultPort || 3306)
+
+    switch (type) {
+      case 'mysql':
+        return {
+          pub: `legolas-public-mysql.rwlb.japan.rds.aliyuncs.com`,
+          pri: `gamedemo-test-mysql.stg.g123-cpp.com`
+        }
+      case 'redis':
+        return {
+          pub: `gamedemo-test-stg-redis-public.redis.japan.rds.aliyuncs.com:6379`,
+          pri: `gamedemo-test-redis.stg.g123-cpp.com:6379`
+        }
+      case 'Mongo':
+      case 'mongo':
+      case 'MongoDB':
+        return {
+          pub: `mongodb://${user}:${masked}@pub1.${hostBase}:${port},pub2.${hostBase}:${port}?replicaSet=mgset-demo`,
+          pri: `mongodb://${user}:${masked}@sec.${hostBase}:${port},pri.${hostBase}:${port}?replicaSet=mgset-demo`
+        }
+      case 'zookeeper':
+        return {
+          pub: `gamedemo-test-zookeeper-public.stg.g123-cpp.com:2181`,
+          pri: `gamedemo-test-zookeeper.stg.g123-cpp.com:2181`
+        }
+      default:
+        return {
+          pub: `mysql://${user}:${masked}@pub.${hostBase}:${port}`,
+          pri: `mysql://${user}:${masked}@pri.${hostBase}:${port}`
+      }
+    }
+  }
+
   // 简易密码生成器（原型用）
   const generatePassword = (len = 12) => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-='
@@ -200,12 +604,39 @@ export default function ContainerDatabase() {
   const typeColorMap: Record<string, string> = {
     MySQL: 'magenta',
     Redis: 'red',
-    Mango: 'gold',
+    Mongo: 'gold',
     Zookeeper: 'blue'
   }
 
+  // 排序权重：mongo/mongodb/Mongo > mysql > redis > zookeeper
+  const getTypeWeight = (t?: string): number => {
+    const k = (t || '').toLowerCase()
+    if (k === 'mongo' || k === 'MongoDB' || k === 'Mongo') return 0
+    if (k === 'mysql') return 1
+    if (k === 'redis') return 2
+    if (k === 'zookeeper') return 3
+    return 99
+  }
+
   const columns: ColumnsType<DBInstance> = [
-    { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : <Button type="link" onClick={() => setSelectedInstance(record)}><Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag></Button> },
+    { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Button type="link" onClick={() => setSelectedInstance(record)}><Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag></Button>
+        {record.isBackup && (
+          <span style={{ 
+            fontSize: '11px', 
+            color: '#ff7a00', 
+            backgroundColor: '#fff7e6', 
+            border: '1px solid #ffd591', 
+            borderRadius: '2px', 
+            padding: '1px 4px',
+            fontWeight: 500
+          }}>
+            备份
+          </span>
+        )}
+      </div>
+    )},
     { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => (
       record.creatingProgress != null ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -228,12 +659,20 @@ export default function ContainerDatabase() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: unknown, record: DBInstance) => (
+      render: (_: unknown, record: DBInstance) => {
+        const t = (record.type || '').toLowerCase()
+        const isBackup = record.isBackup
+        
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
         <Space>
+              {/* 数据库查询 - 所有类型都有 */}
           <Tooltip title="数据库查询">
             <Button type="text" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${record.alias}（模拟）`)} />
           </Tooltip>
-          <Tooltip title="加白名单">
+              
+              {/* IP白名单 - 所有类型都有 */}
+              <Tooltip title="IP白名单">
             <Button
               type="text"
               icon={<UserAddOutlined />}
@@ -244,14 +683,71 @@ export default function ContainerDatabase() {
               }}
             />
           </Tooltip>
+              
+              {/* Mongo 特有操作 */}
+              {(t === 'mongo' || t === 'mongodb' || t === 'Mongo') && !isBackup && (
+                <Tooltip title="慢日志">
+                  <Button type="text" icon={<ClockCircleOutlined />} onClick={() => message.info(`慢日志 ${record.alias}（模拟）`)} />
+                </Tooltip>
+              )}
+              
+              {/* MySQL 特有操作 */}
+              {t === 'mysql' && !isBackup && (
+                <>
           <Tooltip title="数据库恢复">
             <Button type="text" icon={<RollbackOutlined />} onClick={() => message.info(`恢复 ${record.alias}（模拟）`)} />
           </Tooltip>
+                  <Tooltip title="慢SQL">
+                    <Button type="text" icon={<ClockCircleOutlined />} onClick={() => message.info(`慢SQL ${record.alias}（模拟）`)} />
+                  </Tooltip>
+                </>
+              )}
+              
+              {/* Redis 特有操作 */}
+              {t === 'redis' && (
           <Tooltip title="备份">
             <Button type="text" icon={<CloudUploadOutlined />} onClick={() => message.info(`备份 ${record.alias}（模拟）`)} />
           </Tooltip>
+              )}
+              
+              {/* Zookeeper 只有 IP白名单和数据库查询，已在上面处理 */}
         </Space>
-      )
+            
+            {/* 备份实例延长时间按钮和自动销毁提示 */}
+            {isBackup && record.deleteAt && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#ff4d4f' }}>
+                  将于 {record.deleteAt} 自动销毁
+                </span>
+                <Tooltip title={
+                  (record.totalExtendedHours || 0) >= 6 
+                    ? '已达到最大延长时间限制（6小时）' 
+                    : `延长时间（剩余可延长：${6 - (record.totalExtendedHours || 0)}小时）`
+                }>
+                  <Button 
+                    type="link" 
+                    size="small" 
+                    icon={<FieldTimeOutlined />} 
+                    disabled={(record.totalExtendedHours || 0) >= 6}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleExtendBackupTime(record)
+                    }}
+                    style={{ 
+                      padding: '0 4px', 
+                      fontSize: 12,
+                      opacity: (record.totalExtendedHours || 0) >= 6 ? 0.5 : 1
+                    }}
+                  >
+                    延长时间
+                  </Button>
+                </Tooltip>
+              </div>
+            )}
+          </div>
+        )
+      }
     }
   ]
 
@@ -313,33 +809,245 @@ export default function ContainerDatabase() {
 
   return (
     <div>
+      {modalContextHolder}
       {contextHolder}
-      {selectedInstance ? (
-        <DatabaseDetails instance={selectedInstance} onBack={() => setSelectedInstance(null)} />
-      ) : (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      {(() => {
+        const filtered = data.filter(d => !searchAlias || d.alias.toLowerCase().includes(searchAlias.toLowerCase()))
+        const sorted = [...filtered].sort((a, b) => {
+          const wt = getTypeWeight(a.type) - getTypeWeight(b.type)
+          if (wt !== 0) return wt
+          const aa = (a.alias || '').toLowerCase()
+          const bb = (b.alias || '').toLowerCase()
+          return aa.localeCompare(bb)
+        })
+        const showCards = sorted.length <= 5
+        if (showCards) {
+          return (
+            <>
+              <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
             <Title level={4} style={{ margin: 0 }}>存储</Title>
+                <div style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
+                  <strong>描述：</strong> 提供从缓存到数据库的全栈中间件存储解决方案，支持存储玩家业务数据与日志数据，并助力应用实现无状态化部署。
+                </div>
+              </Card>
+
+              <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 12 }}}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <Input.Search
+                    placeholder="按别名搜索"
+                    allowClear
+                    onSearch={(val) => setSearchAlias(val.trim())}
+                    onChange={(e) => setSearchAlias(e.target.value.trim())}
+                    style={{ width: 320 }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => {
-                // 始终允许打开创建弹窗，类型超限在下拉中禁用
                 setShowCreate(true)
                 setSelectedType('MySQL')
                 form.setFieldsValue({ type: 'MySQL' })
               }}
             >
-              添加数据库
+                      添加数据库实例
         </Button>
+                    <Button onClick={() => setCloneOpen(true)}>从备份点创建实例</Button>
       </div>
+      </div>
+              </Card>
 
-          <div style={{ color: '#666', fontSize: 14, marginTop: 8, marginBottom: 16,display: 'block' }}> 
+              {/* 批量创建进度条 */}
+              {creationProgress && (
+                <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 500 }}>备份进度</span>
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      {creationProgress.currentInstance}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: '14px', color: '#1890ff' }}>
+                      {creationProgress.currentStep}
+                    </span>
+                  </div>
+                  <Progress 
+                    percent={Math.round((creationProgress.current / creationProgress.total) * 100)} 
+                    status={creationProgress.current === creationProgress.total ? 'success' : 'active'}
+                    strokeColor={{
+                      '0%': '#108ee9',
+                      '100%': '#87d068',
+                    }}
+                    format={(percent) => `${percent}%`}
+                  />
+                </Card>
+              )}
+
+              {/* 卡片模式（≤4 条）- 每卡一行 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {sorted.map((inst) => {
+                  const conn = buildConn(inst)
+                  return (
+                    <Card key={inst.id} className="g123-card g123-card-bordered page-storage-card" style={{ border: '1px solid rgb(240, 242, 246)' }} styles={{ body: { padding: 0 }}}>
+                      <div className="g123-card-head" style={{ borderBottom: 'none', padding: '24px 24px 0 24px' }}>
+                        <div className="g123-card-head-wrapper" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                          <div className="g123-card-head-title" style={{ fontSize: 18 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                              <Avatar shape="square" style={{ width: 64, height: 64, fontSize: 32, background: 'rgba(0,0,0,0.04)' }}>{(inst.type || 'DB')[0]}</Avatar>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: 20, color: 'rgb(17,25,40)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <strong>{inst.type}<span style={{fontSize: 18, color: 'rgba(0,0,0,0.45)', marginLeft: 4 }}>{inst.alias}</span></strong>
+                                  {inst.isBackup && (
+                                    <span style={{ 
+                                      fontSize: '11px', 
+                                      color: '#ff7a00', 
+                                      backgroundColor: '#fff7e6', 
+                                      border: '1px solid #ffd591', 
+                                      borderRadius: '2px', 
+                                      padding: '1px 4px',
+                                      fontWeight: 500
+                                    }}>
+                                      备份
+                                    </span>
+                                  )}
+                                </span>
+                                {inst.isBackup && inst.deleteAt && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                                    <span style={{ fontSize: 12, color: '#ff4d4f' }}>
+                                      将于 {inst.deleteAt} 自动销毁
+                                    </span>
+                                    <Tooltip title={
+                                      (inst.totalExtendedHours || 0) >= 6 
+                                        ? '已达到最大延长时间限制（6小时）' 
+                                        : `延长时间（剩余可延长：${6 - (inst.totalExtendedHours || 0)}小时）`
+                                    }>
+                                      <Button 
+                                        type="link" 
+                                        size="small" 
+                                        icon={<FieldTimeOutlined />} 
+                                        disabled={(inst.totalExtendedHours || 0) >= 6}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleExtendBackupTime(inst)
+                                        }}
+                                        style={{ 
+                                          padding: '0 4px', 
+                                          fontSize: 12,
+                                          opacity: (inst.totalExtendedHours || 0) >= 6 ? 0.5 : 1
+                                        }}
+                                      >
+                                        延长时间
+                                      </Button>
+                                    </Tooltip>
+                                  </div>
+                                )}
+                                {(['mysql','Mongo','mongo','mongodb'].includes((inst.type || '').toLowerCase())) && (
+                                  <span style={{ fontWeight: 400, fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>创建数据库时，名称需以 <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.65)' }}>{AUTO_GAME_ID}_</span> 开头</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="g123-card-extra">
+                            <Space>
+                              {(() => {
+                                const t = (inst.type || '').toLowerCase()
+                                if (t === 'mongo' || t === 'mongodb' || t === 'Mongo') {
+                                  return (
+                                    <>
+                                      {!inst.isBackup && <Button icon={<ClockCircleOutlined />} onClick={() => message.info(`慢日志 ${inst.alias}（模拟）`)}>慢日志</Button>}
+                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                    </>
+                                  )
+                                }
+                                if (t === 'mysql') {
+                                  return (
+                                    <>
+                                      {!inst.isBackup && <Button icon={<RollbackOutlined />} onClick={() => message.info(`恢复 ${inst.alias}（模拟）`)}>数据库恢复</Button>}
+                                      {!inst.isBackup && <Button icon={<ClockCircleOutlined />} onClick={() => message.info(`慢SQL ${inst.alias}（模拟）`)}>慢SQL</Button>}
+                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                    </>
+                                  )
+                                }
+                                if (t === 'redis') {
+                                  return (
+                                    <>
+                                      <Button icon={<CloudUploadOutlined />} onClick={() => message.info(`备份 ${inst.alias}（模拟）`)}>备份</Button>
+                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                    </>
+                                  )
+                                }
+                                if (t === 'zookeeper') {
+                                  return (
+                                    <>
+                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                    </>
+                                  )
+                                }
+                                return (
+                                  <>
+                                    <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                    <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                  </>
+                                )
+                              })()}
+                            </Space>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="g123-card-body" style={{ padding: '16px 24px 24px 24px' }}>
+                        {/* 公网 */}
+                        <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)' }}>公网</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <span style={{ color: 'rgba(0,0,0,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conn.pub}</span>
+                          <Button type="text" icon={<CopyOutlined />} onClick={() => copyText(conn.pub)} />
+                        </div>
+                        {/* 内网 */}
+                        <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)' }}>内网</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <span style={{ color: 'rgba(0,0,0,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conn.pri}</span>
+                          <Button type="text" icon={<CopyOutlined />} onClick={() => copyText(conn.pri)} />
+                        </div>
+                        {/* 配置 */}
+                        <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)', marginBottom: 8 }}>配置</div>
+                        <Descriptions size="small" column={2} bordered={false} styles={{ label: { color: 'rgba(0,0,0,0.88)', width: 112 } }}>
+                          <Descriptions.Item label="用户名">{inst.username || '-'}</Descriptions.Item>
+                          <Descriptions.Item label="密码">
+                            <span>{maskPassword(inst.password)}</span>
+                            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyPassword(inst.password)} style={{ paddingLeft: 8 }} />
+                          </Descriptions.Item>
+                          <Descriptions.Item label="版本">{inst.version || '-'}</Descriptions.Item>
+                          <Descriptions.Item label="实例规格">{inst.spec}</Descriptions.Item>
+                          <Descriptions.Item label="架构类型">{inst.arch || '-'}</Descriptions.Item>
+                          <Descriptions.Item label="最大连接数">{inst.connectionCount ?? '-'}</Descriptions.Item>
+                          <Descriptions.Item label="默认端口" span={2}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                        </Descriptions>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            </>
+          )
+        }
+        // 表格模式（>4 条）
+        return (
+          selectedInstance ? (
+            <DatabaseDetails instance={selectedInstance} onBack={() => setSelectedInstance(null)} />
+          ) : (
+            <>
+              <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+                <Title level={4} style={{ margin: 0 }}>存储</Title>
+                <div style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
             <strong>描述：</strong> 提供从缓存到数据库的全栈中间件存储解决方案，支持存储玩家业务数据与日志数据，并助力应用实现无状态化部署。
               </div>
+              </Card>
 
-          {/* 别名搜索框 */}
-          <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
+              <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 12 }}}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <Input.Search
               placeholder="按别名搜索"
               allowClear
@@ -347,12 +1055,55 @@ export default function ContainerDatabase() {
               onChange={(e) => setSearchAlias(e.target.value.trim())}
               style={{ width: 320 }}
             />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        setShowCreate(true)
+                        setSelectedType('MySQL')
+                        form.setFieldsValue({ type: 'MySQL' })
+                      }}
+                    >
+                      添加数据库实例
+                    </Button>
+                    <Button onClick={() => setCloneOpen(true)}>从备份点创建实例</Button>
               </div>
+              </div>
+              </Card>
 
-          <Table columns={columns} dataSource={data.filter(d => !searchAlias || d.alias.toLowerCase().includes(searchAlias.toLowerCase()))} rowKey="id" pagination={{ pageSize: 10 }} />
+              {/* 批量创建进度条 */}
+              {creationProgress && (
+                <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 500 }}>批量创建备份实例进度</span>
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      {creationProgress.currentInstance}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: '14px', color: '#1890ff' }}>
+                      {creationProgress.currentStep}
+                    </span>
+                  </div>
+                  <Progress 
+                    percent={Math.round((creationProgress.current / creationProgress.total) * 100)} 
+                    status={creationProgress.current === creationProgress.total ? 'success' : 'active'}
+                    strokeColor={{
+                      '0%': '#108ee9',
+                      '100%': '#87d068',
+                    }}
+                    format={(percent) => `${percent}%`}
+                  />
+                </Card>
+              )}
+
+              <Table columns={columns} dataSource={sorted} rowKey="id" pagination={{ pageSize: 10 }} />
 
         </>
-      )}
+          )
+        )
+      })()}
 
       {/* 白名单 Drawer */}
       <Drawer
@@ -521,7 +1272,7 @@ export default function ContainerDatabase() {
               options={[
                 { value: 'MySQL', label: (<Tooltip title={(typeCounts['MySQL'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>), disabled: (typeCounts['MySQL'] || 0) >= 2 },
                 { value: 'Redis', label: (<Tooltip title={(typeCounts['Redis'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Redis</span></Tooltip>), disabled: (typeCounts['Redis'] || 0) >= 2 },
-                { value: 'Mango', label: (<Tooltip title={(typeCounts['Mango'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Mango</span></Tooltip>), disabled: (typeCounts['Mango'] || 0) >= 2 },
+                { value: 'Mongo', label: (<Tooltip title={(typeCounts['Mongo'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Mongo</span></Tooltip>), disabled: (typeCounts['Mongo'] || 0) >= 2 },
                 { value: 'Zookeeper', label: (<Tooltip title={(typeCounts['Zookeeper'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Zookeeper</span></Tooltip>), disabled: (typeCounts['Zookeeper'] || 0) >= 2 },
               ]}
             />
@@ -573,23 +1324,23 @@ export default function ContainerDatabase() {
             </>
           )}
 
-          {/* Mango 共用字段 */}
-          {selectedType === 'Mango' && (
+          {/* Mongo 共用字段 */}
+          {selectedType === 'Mongo' && (
             <>
               <Form.Item name="version" label="版本" rules={[{ required: true }]}>
                 <Select options={[
-                  { value: 'Mango5.0', label: 'Mango5.0' },
-                  { value: 'Mango6.0', label: 'Mango6.0' },
-                  { value: 'Mango7.0', label: 'Mango7.0' },
-                  { value: 'Mango8.0', label: 'Mango8.0' },
+                  { value: 'Mongo5.0', label: 'Mongo5.0' },
+                  { value: 'Mongo6.0', label: 'Mongo6.0' },
+                  { value: 'Mongo7.0', label: 'Mongo7.0' },
+                  { value: 'Mongo8.0', label: 'Mongo8.0' },
                 ]} />
               </Form.Item>
               <Form.Item name="arch" label="架构类型" rules={[{ required: true }]}>
                 <Select options={[{ value: '副本集实例', label: '副本集实例' }, { value: '分片集群实例', label: '分片集群实例' }]} />
               </Form.Item>
-              {/* Mango 架构细节：副本集实例只展示规格；分片集群实例展示规格与数量（数量不可编辑） */}
+              {/* Mongo 架构细节：副本集实例只展示规格；分片集群实例展示规格与数量（数量不可编辑） */}
               {archValue === '副本集实例' && (
-                <Form.Item name="mangoSpec" label="Mango 规格" initialValue="4核*16G" rules={[{ required: true }]}>
+                <Form.Item name="MongoSpec" label="Mongo 规格" initialValue="4核*16G" rules={[{ required: true }]}>
                   <Select options={[
                     { value: '2核*16G', label: '2核*16G' },
                     { value: '4核*8G', label: '4核*8G' },
@@ -601,7 +1352,7 @@ export default function ContainerDatabase() {
 
               {archValue === '分片集群实例' && (
                 <>
-                  <Form.Item name="mangoSpec" label="Mango 规格" initialValue="4核*8G" rules={[{ required: true }]}>
+                  <Form.Item name="MongoSpec" label="Mongo 规格" initialValue="4核*8G" rules={[{ required: true }]}>
                     <Select options={[
                       { value: '2核*16G', label: '2核*16G' },
                       { value: '4核*8G', label: '4核*8G' },
@@ -610,7 +1361,7 @@ export default function ContainerDatabase() {
                       { value: '16核*16G', label: '16核*16G' },
                     ]} />
                   </Form.Item>
-                  <Form.Item name="mangoCount" label="Mango数量" initialValue={2} rules={[{ required: true }]}>
+                  <Form.Item name="MongoCount" label="Mongo数量" initialValue={2} rules={[{ required: true }]}>
                     <Input placeholder="2" disabled />
                   </Form.Item>
                   <Form.Item name="shardSpec" label="shard 规格" initialValue="4核*8G" rules={[{ required: true }]}>
@@ -643,6 +1394,78 @@ export default function ContainerDatabase() {
           )}
         </Form>
       </Modal>
+
+      {/* 从备份点创建实例 Drawer */}
+      <Drawer
+        title="从备份点创建实例"
+        width={520}
+        open={cloneOpen}
+        onClose={() => setCloneOpen(false)}
+        destroyOnClose
+      >
+        <Form form={cloneForm} layout="vertical" initialValues={{ sourceIds: [] }}>
+          <Form.Item label="选择源实例（支持多选）" name="sourceIds" rules={[{ required: true, message: '请选择至少一个源实例' }]}>
+            <Select
+              mode="multiple"
+              placeholder="请选择实例，支持多选"
+              options={data.filter(it => !it.isBackup).map(it => ({ 
+                value: it.id, 
+                label: `${it.type} / ${it.alias}`,
+                disabled: false
+              }))}
+              showSearch
+              optionFilterProp="label"
+              maxTagCount="responsive"
+              allowClear
+            />
+          </Form.Item>
+          
+          {cloneSourceIds && cloneSourceIds.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8, fontWeight: 500 }}>将创建以下备份实例：</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {cloneSourceIds.map(sid => {
+                  const src = data.find(d => d.id === sid)
+                  if (!src) return null
+                  return (
+                    <div key={sid} style={{ 
+                      padding: '4px 8px', 
+                      backgroundColor: '#f0f2f5', 
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      {src.type}-backup
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          <Alert
+            type="info"
+           /* showIcon */
+            message={
+              <>
+                <div>1. 系统将为所选实例创建统一时间点的备份，并分别新建备份实例，将备份数据恢复至新实例</div>
+                <div>2. 新实例默认别名为 backup</div>
+                <div>3. 新实例将自动继承源实例的白名单及账号密码配置</div>
+                <div>4. 备份实例为临时资源，创建后 24 小时将自动销毁，销毁后数据不可恢复。</div>
+              </>
+            }
+            style={{ marginBottom: 16 }}
+          />
+          <div style={{ marginTop: 16 }}>
+            <Space>
+              <Button type="primary" onClick={handleBatchCreateFromBackup} loading={batchCreating}>
+                确 定
+              </Button>
+              <Button onClick={() => setCloneOpen(false)} disabled={batchCreating}>
+                取 消
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Drawer>
     </div>
   )
 }

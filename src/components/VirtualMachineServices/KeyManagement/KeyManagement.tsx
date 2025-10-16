@@ -274,9 +274,8 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
             size="small"
             icon={<CopyOutlined />}
             onClick={() => handleCopyPublicKey(record.publicKey)}
-          >
-            复制
-          </Button>
+            icon={<CopyOutlined />}
+          />
         </div>
       )
     },
@@ -292,9 +291,8 @@ MIIEpAIBAAKCAQEA${Math.random().toString(36)}...
             size="small"
             icon={<CopyOutlined />}
             onClick={() => handleCopyPublicKey(record.publicKey)}
-          >
-            复制
-          </Button>
+            icon={<CopyOutlined />}
+          />
         </div>
       )
     },
