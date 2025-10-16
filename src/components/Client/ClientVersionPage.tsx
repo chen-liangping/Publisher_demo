@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined } from '@ant-design/icons'
-import { useRouter } from 'next/navigation'
+import ClientPage from './ClientPage'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -13,6 +13,8 @@ interface VersionRow {
   details: string
   createdAt: string
   isCurrent?: boolean
+  // 新增：版本状态（用于渲染状态 Tag）
+  status?: 'current' | 'offline' | 'notOnline'
   translationStatus?: 'syncing' | 'done'
   // 新增：表示是否开启自动同步翻译（用于控制按钮可用性）
   autoSync?: boolean
@@ -35,24 +37,26 @@ const versionData: VersionRow[] = [
     details: '初始化部署；1.先切换版本然后再进行这个配置以及那个配置反正字数上限大概就是这样了我觉得...',
     createdAt: '2024/07/22  23:56:08',
     isCurrent: true,
+    status: 'current',
     translationStatus: 'done',
     autoSync: true,
     lastSyncAt: '2024/09/01 12:30:00'
   },
-  { version: 'v1.0.2', details: '8/28上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing' },
-  { version: 'v1.0.3', details: '9/02上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'done' },
-  { version: 'v1.0.2_test', details: 'test', createdAt: '2024/07/22  23:56:08', translationStatus: 'done' },
-  { version: 'v1.0.3_test', details: '测试用，请勿删除该版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing' }
+  { version: 'v1.0.2', details: '8/28上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing', status: 'offline' },
+  { version: 'v1.0.3', details: '9/02上线版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'done', status: 'offline' },
+  { version: 'v1.0.2_test', details: 'test', createdAt: '2024/07/22  23:56:08', translationStatus: 'done', status: 'notOnline' },
+  { version: 'v1.0.3_test', details: '测试用，请勿删除该版本', createdAt: '2024/07/22  23:56:08', translationStatus: 'syncing', status: 'notOnline' }
 ]
 
 export default function ClientVersionPage() {
-  const router = useRouter()
   const [versions, setVersions] = useState<VersionRow[]>(versionData)
   const [browsingVersion, setBrowsingVersion] = useState<string | null>(null)
   const [currentPath, setCurrentPath] = useState<string>('/')
   const [switchModalVisible, setSwitchModalVisible] = useState<boolean>(false)
   const [selectedVersion, setSelectedVersion] = useState<VersionRow | null>(null)
   const [form] = Form.useForm()
+  // 本页内 Tab 切换（不跳路由）
+  const [activeTab, setActiveTab] = useState<'version' | 'cdn'>('version')
   // 本地控制：记录每个版本的自动同步状态和最近同步时间
   const [localVersions, setLocalVersions] = useState<Record<string, { autoSync: boolean; lastSyncAt?: string }>>(() => {
     const map: Record<string, { autoSync: boolean; lastSyncAt?: string }> = {}
@@ -72,9 +76,10 @@ export default function ClientVersionPage() {
     try {
       const values = await form.validateFields()
       if (!selectedVersion) return
-      const updated = versions.map(v => ({
+      const updated: VersionRow[] = versions.map(v => ({
         ...v,
-        isCurrent: v.version === selectedVersion.version
+        isCurrent: v.version === selectedVersion.version,
+        status: v.version === selectedVersion.version ? 'current' : (v.status === 'current' ? 'offline' : v.status)
       }))
       setVersions(updated)
       setSwitchModalVisible(false)
@@ -225,7 +230,10 @@ export default function ClientVersionPage() {
             <Button type="link" onClick={() => handleEnterVersion(record.version)}>
               <Text strong>{v}</Text>
             </Button>
-          {record.isCurrent && <Tag color="blue">当前版本</Tag>} {/* 当前版本 */}
+          {/* 状态标签：当前版本 / 已下线 / 未上线 */}
+          {record.status === 'current' && <Tag color="blue">当前版本</Tag>}
+          {record.status === 'offline' && <Tag color="red">已下线</Tag>}
+          {record.status === 'notOnline' && <Tag color="default">未上线</Tag>}
           </span>
         </Space>
       )
@@ -296,13 +304,16 @@ export default function ClientVersionPage() {
         </Paragraph>
       </Card>
 
-      {/* Tabs 路由切换 */}
+      {/* Tabs 本地切换（不跳路由） */}
       <Card style={{ marginBottom: 16 }}>
         <Tabs
-          activeKey="version"
+          activeKey={activeTab}
           onChange={(key) => {
-            if (key === 'cdn') router.push('/client/cdn')
-            if (key === 'version') router.push('/client/version')
+            if (key === 'version' || key === 'cdn') {
+              setActiveTab(key as 'version' | 'cdn')
+            } else {
+              message.info('该 Tab 暂未实现，仍停留在当前页')
+            }
           }}
           items={[
             { key: 'version', label: '版本' },
@@ -313,13 +324,13 @@ export default function ClientVersionPage() {
         />
       </Card>
 
-      {/* 版本区块 或 版本内文件浏览 */}
+      {/* 版本区块 / CDN 页面（同页切换） */}
       <Card
         title={
           <Row align="middle" justify="space-between" style={{ width: '100%' }}>
-            <Col>{browsingVersion ? `版本 ${browsingVersion} / 文件` : '版本'}</Col>
+            <Col>{activeTab === 'cdn' ? 'CDN' : (browsingVersion ? `版本 ${browsingVersion} / 文件` : '版本')}</Col>
             <Col>
-              {!browsingVersion && (
+              {activeTab === 'version' && !browsingVersion && (
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => message.info('创建版本（示例）')}>
                   创建版本
                 </Button>
@@ -328,7 +339,9 @@ export default function ClientVersionPage() {
           </Row>
         }
       >
-        {browsingVersion ? (
+        {activeTab === 'cdn' ? (
+          <ClientPage embedded />
+        ) : browsingVersion ? (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <Space>

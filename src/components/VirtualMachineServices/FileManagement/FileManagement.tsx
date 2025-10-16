@@ -12,12 +12,15 @@ import {
   Input,
   Progress,
   Tooltip,
-  Popconfirm
+  Popconfirm,
+  Modal,
+  Drawer
 } from 'antd'
 import { 
   UploadOutlined, 
   DeleteOutlined,
-
+  EyeOutlined,
+  DownloadOutlined,
   FolderOutlined,
   FileOutlined,
   HomeOutlined,
@@ -183,6 +186,12 @@ export default function FileManagement() {
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [isUploading, setIsUploading] = useState<boolean>(false)
   const [currentPath, setCurrentPath] = useState<string>('/')
+  // 在线编辑器相关状态
+  const [editorVisible, setEditorVisible] = useState<boolean>(false)
+  const [currentFile, setCurrentFile] = useState<OSSFile | null>(null)
+  const [fileContent, setFileContent] = useState<string>('')
+  const [isEditorLoading, setIsEditorLoading] = useState<boolean>(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false)
 
   // 格式化文件大小
   const formatFileSize = (bytes: number): string => {
@@ -202,6 +211,204 @@ export default function FileManagement() {
       setLoading(false)
       message.success('文件删除成功')
     }, 500)
+  }
+
+  // 查看文件 - 打开在线编辑器
+  const handleViewFile = (file: OSSFile): void => {
+    if (file.type === 'folder') {
+      message.warning('无法查看文件夹内容')
+      return
+    }
+    
+    setCurrentFile(file)
+    setEditorVisible(true)
+    setIsEditorLoading(true)
+    setHasUnsavedChanges(false)
+    
+    // 模拟加载文件内容
+    setTimeout(() => {
+      // 根据文件类型生成模拟内容
+      let content = ''
+      const fileName = file.name.toLowerCase()
+      
+      if (fileName.endsWith('.js') || fileName.endsWith('.ts')) {
+        content = `// ${file.name}
+// 文件路径: ${file.path}
+// 最后更新: ${file.updateTime}
+
+function main() {
+  console.log('Hello World from ${file.name}')
+  
+  // TODO: 在这里添加你的代码
+  const data = {
+    message: 'This is a sample file',
+    timestamp: new Date().toISOString()
+  }
+  
+  return data
+}
+
+export default main`
+      } else if (fileName.endsWith('.json')) {
+        content = `{
+  "name": "${file.name}",
+  "path": "${file.path}",
+  "lastModified": "${file.updateTime}",
+  "type": "configuration",
+  "settings": {
+    "enabled": true,
+    "debug": false,
+    "maxRetries": 3
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "author": "system",
+    "description": "Sample configuration file"
+  }
+}`
+      } else if (fileName.endsWith('.md')) {
+        content = `# ${file.name}
+
+## 概述
+这是一个示例 Markdown 文件。
+
+## 详细信息
+- **文件路径**: ${file.path}
+- **最后更新**: ${file.updateTime}
+- **文件大小**: ${formatFileSize(file.size)}
+
+## 内容
+这里是文件的主要内容。你可以在这里编写文档、说明或其他文本内容。
+
+### 代码示例
+\`\`\`javascript
+console.log('Hello from ${file.name}')
+\`\`\`
+
+### 注意事项
+- 请谨慎编辑此文件
+- 保存前请检查语法
+- 建议备份重要文件`
+      } else if (fileName.endsWith('.sh')) {
+        content = `#!/bin/bash
+# ${file.name}
+# 文件路径: ${file.path}
+# 最后更新: ${file.updateTime}
+
+set -e
+
+echo "执行脚本: ${file.name}"
+echo "当前时间: $(date)"
+
+# 主要逻辑
+main() {
+    echo "开始执行主要任务..."
+    
+    # TODO: 在这里添加你的脚本逻辑
+    
+    echo "任务执行完成"
+}
+
+# 执行主函数
+main "$@"`
+      } else if (fileName.endsWith('.txt') || fileName.endsWith('.log')) {
+        content = `${file.name} - 文本文件内容
+
+文件信息:
+- 路径: ${file.path}
+- 大小: ${formatFileSize(file.size)}
+- 更新时间: ${file.updateTime}
+
+这是一个示例文本文件的内容。
+你可以在这里编辑任何文本内容。
+
+日志示例:
+[2024-01-15 10:30:00] INFO: 系统启动
+[2024-01-15 10:30:01] INFO: 加载配置文件
+[2024-01-15 10:30:02] INFO: 连接数据库成功
+[2024-01-15 10:30:03] INFO: 服务就绪`
+      } else {
+        content = `文件名: ${file.name}
+路径: ${file.path}
+大小: ${formatFileSize(file.size)}
+更新时间: ${file.updateTime}
+
+这是一个示例文件的内容。
+你可以在这里编辑文件内容。
+
+注意: 这是一个模拟的在线编辑器，实际使用时会加载真实的文件内容。`
+      }
+      
+      setFileContent(content)
+      setIsEditorLoading(false)
+    }, 800)
+  }
+
+  // 下载文件
+  const handleDownloadFile = (file: OSSFile): void => {
+    if (file.type === 'folder') {
+      message.warning('无法下载文件夹')
+      return
+    }
+    
+    // 模拟下载过程
+    message.loading('正在准备下载...', 1)
+    setTimeout(() => {
+      // 创建模拟下载
+      const content = `这是文件 ${file.name} 的内容\n文件路径: ${file.path}\n更新时间: ${file.updateTime}`
+      const blob = new Blob([content], { type: 'text/plain' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = file.name
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      message.success('文件下载成功')
+    }, 1000)
+  }
+
+  // 保存文件内容
+  const handleSaveFile = (): void => {
+    if (!currentFile) return
+    
+    setIsEditorLoading(true)
+    // 模拟保存操作
+    setTimeout(() => {
+      setIsEditorLoading(false)
+      setHasUnsavedChanges(false)
+      message.success('文件保存成功')
+    }, 500)
+  }
+
+  // 关闭编辑器
+  const handleCloseEditor = (): void => {
+    if (hasUnsavedChanges) {
+      Modal.confirm({
+        title: '未保存的更改',
+        content: '您有未保存的更改，确定要关闭编辑器吗？',
+        okText: '确定关闭',
+        cancelText: '取消',
+        onOk: () => {
+          setEditorVisible(false)
+          setCurrentFile(null)
+          setFileContent('')
+          setHasUnsavedChanges(false)
+        }
+      })
+    } else {
+      setEditorVisible(false)
+      setCurrentFile(null)
+      setFileContent('')
+      setHasUnsavedChanges(false)
+    }
+  }
+
+  // 文件内容变化处理
+  const handleContentChange = (value: string): void => {
+    setFileContent(value)
+    setHasUnsavedChanges(true)
   }
 
   // 进入文件夹
@@ -340,9 +547,19 @@ export default function FileManagement() {
     {
       title: '操作',
       key: 'actions',
-      width: 100,
+      width: 150,
       render: (_, file) => (
         <Space>
+          {file.type === 'file' && (
+            <>
+              <Tooltip title="查看">
+                <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewFile(file)} />
+              </Tooltip>
+              <Tooltip title="下载">
+                <Button type="text" icon={<DownloadOutlined />} onClick={() => handleDownloadFile(file)} />
+              </Tooltip>
+            </>
+          )}
           <Popconfirm
             title="确认删除文件"
             description={`确定要删除 "${file.name}" 吗？此操作不可恢复。`}
@@ -438,6 +655,150 @@ export default function FileManagement() {
           }}
         />
       </Card>
+
+      {/* 在线编辑器 Drawer */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <span style={{ marginRight: 8 }}>📝</span>
+              {currentFile?.name || '文件编辑器'}
+              {hasUnsavedChanges && <span style={{ color: '#ff4d4f', marginLeft: 8 }}>*</span>}
+            </div>
+            <Space>
+              <Button 
+                type="primary" 
+                size="small"
+                loading={isEditorLoading}
+                disabled={!hasUnsavedChanges}
+                onClick={handleSaveFile}
+              >
+                保存 {hasUnsavedChanges && '(Ctrl+S)'}
+              </Button>
+              <Button size="small" onClick={handleCloseEditor}>
+                关闭
+              </Button>
+            </Space>
+          </div>
+        }
+        width="80%"
+        open={editorVisible}
+        onClose={handleCloseEditor}
+        styles={{ body: { padding: 0 } }}
+        destroyOnClose
+      >
+        {currentFile && (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* 文件信息栏 */}
+            <div style={{ 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #f0f0f0', 
+              backgroundColor: '#fafafa',
+              fontSize: '12px',
+              color: '#666'
+            }}>
+              <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
+                <span>📁 {currentFile.path}</span>
+                <span>📊 {formatFileSize(currentFile.size)}</span>
+                <span>🕒 {currentFile.updateTime}</span>
+                <span>💾 {hasUnsavedChanges ? '未保存' : '已保存'}</span>
+              </Space>
+            </div>
+            
+            {/* 编辑器区域 */}
+            <div style={{ flex: 1, position: 'relative' }}>
+              {isEditorLoading ? (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  height: '200px',
+                  flexDirection: 'column',
+                  gap: 16
+                }}>
+                  <div className="loading-spinner" style={{
+                    width: '32px',
+                    height: '32px',
+                    border: '3px solid #f3f3f3',
+                    borderTop: '3px solid #1890ff',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <span style={{ color: '#666' }}>正在加载文件内容...</span>
+                </div>
+              ) : (
+                <textarea
+                  value={fileContent}
+                  onChange={(e) => handleContentChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    outline: 'none',
+                    padding: '16px',
+                    fontFamily: '"Fira Code", "JetBrains Mono", "Monaco", "Consolas", monospace',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    backgroundColor: '#1e1e1e',
+                    color: '#d4d4d4',
+                    resize: 'none',
+                    tabSize: 2
+                  }}
+                  placeholder="开始编辑文件内容..."
+                  onKeyDown={(e) => {
+                    // Ctrl+S 保存快捷键
+                    if (e.ctrlKey && e.key === 's') {
+                      e.preventDefault()
+                      handleSaveFile()
+                    }
+                    // Tab 键插入空格
+                    if (e.key === 'Tab') {
+                      e.preventDefault()
+                      const start = e.currentTarget.selectionStart
+                      const end = e.currentTarget.selectionEnd
+                      const value = e.currentTarget.value
+                      const newValue = value.substring(0, start) + '  ' + value.substring(end)
+                      e.currentTarget.value = newValue
+                      e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 2
+                      handleContentChange(newValue)
+                    }
+                  }}
+                />
+              )}
+            </div>
+            
+            {/* 状态栏 */}
+            <div style={{ 
+              padding: '8px 16px', 
+              borderTop: '1px solid #f0f0f0', 
+              backgroundColor: '#fafafa',
+              fontSize: '12px',
+              color: '#666',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <Space>
+                <span>行: {fileContent.split('\n').length}</span>
+                <span>字符: {fileContent.length}</span>
+                <span>编码: UTF-8</span>
+              </Space>
+              <Space>
+                <span>💡 Ctrl+S 保存</span>
+                <span>💡 Tab 缩进</span>
+              </Space>
+            </div>
+          </div>
+        )}
+      </Drawer>
+
+      {/* 添加旋转动画的 CSS */}
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }
