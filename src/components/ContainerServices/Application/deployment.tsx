@@ -498,7 +498,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       title: '健康检查', 
       dataIndex: 'health', 
       key: 'health',
-      render: (val: any) => `${val.type}:${val.path}:${val.port}` 
+      render: (val: { type: string; path: string; port: number; initialDelay: number }) => `${val.type}:${val.path}:${val.port}` 
     },
     { title: '协议', dataIndex: 'protocol', key: 'protocol' },
     { title: '挂载', dataIndex: 'mounts', key: 'mounts', render: (val: number) => `${val}个` },
