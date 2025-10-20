@@ -580,11 +580,13 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
         open={editVisible}
         onClose={handleCancelEdit}
         width={520}
-        extra={
-          <Space>
-            <Button onClick={handleCancelEdit}>取消</Button>
-            <Button type="primary" onClick={handleSaveCache}>保存</Button>
-          </Space>
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Space>
+              <Button onClick={handleCancelEdit}>取消</Button>
+              <Button type="primary" onClick={handleSaveCache}>保存</Button>
+            </Space>
+          </div>
         }
         destroyOnClose
       >

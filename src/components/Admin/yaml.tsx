@@ -692,11 +692,13 @@ export default function YamlViewer() {
         width={720}
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        extra={
-          <Space>
-            <Button onClick={() => setEditOpen(false)}>取消</Button>
-            <Button type="primary" onClick={() => { setPublishChecked(false); setPublishOpen(true) }}>更新</Button>
-          </Space>
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Space>
+              <Button onClick={() => setEditOpen(false)}>取消</Button>
+              <Button type="primary" onClick={() => { setPublishChecked(false); setPublishOpen(true) }}>更新</Button>
+            </Space>
+          </div>
         }
       >
         <Input.TextArea

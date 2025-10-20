@@ -1,5 +1,5 @@
 "use client"
-
+//游服
 import React, { useState } from 'react'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -22,10 +22,15 @@ import {
   Input,
   Modal,
   Switch,
-  Checkbox,
   Divider
 } from 'antd'
-import { MoreOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons'
+import { MoreOutlined, EditOutlined, CopyOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
+import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
+import DeploymentRecords, { 
+  type DeployGroup as CommonDeployGroup, 
+  type DeployConfig as CommonDeployConfig 
+} from './DeploymentRecords'
+import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
 const { Title, Text } = Typography
 
@@ -34,6 +39,18 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   const name = appName ?? 'kumo游服'
   const appTags = tags ?? ['游服']
 
+  // ==================== 基本信息相关 ====================
+  // 基本信息数据在组件内直接使用，无需额外状态
+
+  // ==================== 高级配置相关 ====================
+  // HPA 配置
+  const [hpaVisible, setHpaVisible] = useState<boolean>(false)
+  const [hpaForm] = Form.useForm<HPAFormValues>()
+
+  // 高级配置卡片展开/收起状态
+  const [advancedConfigExpanded, setAdvancedConfigExpanded] = useState<boolean>(true)
+
+  // ==================== 资源变配相关 ====================
   // 资源类型定义
   interface ResourceItem {
     key: string
@@ -51,7 +68,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     { key: '2', container: 'center', image: 'center:v0.2', cpu: '0.3C 可突发至1.2', memory: '768 Mi' }
   ])
 
-  // 编辑抽屉状态
+  // 资源变配编辑抽屉状态
   const [drawerVisible, setDrawerVisible] = useState<boolean>(false)
   const [editForm] = Form.useForm()
   // 镜像/容器管理弹窗状态
@@ -63,31 +80,140 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   const [cpuModalVisible, setCpuModalVisible] = useState<boolean>(false)
   const [pendingContainerKey, setPendingContainerKey] = useState<string | null>(null)
   const [cpuForm] = Form.useForm()
-  // HPA 配置
-  const [hpaVisible, setHpaVisible] = useState<boolean>(false)
-  const [hpaForm] = Form.useForm<{
-    enabled: boolean;
-    minReplicas: number;
-    maxReplicas: number;
-    cpuEnabled: boolean;
-    cpuScaleOut?: number;
-    cpuScaleIn?: number;
-    memEnabled: boolean;
-    memScaleOut?: number;
-    memScaleIn?: number;
-    scaleInWait?: number;
-    scaleOutWait?: number;
-  }>()
   // refs for resource rows inside Drawer to reliably scroll/focus
   const rowRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
   // 当打开抽屉时需要聚焦的新增资源 key
   const [, setFocusResourceKey] = useState<string | null>(null)
 
+  // 资源变配卡片展开/收起状态
+  const [resourceConfigExpanded, setResourceConfigExpanded] = useState<boolean>(true)
+
+  // ==================== 服务相关 ====================
+  // Mock pod info data，pod数据
+  const pods = [
+    {
+      key: 'p1',
+      service: 'game1',
+      group: '默认',
+      startTime: '2025-02-05 14:14:41',
+      updatedTime: '2025-02-05 12:00:00',
+      policy: '手动开服',
+      resources: '0.5C/1538Mi 推荐值：0.1C/448Mi',
+      status: '故障'
+    },
+    {
+      key: 'p2',
+      service: 'game2',
+      group: '默认',
+      startTime: '2025-02-04 10:00:00',
+      updatedTime: '2025-02-05 12:00:00',
+      policy: '自动开服',
+      resources: '0.3C/768Mi',
+      status: '正常'
+    }
+  ]
+
+  interface Pod {
+    key: string
+    service: string
+    group: string
+    startTime: string
+    updatedTime: string
+    policy: string
+    resources: string
+    status: string
+  }
+
+  // 服务详情 Drawer 状态
+  const [serviceDrawerVisible, setServiceDrawerVisible] = useState<boolean>(false)
+  const [selectedService, setSelectedService] = useState<Pod | null>(null)
+
+  // ==================== 部署管理相关 ====================
+  // 部署分组（用于展示分组列表）
+  interface DeployGroup {
+    key: string
+    groupName: string
+    note: string
+    services: string[] | string
+    imageVersion: string
+    // 可选的分组层面配置，可能来自不同数据源
+    graceful?: string
+    exposePort?: number | string
+  }
+
+  const [deployGroups, _setDeployGroups] = useState<DeployGroup[]>([
+    { key: 'g1', groupName: '默认', note: '基础分组', services: '1~3', imageVersion: 'integration-server:7.8.0-amd64', graceful: '5s', exposePort: 8080 },
+    { key: 'g2', groupName: '灰度', note: '小流量灰度', services: '4~6', imageVersion: 'integration-server:7.6.0-amd64', graceful: '60s', exposePort: 8090 }
+  ])
+
+  const [deployDrawerVisible, setDeployDrawerVisible] = useState<boolean>(false)
+  const [selectedGroup, setSelectedGroup] = useState<DeployGroup | null>(null)
+
+  // 部署管理表格的 mock 数据与列定义
+  const deployConfigs = [
+    {
+      key: 'd1',
+      image: 'integration-server:7.8.0-amd64',
+      envCount: 1,
+      cmd: '未配置',
+      ports: '8080',
+      health: { type: 'httpGet', path: '/test', port: 8080, initialDelay: 300 },
+      protocol: 'HTTP',
+      mounts: 1,
+      preStop: '未配置',
+      graceful: '5s',
+      externalPort: 8080
+    }
+  ]
+
+  interface DeployConfig {
+    key: string
+    image: string
+    envCount: number
+    cmd: string
+    ports: string
+    health: { type: string; path: string; port: number; initialDelay: number }
+    protocol: string
+    mounts: number
+    preStop: string
+    graceful: string
+    externalPort: number
+  }
+
+
+  // ==================== 文件下载相关 ====================
+  const downloadInfo: DownloadInfo = {
+    accessKeyId: 'LTAI5tEL*********U7dKm9R',
+    secret: '6pwC81vC0F***********LV78KG2d0'
+  }
+
+  const servers: ServerItem[] = [
+    { key: '2', name: 'Server2', cliCommand: 'aliyun --profile gamedemo oss ls oss://staging-legolas-gamedemo-system/game/2/' },
+    { key: '3', name: 'Server3', cliCommand: 'aliyun --profile gamedemo oss ls oss://staging-legolas-gamedemo-system/game/3/' },
+    { key: '4', name: 'Server4', cliCommand: 'aliyun --profile gamedemo oss ls oss://staging-legolas-gamedemo-system/game/4/' },
+    { key: '5', name: 'Server5', cliCommand: 'aliyun --profile gamedemo oss ls oss://staging-legolas-gamedemo-system/game/5/' }
+  ]
+
+  // ==================== 插件相关 ====================
+  // 插件相关数据和状态可以在这里定义
+
+  // ==================== 函数定义区域 ====================
+  
+  // 基本信息相关函数
+  // (基本信息主要是静态展示，无需特殊函数)
+
+  // 高级配置相关函数
+  const handleHpaSubmit = (values: HPAFormValues) => {
+    console.log('HPA配置:', values)
+    setHpaVisible(false)
+  }
+
+  // 资源变配相关函数
   // 将资源字符串解析为表单友好结构
   const parseResourcesForForm = (items: ResourceItem[]) => {
     return items.map(item => {
       // memory: e.g. "128 Mi"
-      const memMatch = String(item.memory || '').match(/(\d+)\s*(\w+)/)
+      const memMatch = String(item.memory || '').match(/([\d.]+)\s*(\w+)/)
       const memoryNum = memMatch ? Number(memMatch[1]) : undefined
       const memoryUnit = memMatch ? memMatch[2] : 'Mi'
 
@@ -210,9 +336,23 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     }
   }
 
+  // 服务相关函数
+  // (服务相关的函数主要是表格操作，在表格定义中内联)
+
+  // 部署管理相关函数
+  // (部署管理相关的函数在需要时定义)
+
+  // 文件相关函数
+  // (文件相关的函数在需要时定义)
+
+  // 插件相关函数
+  // (插件相关的函数在需要时定义)
+
+  // ==================== 表格列定义区域 ====================
+  
+  // 资源变配表格列定义
   const resourceColumns: ColumnsType<ResourceItem> = [
     { title: '容器', dataIndex: 'container', key: 'container' },
-    { title: '镜像版本', dataIndex: 'image', key: 'image' },
     {
       title: 'CPU',
       dataIndex: 'cpu',
@@ -235,43 +375,25 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
     { title: '内存', dataIndex: 'memory', key: 'memory' }
   ]
 
-  // Mock pod info data，pod数据
-  const pods = [
-    {
-      key: 'p1',
-      service: 'game1',
-      group: '默认',
-      startTime: '2025-02-05 14:14:41',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '手动开服',
-      resources: '0.5C/1538Mi 推荐值：0.1C/448Mi',
-      status: '故障'
-    },
-    {
-      key: 'p2',
-      service: 'game2',
-      group: '默认',
-      startTime: '2025-02-04 10:00:00',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '自动开服',
-      resources: '0.3C/768Mi',
-      status: '正常'
-    }
-  ]
-
-  interface Pod {
-    key: string
-    service: string
-    group: string
-    startTime: string
-    updatedTime: string
-    policy: string
-    resources: string
-    status: string
-  }
-
+  // 服务表格列定义
   const podColumns: ColumnsType<Pod> = [
-    { title: '服务名称', dataIndex: 'service', key: 'service' },
+    { 
+      title: '服务名称', 
+      dataIndex: 'service', 
+      key: 'service',
+      render: (text: string, record: Pod) => (
+        <Button 
+          type="link" 
+          onClick={() => {
+            setSelectedService(record)
+            setServiceDrawerVisible(true)
+          }}
+          style={{ padding: 0, height: 'auto' }}
+        >
+          {text}
+        </Button>
+      )
+    },
     { title: '分组名称', dataIndex: 'group', key: 'group' },
     { title: '开服时间', dataIndex: 'startTime', key: 'startTime' },
     { title: '更新时间', dataIndex: 'updatedTime', key: 'updatedTime' },
@@ -282,7 +404,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       key: 'resources',
       render: (val: string) => {
         if (!val) return null
-        // 尝试按“推荐值”分割，优先展示推荐值在下，实际值在上
+        // 尝试按"推荐值"分割，优先展示推荐值在下，实际值在上
         const m = val.match(/(.*?)\s*推荐值[:：]\s*(.*)/)
         if (m) {
           const actual = (m[1] || '').trim()
@@ -314,7 +436,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       key: 'status',
       render: (val: string) => {
         const color = val === '正常' ? 'green' : val === '故障' ? 'red' : 'orange'
-        return <Tag color={color}>{val}</Tag>
+        return <Tag color={color} bordered={false}>{val}</Tag>
       }
     },
     {
@@ -339,247 +461,57 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       }
   ]
 
-  // 部署管理表格的 mock 数据与列定义
-  const deployConfigs = [
-    {
-      key: 'd1',
-      image: 'integration-server:7.8.0-amd64',
-      envCount: 1,
-      cmd: '未配置',
-      ports: '8080',
-      health: { type: 'httpGet', path: '/test', port: 8080, initialDelay: 300 },
-      protocol: 'HTTP',
-      mounts: 1,
-      preStop: '未配置',
-      graceful: '5s',
-      externalPort: 8080
-    }
-  ]
-
-  // 部署分组（用于展示分组列表）
-  interface DeployGroup {
-    key: string
-    groupName: string
-    note: string
-    services: string[] | string
-    imageVersion: string
-    // 可选的分组层面配置，可能来自不同数据源
-    graceful?: string
-    exposePort?: number | string
-  }
-
-  const [deployGroups, _setDeployGroups] = useState<DeployGroup[]>([
-    { key: 'g1', groupName: '默认', note: '基础分组', services: '1~3', imageVersion: 'integration-server:7.8.0-amd64', graceful: '5s', exposePort: 8080 },
-    { key: 'g2', groupName: '灰度', note: '小流量灰度', services: '4~6', imageVersion: 'integration-server:7.6.0-amd64', graceful: '60s', exposePort: 8090 }
-  ])
-
-  const [deployDrawerVisible, setDeployDrawerVisible] = useState<boolean>(false)
-  const [selectedGroup, setSelectedGroup] = useState<DeployGroup | null>(null)
-
+  // 部署分组表格列定义
   const groupColumns: ColumnsType<DeployGroup> = [
     { title: '分组名称', dataIndex: 'groupName', key: 'groupName' },
     { title: '备注', dataIndex: 'note', key: 'note' },
-    { title: '服务列表', dataIndex: 'services', key: 'services' },
+    { title: '服务', dataIndex: 'services', key: 'services' },
     { title: '镜像版本', dataIndex: 'imageVersion', key: 'imageVersion' },
-    { title: '操作', key: 'actions', render: (_: unknown, record: DeployGroup) => (
-      <Button type="link" onClick={() => { setSelectedGroup(record); setDeployDrawerVisible(true) }}>查看配置</Button>
-    ) }
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_, record: DeployGroup) => (
+        <Space>
+          <Button 
+            type="link" 
+            onClick={() => {
+              setSelectedGroup(record)
+              setDeployDrawerVisible(true)
+            }}
+          >
+            详情
+          </Button>
+          <Button type="link">编辑</Button>
+          <Button type="link" danger>删除</Button>
+        </Space>
+      )
+    }
   ]
 
-  interface DeployConfig {
-    key: string
-    image: string
-    envCount: number
-    cmd: string
-    ports: string
-    health: { type: string; path: string; port: number; initialDelay: number }
-    protocol: string
-    mounts: number
-    preStop: string
-    graceful: string
-    externalPort: number
-  }
-
-  type DetailPair = [string, string | number | React.ReactNode]
-
-  const _deployColumns: ColumnsType<DeployConfig> = [
-    { title: '镜像版本', dataIndex: 'image', key: 'image' },
-    { title: '环境变量', dataIndex: 'envCount', key: 'envCount', render: (c) => `${c}个环境变量` },
+  // 部署配置表格列定义
+  const deployColumns: ColumnsType<DeployConfig> = [
+    { title: '镜像', dataIndex: 'image', key: 'image' },
+    { title: '环境变量', dataIndex: 'envCount', key: 'envCount', render: (val: number) => `${val}个` },
     { title: '启动命令', dataIndex: 'cmd', key: 'cmd' },
     { title: '端口', dataIndex: 'ports', key: 'ports' },
-    { title: '健康检查', dataIndex: 'health', key: 'health', render: (h) => (<div>类型：<code>{h.type}</code> 路径：<code>{h.path}</code> 端口：<code>{h.port}</code> 初始等待：{h.initialDelay}s</div>) },
-    { title: '通信协议', dataIndex: 'protocol', key: 'protocol' },
-    { title: '文件挂载', dataIndex: 'mounts', key: 'mounts', render: (m) => `${m}个文件` },
-    { title: 'preStop类型', dataIndex: 'preStop', key: 'preStop' },
-    { title: '优雅中止等待时间', dataIndex: 'graceful', key: 'graceful' },
+    { 
+      title: '健康检查', 
+      dataIndex: 'health', 
+      key: 'health',
+      render: (val: any) => `${val.type}:${val.path}:${val.port}` 
+    },
+    { title: '协议', dataIndex: 'protocol', key: 'protocol' },
+    { title: '挂载', dataIndex: 'mounts', key: 'mounts', render: (val: number) => `${val}个` },
+    { title: '停止前命令', dataIndex: 'preStop', key: 'preStop' },
+    { title: '优雅停机', dataIndex: 'graceful', key: 'graceful' },
     { title: '对外端口', dataIndex: 'externalPort', key: 'externalPort' }
   ]
 
-  // 文件下载 mock 数据与列
-  type FileItem = { key: string; name: string; uploadedAt: string }
-  const fileList = [
-    { key: 'f1', name: 'server-log-2025-08-22.log', uploadedAt: '2025-08-22 12:00:00' },
-    { key: 'f2', name: 'config-backup.tar.gz', uploadedAt: '2025-08-20 09:12:00' }
-  ]
 
-  const fileColumns: ColumnsType<FileItem> = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '更新时间', dataIndex: 'uploadedAt', key: 'uploadedAt' },
-    { title: '操作', key: 'actions', render: (_: unknown, record: FileItem) => (
-      <Space>
-        <Button type="link" onClick={() => { Modal.info({ title: '下载模拟', content: `开始下载：${record.name}` }) }}>下载</Button>
-      </Space>
-    ) }
-  ]
-
-  // 复制文本到剪贴板并提示（简易实现）
-  const copyText = async (text: string) => {
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-      } else {
-        const ta = document.createElement('textarea') as HTMLTextAreaElement
-        ta.value = text
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
-      Modal.success({ title: '已复制', content: text })
-    } catch {
-      Modal.error({ title: '复制失败' })
-    }
-  }
-
+  // ==================== 页面渲染区域 ====================
   return (
-    <div className="container mx-auto p-6" data-app-id={appId}>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Title level={3} style={{ margin: 0 }}>
-            应用
-          </Title>
-          <Text style={{ color: '#fa8c16', fontSize: 18, fontWeight: 700 }}>{name}</Text>
-          {appTags.map(t => (
-            <Tag key={t} color={t === '游服' ? '#fa8c16' : '#1890ff'}>{t}</Tag>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <Tabs activeKey={activeKey} onChange={(k) => setActiveKey(String(k))} items={[
-            { key: 'overview', label: '总览' },
-            { key: 'pod', label: '服务' },
-            { key: 'deploy', label: '部署管理' },
-            { key: 'file', label: '文件' },
-            { key: 'plugin', label: '插件' }
-          ]} />
-        </div>
-      </div>
-      {/* HPA 配置弹窗（全局挂载，任意 Tab 都可打开） */}
-      <Modal
-        title="HPA 弹性伸缩"
-        open={hpaVisible}
-        width={820}
-        onCancel={() => setHpaVisible(false)}
-        onOk={async () => {
-          try {
-            const v = await hpaForm.validateFields()
-            if (!v.enabled) { Modal.success({ title: '已保存', content: '未开启 HPA' }); setHpaVisible(false); return }
-            if (v.minReplicas > v.maxReplicas) { Modal.error({ title: '校验失败', content: '最小副本数不能大于最大副本数' }); return }
-            if (!(v.cpuEnabled || v.memEnabled)) { Modal.error({ title: '校验失败', content: '请至少选择一个伸缩指标' }); return }
-            Modal.success({ title: '已保存', content: `副本范围 ${v.minReplicas}-${v.maxReplicas}；` +
-              `${v.cpuEnabled ? `CPU[扩容>${v.cpuScaleOut}% / 缩容<${v.cpuScaleIn}%]；` : ''}` +
-              `${v.memEnabled ? `内存[扩容>${v.memScaleOut}% / 缩容<${v.memScaleIn}%]` : ''}` })
-            setHpaVisible(false)
-          } catch {}
-        }}
-        destroyOnClose
-      >
-        <Form form={hpaForm} layout="vertical" initialValues={{ enabled: true, minReplicas: 1, maxReplicas: 2, cpuEnabled: true, cpuScaleOut: 80, cpuScaleIn: 30, memEnabled: false, scaleInWait: 300, scaleOutWait: 300 }}>
-          <div style={{ marginBottom: 6, fontWeight: 500 }}>是否开启 HPA</div>
-          <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 16 }}>
-            <Switch />
-          </Form.Item>
-
-          <div style={{ marginBottom: 6, fontWeight: 500 }}>副本数范围</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <span style={{ color: '#999' }}>最小</span>
-            <Form.Item shouldUpdate noStyle>
-              {({ getFieldValue }) => (
-                <Form.Item name="minReplicas" style={{ marginBottom: 0 }}>
-                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
-                </Form.Item>
-              )}
-            </Form.Item>
-            <span style={{ color: '#999' }}>~</span>
-            <span style={{ color: '#999' }}>最大</span>
-            <Form.Item shouldUpdate noStyle>
-              {({ getFieldValue }) => (
-                <Form.Item name="maxReplicas" style={{ marginBottom: 0 }}>
-                  <InputNumber min={0} disabled={!getFieldValue('enabled')} />
-                </Form.Item>
-              )}
-            </Form.Item>
-          </div>
-
-          <div style={{ marginBottom: 6, fontWeight: 500 }}><span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>选择伸缩指标与阈值</div>
-          <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12, marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Form.Item name="cpuEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-                <Checkbox>CPU 使用率</Checkbox>
-              </Form.Item>
-              <Form.Item shouldUpdate noStyle>
-                {({ getFieldValue }) => (
-                  <Space size={8} style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ color: '#999' }}>扩容阈值（&gt;）</span>
-                    <Form.Item name="cpuScaleOut" style={{ marginBottom: 0 }}>
-                      <InputNumber min={1} max={100} addonAfter="%" placeholder="扩容阈值 &gt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('cpuEnabled')} />
-                    </Form.Item>
-                    <span style={{ color: '#999' }}>缩容阈值（&lt;）</span>
-                    <Form.Item name="cpuScaleIn" style={{ marginBottom: 0 }}>
-                      <InputNumber min={1} max={100} addonAfter="%" placeholder="缩容阈值 &lt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('cpuEnabled')} />
-                    </Form.Item>
-                  </Space>
-                )}
-              </Form.Item>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Form.Item name="memEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-                <Checkbox>内存 使用率</Checkbox>
-              </Form.Item>
-              <Form.Item shouldUpdate noStyle>
-                {({ getFieldValue }) => (
-                  <Space size={8} style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ color: '#999' }}>扩容阈值（&gt;）</span>
-                    <Form.Item name="memScaleOut" style={{ marginBottom: 0 }}>
-                      <InputNumber min={1} max={100} addonAfter="%" placeholder="扩容阈值 &gt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('memEnabled')} />
-                    </Form.Item>
-                    <span style={{ color: '#999' }}>缩容阈值（&lt;）</span>
-                    <Form.Item name="memScaleIn" style={{ marginBottom: 0 }}>
-                      <InputNumber min={1} max={100} addonAfter="%" placeholder="缩容阈值 &lt;" style={{ fontSize: 16, width: 100 }} disabled={!getFieldValue('enabled') || !getFieldValue('memEnabled')} />
-                    </Form.Item>
-                  </Space>
-                )}
-              </Form.Item>
-            </div>
-          </div>
-
-          <Divider orientation="left">高级配置</Divider>
-          <Form.Item shouldUpdate noStyle>
-            {({ getFieldValue }) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <Form.Item label="扩容等待时间" name="scaleOutWait" style={{ marginBottom: 12 }}>
-                  <InputNumber min={0} addonAfter="s" style={{ width: 120 }} disabled={!getFieldValue('enabled')} />
-                </Form.Item>
-                <Form.Item label="缩容等待时间" name="scaleInWait" style={{ marginBottom: 12 }}>
-                  <InputNumber min={0} addonAfter="s" style={{ width: 120 }} disabled={!getFieldValue('enabled')} />
-                </Form.Item>
-              </div>
-            )}
-          </Form.Item>
-        </Form>
-      </Modal>
-      {activeKey === 'overview' ? (
-        <div>
+    <div style={{ padding: 24 }}>
+      {/* 页面标题和操作按钮 */}
           <div style={{
             marginBottom: 24,
             display: 'flex',
@@ -591,7 +523,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Title level={3} style={{ margin: 0 }}>{name}</Title>
               {appTags.map(t => (
-                <Tag key={t} color={t === '游服' ? '#fa8c16' : '#1890ff'} style={{ marginLeft: 0 }}>{t}</Tag>
+            <Tag key={t} color={t === '游服' ? '#fa8c16' : '#1890ff'} bordered={false} style={{ marginLeft: 0 }}>{t}</Tag>
               ))}
             </div>
 
@@ -601,7 +533,23 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
             </Space>
           </div>
 
-          <div style={{ background: '#fafafa', padding: 24, borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 24 }}>
+      {/* 标签页 */}
+      <Tabs
+        activeKey={activeKey}
+        onChange={setActiveKey}
+        items={[
+          { key: 'overview', label: '总览' },
+          { key: 'deploy', label: '部署管理' },
+          { key: 'download', label: '文件下载' },
+          { key: 'plugins', label: '插件' }
+        ]}
+      />
+
+      {/* 标签页内容 */}
+      {activeKey === 'overview' ? (
+        <div>
+          {/* 基本信息 Card */}
+          <Card >
             <Row gutter={[48, 24]}>
               <Col xs={24} sm={12} lg={8}>
                 <div style={{ marginBottom: 16 }}>
@@ -619,15 +567,18 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                       const parts = String(r.image || '').split(':')
                       const version = parts.length > 1 ? parts[1] : 'latest'
                       return (
-                        <Tag key={r.key} color="green" style={{ marginBottom: 4 }}>{`${r.container}:${version}`}</Tag>
+                        <Tag key={r.key} color="green" bordered={false} style={{ marginBottom: 4 }}>{`${r.container}:${version}`}</Tag>
                       )
                     })}
                     <Button type="text" icon={<EditOutlined />} onClick={openImageModal} title="管理容器" />
-                  </div>
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>公网</div>
-                  <div style={{ fontSize: 14 }}>未配置</div>
+                  <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>标签</div>
+                  <div style={{fontSize: 14, overflow: 'hidden' }}>
+                    <Tag color="blue" bordered={false} style={{ marginRight: 4 }}>gamedemo_efwe:wef</Tag>
+                    <Tag color="blue" bordered={false} style={{ marginRight: 4 }}>key:value</Tag>
+                  </div>
+                </div>
                 </div>
               </Col>
 
@@ -649,71 +600,133 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
               <Col xs={24} sm={12} lg={8}>
               <div style={{ marginBottom: 16 }}>                              
                   <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>状态</div>
-                  <div><Tag color="green">operable</Tag></div>
+                  <div><Tag color="green" bordered={false}>operable</Tag></div>
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>日志</div>
                   <div style={{ fontSize: 14, fontFamily: 'Monaco, monospace' }}>前往grafana查看</div>
-
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>标签</div>
-                  <div style={{fontSize: 14, overflow: 'hidden' }}>
-                    <Tag color="blue" style={{ marginRight: 4 }}>gamedemo_efwe:wef</Tag>
-                    <Tag color="blue" style={{ marginRight: 4 }}>key:value</Tag>
-                  </div>
+                  <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>公网</div>
+                  <div style={{ fontSize: 14 }}>未配置</div>
                 </div>
               </Col>
             </Row>
+          </Card>
 
-            <div style={{ marginTop: 12 }}>
-              <Collapse
-                ghost
-                items={[
-                  {
-                    key: '1',
-                    label: <span style={{ color: '#2f54eb', fontWeight: 500 }}>更多高级配置</span>,
-                    children: (
-                      <div style={{ color: '#666' }}>
-                        <Space>
-                          <Button type="default" onClick={() => setHpaVisible(true)}>HPA 弹性伸缩</Button>
-                        </Space>
-                      </div>
-                    )
-                  }
-                ]}
+          {/* 高级配置 Card */}
+          <Card 
+            title="更多高级配置" 
+            style={{ marginBottom: 24 }}
+            styles={{ body: { padding: advancedConfigExpanded ? 24 : 0 } }}
+            extra={
+              <Button 
+                type="text" 
+                icon={advancedConfigExpanded ? <UpOutlined /> : <DownOutlined />}
+                onClick={() => setAdvancedConfigExpanded(!advancedConfigExpanded)}
+                size="small"
               />
+            }
+          >
+            {advancedConfigExpanded && (
+              <div style={{ fontSize: 14, color: '#333' }}>
+                <strong>HPA 弹性伸缩：</strong>
+                <Button 
+                  type="text" 
+                  icon={<EditOutlined />}
+                  size="small" 
+                  style={{ padding: 0, height: 'auto', fontSize: 14 }}
+                  onClick={() => setHpaVisible(true)}
+                >
+                </Button>
+              </div>
+            )}
+          </Card>
+
+          {/* 资源变配 Card */}
+          <Card 
+            title="下次开服资源配置" 
+            extra={
+                        <Space>
+                <Button size="small" style={{ fontSize: 14 }} icon={<EditOutlined />} onClick={() => openEditDrawer()}>编辑</Button>
+                <Button 
+                  type="text" 
+                  icon={resourceConfigExpanded ? <UpOutlined /> : <DownOutlined />}
+                  onClick={() => setResourceConfigExpanded(!resourceConfigExpanded)}
+                  size="small"
+                />
+                        </Space>
+            }
+            style={{ marginBottom: 24 }}
+            styles={{ body: { padding: resourceConfigExpanded ? 24 : 0 } }}
+          >
+            {resourceConfigExpanded && (
+              <Table columns={resourceColumns} dataSource={resources} pagination={false} />
+            )}
+          </Card>
+
+          {/* 服务 Card */}
+          <Card title="服务">
+              <Table columns={podColumns} dataSource={pods} pagination={false} />
+            </Card>
             </div>
-          </div>
-        </div>
-      ) : activeKey === 'pod' ? (
-        <>
-          {/* 资源变配 */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Title level={4} style={{ margin: 0 }}>资源变配</Title>
-              <Button size="small" style={{ fontSize: 14 }} icon={<EditOutlined />} onClick={() => openEditDrawer()}>编辑</Button>
-            </div>
-            <div style={{ marginTop: 8 }}>
+      ) : activeKey === 'deploy' ? (
+        <DeploymentRecords
+          deployGroups={deployGroups}
+          deployConfigs={deployConfigs}
+          onCreateGroup={() => console.log('创建新分组')}
+        />
+      ) : activeKey === 'download' ? (
+        <FileDownload
+          downloadInfo={downloadInfo}
+          servers={servers}
+          onViewCLI={() => console.log('查看CLI参考')}
+          onCopyText={(text) => console.log('复制文本:', text)}
+        />
+      ) : activeKey === 'plugins' ? (
+                  <div>
+          <Title level={4}>插件管理</Title>
               <Card>
-                <Table columns={resourceColumns} dataSource={resources} pagination={false} />
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+              暂无插件数据
+                  </div>
               </Card>
             </div>
+          ) : null}
 
-            {/* 镜像/容器管理弹窗已移动至组件顶层以确保在任意 tab 下都可打开 */}
+      {/* ==================== 弹窗和抽屉区域 ==================== */}
+      
+      {/* HPA 配置弹窗 */}
+      <HPAConfigModal
+        open={hpaVisible}
+        onCancel={() => setHpaVisible(false)}
+        onOk={handleHpaSubmit}
+        form={hpaForm}
+        initialValues={{
+          enabled: false,
+          defaultReplicas: 1,
+          minReplicas: 1,
+          maxReplicas: 10,
+          cpuEnabled: false,
+          cpuTargetValue: 70,
+          memEnabled: false,
+          memTargetValue: 70,
+          scaleInWait: 300,
+          scaleOutWait: 60
+        }}
+      />
 
+      {/* 资源变配编辑抽屉 */}
             <Drawer
-              title="配置pod资源"
-              placement="right"
-              width={480}
-              onClose={() => setDrawerVisible(false)}
+        title="编辑下次开服资源配置"
+        width={600}
               open={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
               footer={
-                <div style={{ textAlign: 'right' }}>
+          <div style={{ textAlign: 'left' }}>
                   <Space>
-                    <Button onClick={() => setDrawerVisible(false)}>关闭</Button>
-                    <Button type="default" onClick={handleSaveResources}>立即生效</Button>
-                    <Button type="primary" onClick={handleSaveResources}>下次部署生效</Button>
+              <Button onClick={() => setDrawerVisible(false)}>取消</Button>
+              <Button type="primary" onClick={handleSaveResources}>保存</Button>
                   </Space>
                 </div>
               }
@@ -722,43 +735,64 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                 <Form.List name="resources">
                   {(fields) => (
                     <div>
-                      {fields.map((field) => (
-                        <div key={field.key} data-resource-key={field.key} ref={(el) => { rowRefs.current[field.key] = el }} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px dashed #f0f0f0' }}>
-                          {/* 容器名（只读，显著展示，行间距缩小） */}
-                          <div style={{ marginBottom: 6 }}>
-                            <div style={{ color: '#999', fontSize: 12, marginBottom: 4 }}>容器</div>
-                            <Form.Item noStyle name={[field.name, 'container']}>
-                              <Input readOnly style={{ fontSize: 15, fontWeight: 600, border: 'none', padding: 0 }} />
+                {fields.map(({ key, name, ...restField }) => (
+                  <div key={key} style={{ marginBottom: 24, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <Form.Item noStyle name={[name, 'container']}>
+                        <Input style={{ display: 'none' }} />
                             </Form.Item>
+                      <div style={{ fontSize: 14, color: '#333' }}>
+                        <strong>容器名称：</strong>
+                        <span>{editForm.getFieldValue(['resources', name, 'container'])}</span>
                           </div>
-
-                          {/* 镜像名和版本（只读，显著展示，行间距缩小） */}
-                          <div style={{ marginBottom: 6 }}>
-                            <div style={{ color: '#999', fontSize: 12, marginBottom: 4 }}>镜像名称/版本</div>
-                            <Form.Item noStyle name={[field.name, 'image']}>
-                              <Input readOnly style={{ fontSize: 14, color: '#333', border: 'none', padding: 0 }} />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <Form.Item noStyle name={[name, 'image']}>
+                        <Input style={{ display: 'none' }} />
                             </Form.Item>
+                      <div style={{ fontSize: 14, color: '#333' }}>
+                        <strong>镜像：</strong>
+                        <span>{editForm.getFieldValue(['resources', name, 'image'])}</span>
                           </div>
-
-                          {/* 内存：与文档格式一致，数字 + 单位选择 */}
-                          <Form.Item label="内存" required>
-                            <Form.Item noStyle name={[field.name, 'memoryNum']} rules={[{ required: true, type: 'number', min: 1, message: '请输入合法内存值' }]}>
-                              <InputNumber style={{ width: '70%' }} min={1} />
+                    </div>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'cpuBase']}
+                          label="CPU (C)"
+                          rules={[{ required: true, message: '请输入CPU配置' }]}
+                        >
+                          <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
                             </Form.Item>
-                            <Form.Item noStyle name={[field.name, 'memoryUnit']}>
-                              <Select style={{ width: '28%', marginLeft: '2%' }} options={[{ label: 'Mi', value: 'Mi' }, { label: 'Gi', value: 'Gi' }]} />
+                      </Col>
+                      <Col span={12}>
+                        <Row gutter={8}>
+                          <Col span={16}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'memoryNum']}
+                              label="内存"
+                              rules={[{ required: true, message: '请输入内存大小' }]}
+                            >
+                              <InputNumber min={1} style={{ width: '100%' }} />
                             </Form.Item>
+                          </Col>
+                          <Col span={8}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'memoryUnit']}
+                              label="单位"
+                            >
+                              <Select>
+                                <Select.Option value="Mi">Mi</Select.Option>
+                                <Select.Option value="Gi">Gi</Select.Option>
+                              </Select>
                           </Form.Item>
-
-                          {/* CPU：单位为 C，基础值可编辑并校验，单位列为只读文本 C */}
-                          <Form.Item label="CPU" required>
-                            <Form.Item name={[field.name, 'cpuBase']} noStyle rules={[{ required: true, type: 'number', min: 0.001, message: 'CPU 必须大于等于 0.001' }]}>
-                              <InputNumber style={{ width: '70%' }} min={0.001} step={0.001} />
-                            </Form.Item>
-                            <Form.Item noStyle name={[field.name, 'cpuUnit']}>
-                              <Input readOnly style={{ width: '28%', marginLeft: '2%', border: 'none', padding: 0, color: '#333' }} />
-                            </Form.Item>
-                          </Form.Item>
+                          </Col>
+                        </Row>
+                      </Col>
+                    </Row>
                         </div>
                       ))}
                     </div>
@@ -767,201 +801,280 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
               </Form>
             </Drawer>
 
-          </div>
-
-          {/* Pod 信息 */}
-          <div>
-            <Title level={4}>服务</Title>
-            <Card>
-              <Table columns={podColumns} dataSource={pods} pagination={false} />
-            </Card>
-          </div>
-        </>
-      ) : activeKey === 'deploy' ? (
-        <>
-        <div>
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Title level={4} style={{ margin: 0 }}>配置</Title>
-              <Space>
-                <Button type="primary">新建分组</Button>
-              </Space>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <Card>
-                <Table columns={groupColumns} dataSource={deployGroups} pagination={false} />
-              </Card>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <Title level={4}>变更记录</Title>
-            <Card>
-              <Table
-                columns={[
-                  { title: 'ID', dataIndex: 'id', key: 'id' },
-                  { title: '分组名称', dataIndex: 'group', key: 'group' },
-                  { title: '操作类型', dataIndex: 'type', key: 'type' },
-                  { title: '更新信息', dataIndex: 'info', key: 'info' },
-                  { title: '镜像版本', dataIndex: 'image', key: 'image' },
-                  { title: '是否能够回滚', dataIndex: 'canRollback', key: 'canRollback' },
-                  { title: '优雅中止等待时间', dataIndex: 'graceful', key: 'graceful' },
-                  { title: '对外端口', dataIndex: 'port', key: 'port' },
-                  { title: '部署时间', dataIndex: 'time', key: 'time' },
-                  { title: '操作', key: 'actions', render: () => <Button type="link">详情</Button> }
-                ]}
-                dataSource={[{ key: 'r1', id: '331201', group: '默认', type: '更新', info: 'start', image: 'integration-server:7.8.0-amd64', canRollback: '是', graceful: '5秒', port: 8080, time: '2025-08-20 16:32:05' }]}
-                pagination={{ pageSize: 10 }}
-              />
-            </Card>
-          </div>
-        </div>
-        {/* deploy group drawer: 显示 deployColumns 内容 */}
-        type DetailPair = [string, string | number | React.ReactNode]
-
-        <Drawer title="配置详情" placement="right" width={720} onClose={() => setDeployDrawerVisible(false)} open={deployDrawerVisible} destroyOnClose>
-          {selectedGroup ? (
-            <div>
-              <Title level={5} style={{ marginBottom: 8 }}></Title>
-              <div key={selectedGroup.key} style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 12 }}>
-                    {([
-                      ['优雅中止等待时间', selectedGroup.graceful ?? '60s'],
-                      ['对外端口', selectedGroup.exposePort ?? '8080']
-                    ] as DetailPair[]).map(([label, val]) => (
-                      <div key={String(label)} style={{ display: 'flex', padding: '12px 0', alignItems: 'center', borderBottom: '1px solid #f5f5f5' }}>
-                        <div style={{ width: 160, color: '#666', fontSize: 14 }}>{label}</div>
-                        <div style={{ flex: 1, fontSize: 14 }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                  </div>
-              <div>
-                <Title level={5} style={{ marginBottom: 12 }}>配置详情</Title>
-                {deployConfigs.map(cfg => (
-                  <div key={cfg.key} style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 12 }}>
-                    {([
-                      ['镜像版本', cfg.image ?? '-'],
-                      ['环境变量', `${cfg.envCount ?? 0}个环境变量`],
-                      ['启动命令', cfg.cmd || '-'],
-                      ['端口', cfg.ports || '-'],
-                      ['健康检查', cfg.health ? `类型：${cfg.health.type} 路径：${cfg.health.path} 端口：${cfg.health.port} 初始等待：${cfg.health.initialDelay}s` : '-'],
-                      ['通信协议', cfg.protocol || '-'],
-                      ['文件挂载', `${cfg.mounts ?? 0}个文件`],
-                      ['preStop类型', cfg.preStop || '-'],
-                    ] as DetailPair[]).map(([label, val]) => (
-                      <div key={label} style={{ display: 'flex', padding: '12px 0', alignItems: 'center', borderBottom: '1px solid #f5f5f5' }}>
-                        <div style={{ width: 160, color: '#666', fontSize: 14 }}>{label}</div>
-                        <div style={{ flex: 1, fontSize: 14 }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </Drawer>
-        </>
-      ) : activeKey === 'file' ? (
-        <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
-        <Card title="基本信息" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-  {/* Access Key */}
-        <div style={{ flex: 1 }}>
-        <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Access Key ID</div>
-        <div style={{ fontSize: 14 }}>LTAI5tEL*********U7dKm9R <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('LTAI5tEL*********U7dKm9R')}/>
-    </div>
-  </div>
-
-  {/* Secret */}
-    <div style={{ flex: 1 }}>
-    <div style={{ color: '#666', fontSize: 14, marginBottom: 6 }}>Secret</div>
-    <div style={{ fontSize: 14 }}>6pwC81vC0F***********L <Button type="text" icon={<CopyOutlined />} onClick={() => copyText('6pwC81vC0F***********L')} />
-    </div>
-    </div>
-    </div>
-</Card>
-
-            <Card style={{ width: '100%' }}>
-              <div>
-                <Title level={4} style={{ marginTop: 0 }}>服务器</Title>
-                <div style={{ color: '#666', marginBottom: 12, fontSize: 14 }}>服务器 \ server0</div>
-              </div>
-              <Table columns={fileColumns} dataSource={fileList} pagination={{ pageSize: 10 }} />
-            </Card>
-        </div>
-        </div>
-      ) : null}
-            {/* 镜像/容器管理弹窗（组件顶层渲染，确保任意 tab 下可见） */}
+      {/* 镜像/容器管理弹窗 */}
             <Modal
               title="管理容器"
               open={imageModalVisible}
               onCancel={() => setImageModalVisible(false)}
-              onOk={handleAddContainerConfirm}
-              okText="新增并编辑"
+        footer={null}
+        width={600}
             >
-              <div>
-                <div style={{ color: '#666', marginBottom: 8 }}>当前容器列表</div>
-                <div style={{ marginTop: 8 }}>
+        <div style={{ marginBottom: 16 }}>
+          <Title level={5}>当前容器</Title>
                   {resources.map(r => (
-                    <div key={r.key} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
-                      <div style={{ fontSize: 14 }}>{`${r.container}:${r.image}`}</div>
-                    </div>
-                  ))}
-
-                  {/* inline 新增输入行（当 addingContainer 为 true 时显示，位于现有项之后） */}
-                  {addingContainer && (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, padding: '6px 0' }}>
-                      <Input placeholder="容器名称" value={newContainerName} onChange={(e) => setNewContainerName(e.target.value)} style={{ flex: 1 }} />
+            <Tag key={r.key} style={{ marginRight: 8, marginBottom: 8 }}>
+              {r.container}:{r.image}
+            </Tag>
+          ))}
+        </div>
+        
+        <Divider />
+        
+        <div>
+          <Title level={5}>添加新容器</Title>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Input
+                placeholder="容器名称"
+                value={newContainerName}
+                onChange={(e) => setNewContainerName(e.target.value)}
+              />
+            </Col>
+            <Col span={12}>
                       <Select
+                style={{ width: '100%' }}
+                placeholder="选择镜像"
                         value={newContainerImage}
-                        onChange={(v) => setNewContainerImage(v)}
-                        style={{ width: 160 }}
-                        options={['game','center','login'].map(img => ({ value: img, label: img }))}
-                      />
-                    </div>
-                  )}
-
-                  {/* 新增容器操作行：始终在列表末尾 */}
-                  <div style={{ marginTop: 8 }}>
-                    <Tag onClick={() => setAddingContainer(true)} style={{ cursor: 'pointer', background: '#fafafa' }}>+ 新增容器</Tag>
-                  </div>
+                onChange={setNewContainerImage}
+              >
+                <Select.Option value="game">game</Select.Option>
+                <Select.Option value="center">center</Select.Option>
+                <Select.Option value="login">login</Select.Option>
+              </Select>
+            </Col>
+          </Row>
+          <div style={{ marginTop: 16, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setImageModalVisible(false)}>取消</Button>
+              <Button type="primary" onClick={handleAddContainerConfirm}>添加</Button>
+            </Space>
                 </div>
               </div>
             </Modal>
-            {/* 新增容器后的独立 CPU/内存 配置弹窗 */}
+
+      {/* CPU/内存配置弹窗 */}
             <Modal
               title="配置新容器资源"
               open={cpuModalVisible}
-              onCancel={() => { setCpuModalVisible(false); setPendingContainerKey(null) }}
+        onCancel={() => setCpuModalVisible(false)}
               onOk={() => {
-                cpuForm
-                  .validateFields()
-                  .then(vals => {
-                    if (!pendingContainerKey) return
-                    setResources(prev => prev.map(r => r.key === pendingContainerKey ? { ...r, cpu: `${vals.cpuBase}C`, memory: `${vals.memoryNum} ${vals.memoryUnit}` } : r))
+          cpuForm.validateFields().then(values => {
+            if (pendingContainerKey) {
+              setResources(prev => prev.map(item => 
+                item.key === pendingContainerKey 
+                  ? { ...item, cpu: `${values.cpuBase}C`, memory: `${values.memoryNum} ${values.memoryUnit}` }
+                  : item
+              ))
+            }
                     setCpuModalVisible(false)
                     setPendingContainerKey(null)
                   })
-                  .catch(() => {})
               }}
             >
               <Form form={cpuForm} layout="vertical">
-                <Form.Item label="CPU (C)" name="cpuBase" rules={[{ required: true, type: 'number', min: 0.001, message: '请输入 CPU 值' }]}>
+          <Form.Item
+            name="cpuBase"
+            label="CPU (C)"
+            rules={[{ required: true, message: '请输入CPU配置' }]}
+          >
                   <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
                 </Form.Item>
-                <Form.Item label="内存" required>
-                  <Form.Item noStyle name="memoryNum" rules={[{ required: true, type: 'number', min: 1, message: '请输入内存数值' }]}> 
-                    <InputNumber style={{ width: '70%' }} min={1} />
+          <Row gutter={16}>
+            <Col span={16}>
+              <Form.Item
+                name="memoryNum"
+                label="内存"
+                rules={[{ required: true, message: '请输入内存大小' }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
                   </Form.Item>
-                  <Form.Item noStyle name="memoryUnit">
-                    <Select style={{ width: '28%', marginLeft: '2%' }} options={[{ label: 'Mi', value: 'Mi' }, { label: 'Gi', value: 'Gi' }]} />
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="memoryUnit"
+                label="单位"
+                initialValue="Mi"
+              >
+                <Select>
+                  <Select.Option value="Mi">Mi</Select.Option>
+                  <Select.Option value="Gi">Gi</Select.Option>
+                </Select>
                   </Form.Item>
-                </Form.Item>
+            </Col>
+          </Row>
               </Form>
             </Modal>
+
+      {/* 服务详情 Drawer */}
+      <Drawer
+        title={`${selectedService?.service}-服务`}
+        width={800}
+        open={serviceDrawerVisible}
+        onClose={() => {
+          setServiceDrawerVisible(false)
+          setSelectedService(null)
+        }}
+        destroyOnClose
+      >
+        {selectedService && (
+          <div>
+            <Card>
+              <Table
+                rowKey="key"
+                size="small"
+                pagination={false}
+                expandable={{
+                  expandedRowRender: (record) => (
+                    <div style={{ padding: '16px 0' }}>
+                      <Table
+                        rowKey="key"
+                        size="small"
+                        pagination={false}
+                        columns={[
+                          { title: '容器名', dataIndex: 'container', key: 'container', width: 100 },
+                          { title: '镜像', dataIndex: 'image', key: 'image', width: 200 },
+                          { 
+                            title: '资源', 
+                            dataIndex: 'resources', 
+                            key: 'resources',
+                            render: (val: string) => (
+                              <div>
+                                <div>0.004C/128Mi</div>
+                                <div style={{ color: '#74b9ff', fontSize: 12 }}>推荐值：0.002C/64Mi</div>
+    </div>
+  )
+                          },
+                          { 
+                            title: '状态', 
+                            dataIndex: 'status', 
+                            key: 'status', 
+                            width: 100,
+                            render: () => <Tag color="green" bordered={false}>正常</Tag>
+                          },
+                          { 
+                            title: '操作', 
+                            key: 'actions', 
+                            width: 100,
+                            render: () => (
+                              <Button type="link" size="small">登入</Button>
+                            )
+                          }
+                        ]}
+                        dataSource={[
+                          {
+                            key: 'container-1',
+                            container: 'server',
+                            image: 'game-server:3.1.8081-amd64',
+                            resources: '0.004C/128Mi',
+                            status: '正常'
+                          }
+                        ]}
+                      />
+                    </div>
+                  ),
+                  rowExpandable: () => true,
+                }}
+                columns={[
+                  { title: 'Pod名称', dataIndex: 'podName', key: 'podName' },
+                  { 
+                    title: '资源', 
+                    dataIndex: 'resources', 
+                    key: 'resources',
+                    render: (val: string) => (
+                      <div>
+                        <div>0.004C/128Mi</div>
+                        <div style={{ color: '#74b9ff', fontSize: 12 }}>推荐值：0.002C/64Mi</div>
+                      </div>
+                    )
+                  },
+                  { 
+                    title: '状态', 
+                    dataIndex: 'status', 
+                    key: 'status',
+                    render: (val: string) => {
+                      const color = val === '正常' ? 'green' : val === '故障' ? 'red' : 'orange'
+                      return (
+                        <div>
+                          <Tag color={color} bordered={false}>{val}</Tag>
+                          {val === '故障' && (
+                            <div style={{ marginTop: 4 }}>
+                              <Button 
+                                type="link" 
+                                size="small" 
+                                style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                                onClick={() => window.alert('原型：查看日志功能')}
+                              >
+                                查看日志
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+                  },
+                  { 
+                    title: '操作', 
+                    key: 'actions',
+                    render: () => (
+                      <Button type="link" danger size="small">删除</Button>
+                    )
+                  }
+                ]}
+                dataSource={[
+                  {
+                    key: 'pod-1',
+                    podName: `${selectedService.service}-6648d5cbf6-6k95p`,
+                    resources: selectedService.resources,
+                    status: selectedService.status
+                  },
+                  {
+                    key: 'pod-2', 
+                    podName: `${selectedService.service}-6648d5cbf6-qwcfn`,
+                    resources: selectedService.resources,
+                    status: selectedService.status === '故障' ? '故障' : '正常'
+                  }
+                ]}
+              />
+            </Card>
+          </div>
+        )}
+      </Drawer>
+
+      {/* 部署分组详情 Drawer */}
+      <Drawer
+        title={`分组详情 - ${selectedGroup?.groupName}`}
+        width={800}
+        open={deployDrawerVisible}
+        onClose={() => {
+          setDeployDrawerVisible(false)
+          setSelectedGroup(null)
+        }}
+        destroyOnClose
+      >
+        {selectedGroup && (
+          <div>
+            <Card title="分组信息" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div><strong>分组名称:</strong> {selectedGroup.groupName}</div>
+                  <div><strong>备注:</strong> {selectedGroup.note}</div>
+                </Col>
+                <Col span={12}>
+                  <div><strong>服务:</strong> {selectedGroup.services}</div>
+                  <div><strong>镜像版本:</strong> {selectedGroup.imageVersion}</div>
+                </Col>
+              </Row>
+            </Card>
+            <Card title="部署配置">
+              <Table
+                columns={deployColumns}
+                dataSource={deployConfigs}
+                pagination={false}
+              />
+            </Card>
+          </div>
+        )}
+      </Drawer>
     </div>
   )
 }
-

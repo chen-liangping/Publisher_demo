@@ -39,7 +39,21 @@ export default function ActivityPage(): React.ReactElement {
     { title: 'category', dataIndex: 'category', key: 'category', width: 180 },
     { title: 'event_type', dataIndex: 'event_type', key: 'event_type', width: 180 },
     { title: 'event_id', dataIndex: 'event_id', key: 'event_id', width: 120, sorter: (a, b) => a.event_id - b.event_id },
-    { title: 'notes', dataIndex: 'notes', key: 'notes', width: 240 }
+    { title: 'notes', dataIndex: 'notes', key: 'notes', width: 240 },
+    { 
+      title: '操作', 
+      key: 'actions', 
+      width: 120, 
+      render: (_, record) => (
+        <Button 
+          type="link" 
+          danger 
+          onClick={() => setEvents(prev => prev.filter(item => item.key !== record.key))}
+        >
+          删除
+        </Button>
+      ) 
+    }
   ]), [])
 
   const [csvList, setCsvList] = useState<CsvRow[]>([

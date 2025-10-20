@@ -382,6 +382,14 @@ export default function AlertPage(): React.ReactElement {
         width={520}
         onClose={() => setAddWebhookOpen(false)}
         destroyOnClose
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Space>
+              <Button onClick={() => setAddWebhookOpen(false)}>取消</Button>
+              <Button type="primary" onClick={onSubmitAddWebhook}>保存</Button>
+            </Space>
+          </div>
+        }
       >
         <Form<Webhook> form={webhookForm} layout="vertical">
           <Form.Item
@@ -409,10 +417,6 @@ export default function AlertPage(): React.ReactElement {
           <Form.Item label="加签密钥（可选）" name="secret">
             <Input.Password placeholder="用于钉钉安全设置（可选）" />
           </Form.Item>
-          <Space>
-            <Button type="primary" onClick={onSubmitAddWebhook}>保存</Button>
-            <Button onClick={() => setAddWebhookOpen(false)}>取消</Button>
-          </Space>
         </Form>
       </Drawer>
 
@@ -423,6 +427,14 @@ export default function AlertPage(): React.ReactElement {
         width={520}
         onClose={() => setEditWebhookOpen(false)}
         destroyOnClose
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Space>
+              <Button onClick={() => setEditWebhookOpen(false)}>取消</Button>
+              <Button type="primary" onClick={onSubmitEditWebhook}>保存</Button>
+            </Space>
+          </div>
+        }
       >
         <Form<Webhook> form={webhookEditForm} layout="vertical">
           <Form.Item
@@ -450,10 +462,6 @@ export default function AlertPage(): React.ReactElement {
           <Form.Item label="加签密钥（可选）" name="secret">
             <Input.Password placeholder="用于钉钉安全设置（可选）" />
           </Form.Item>
-          <Space>
-            <Button type="primary" onClick={onSubmitEditWebhook}>保存</Button>
-            <Button onClick={() => setEditWebhookOpen(false)}>取消</Button>
-          </Space>
         </Form>
       </Drawer>
     </Space>
@@ -513,6 +521,14 @@ export default function AlertPage(): React.ReactElement {
           width={480}
           onClose={() => setAddPersonOpen(false)}
           destroyOnClose
+          footer={
+            <div style={{ textAlign: 'left' }}>
+              <Space>
+                <Button onClick={() => setAddPersonOpen(false)}>取消</Button>
+                <Button type="primary" onClick={onSubmitAddPerson}>保存</Button>
+              </Space>
+            </div>
+          }
         >
           <Form<Person> form={personForm} layout="vertical">
             <Form.Item
@@ -529,10 +545,6 @@ export default function AlertPage(): React.ReactElement {
             >
               <Input placeholder="例如：dingtalk:123456" />
             </Form.Item>
-            <Space>
-              <Button type="primary" onClick={onSubmitAddPerson}>保存</Button>
-              <Button onClick={() => setAddPersonOpen(false)}>取消</Button>
-            </Space>
           </Form>
         </Drawer>
       </Card>
