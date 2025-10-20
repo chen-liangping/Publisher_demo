@@ -10,6 +10,7 @@ import {
   Checkbox,
   Divider
 } from 'antd'
+import type { FormInstance } from 'antd/es/form'
 
 // HPA配置表单数据类型
 export interface HPAFormValues {
@@ -30,7 +31,7 @@ interface HPAConfigModalProps {
   open: boolean;
   onCancel: () => void;
   onOk: (values: HPAFormValues) => void;
-  form: any; // Form实例
+  form: FormInstance<HPAFormValues>;
   initialValues?: Partial<HPAFormValues>;
 }
 
