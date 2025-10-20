@@ -20,6 +20,8 @@ import {
 } from 'antd'
 import { DownOutlined, UpOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import type { FormInstance } from 'antd/es/form'
+import type { CheckboxChangeEvent } from 'antd/es/checkbox'
 
 const { Title } = Typography
 
@@ -62,7 +64,7 @@ interface HPAConfigModalProps {
   open: boolean;
   onCancel: () => void;
   onOk: (values: HPAFormValues) => void;
-  form: any; // Form实例
+  form: FormInstance<HPAFormValues>;
   initialValues?: Partial<HPAFormValues>;
 }
 
@@ -98,7 +100,7 @@ export default function HPAConfigModal({
     }
   }
 
-  const handleConditionsChange = (e: any) => {
+  const handleConditionsChange = (e: CheckboxChangeEvent) => {
     const checked = e.target.checked
     if (checked) {
       // 如果要开启条件，先显示条件确认
