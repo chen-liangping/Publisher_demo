@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
 import {
   Table,
@@ -20,7 +21,8 @@ import {
   Avatar,
   Descriptions,
   Card,
-  Progress
+  Progress,
+  DatePicker
 } from 'antd'
 import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
@@ -38,7 +40,7 @@ interface DBInstance {
   status?: string
   password?: string
   gameId?: string
-  // 最近一次备份时间（用于"从备份点创建实例"）
+  // 最近一次备份时间（用于"复制生产数据"）
   backupTime?: string
   // 是否为备份实例
   isBackup?: boolean
@@ -63,6 +65,8 @@ interface DBInstance {
   shardSpec?: string
   MongoCount?: number
   shardCount?: number
+  // Mock相关字段
+  domainUsed?: boolean // 公网域名是否已被使用
 }
 
 // 白名单条目类型
@@ -90,36 +94,18 @@ const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
   { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
   { id: '3', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
-  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' },
-  // 测试用备份实例
-  { 
-    id: '5', 
-    type: 'MySQL', 
-    alias: 'mysql-backup-test', 
-    spec: '2核8GB', 
-    arch: '集群版', 
-    username: 'gamedemo_test', 
-    status: 'running', 
-    password: 'admin123', 
-    gameId: AUTO_GAME_ID, 
-    version: 'MySQL 5.7', 
-    connectionCount: 10000, 
-    defaultPort: 3306, 
-    capacity: '100GB', 
-    backupTime: '2024/09/01 12:30:00',
-    isBackup: true,
-    createdAt: new Date().toISOString(),
-    deleteAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleString('zh-CN', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit',
-      hour12: false 
-    }).replace(/\//g, '-'),
-    totalExtendedHours: 0
-  }
+  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' }
+]
+
+// 模拟生产环境数据
+const mockProductionData: DBInstance[] = [
+  { id: 'prod-1', type: 'MySQL', alias: 'mysql-prod-main', spec: '8核32GB', arch: '集群版', username: 'prod_user', status: 'running', password: 'prod123', gameId: 'production', version: 'MySQL 8.0', connectionCount: 50000, defaultPort: 3306, capacity: '1TB' },
+  { id: 'prod-2', type: 'MySQL', alias: 'mysql-prod-backup', spec: '4核16GB', arch: '集群版', username: 'prod_user', status: 'running', password: 'prod123', gameId: 'production', version: 'MySQL 8.0', connectionCount: 30000, defaultPort: 3306, capacity: '500GB' },
+  { id: 'prod-3', type: 'Redis', alias: 'redis-prod-cache', spec: '16核64GB', arch: '双机主备架构', username: 'prod_user', status: 'running', password: 'prodpass', gameId: 'production', version: 'Redis 7.0', connectionCount: 100000, defaultPort: 6379, capacity: '200GB' },
+  { id: 'prod-4', type: 'Redis', alias: 'redis-prod-session', spec: '8核32GB', arch: '双机主备架构', username: 'prod_user', status: 'running', password: 'prodpass', gameId: 'production', version: 'Redis 7.0', connectionCount: 80000, defaultPort: 6379, capacity: '100GB' },
+  { id: 'prod-5', type: 'Mongo', alias: 'mongo-prod-user', spec: '8核16GB', arch: '副本集实例', username: 'prod_user', status: 'running', password: 'mongoprod', gameId: 'production', version: 'Mongo 5.0', connectionCount: 60000, defaultPort: 27017, capacity: '300GB' },
+  { id: 'prod-6', type: 'Mongo', alias: 'mongo-prod-logs', spec: '4核8GB', arch: '副本集实例', username: 'prod_user', status: 'running', password: 'mongoprod', gameId: 'production', version: 'Mongo 5.0', connectionCount: 40000, defaultPort: 27017, capacity: '500GB' },
+  { id: 'prod-7', type: 'Zookeeper', alias: 'zk-prod-cluster', spec: '4核8GB', arch: '标准版', username: 'prod_user', status: 'running', password: 'zkprod', gameId: 'production', version: 'Zookeeper 3.8', defaultPort: 2181 }
 ]
 
 export default function ContainerDatabase() {
@@ -167,10 +153,19 @@ export default function ContainerDatabase() {
   const [wlActiveTab, setWlActiveTab] = useState<'whiteList' | 'audit'>('whiteList')
   const [showAddWL, setShowAddWL] = useState<boolean>(false)
   const [wlForm] = Form.useForm()
-  // 从备份点创建实例 Drawer
-  const [cloneOpen, setCloneOpen] = useState<boolean>(false)
-  const [cloneForm] = Form.useForm()
-  const cloneSourceIds = Form.useWatch('sourceIds', cloneForm) as string[] | undefined
+  // 复制生产数据 Modal
+  const [mockOpen, setMockOpen] = useState<boolean>(false)
+  const [mockForm] = Form.useForm()
+  const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]) // 选中的测试实例ID
+  const [mockPairings, setMockPairings] = useState<Record<string, string>>({}) // testId -> prodId
+  const [mockProgress, setMockProgress] = useState<{
+    visible: boolean
+    progress: number
+    status: 'running' | 'completed'
+    mockTime?: string
+    destroyTime?: string
+    totalExtendedHours?: number // 累积延长时间
+  }>({ visible: false, progress: 0, status: 'running', totalExtendedHours: 0 })
   // 批量创建进度状态
   const [batchCreating, setBatchCreating] = useState<boolean>(false)
   const [creationProgress, setCreationProgress] = useState<{
@@ -227,86 +222,122 @@ export default function ContainerDatabase() {
     }
   }
 
-  // 延长备份实例时间
-  const handleExtendBackupTime = (instance: DBInstance) => {
-    const currentExtendedHours = instance.totalExtendedHours || 0
-    const maxExtendHours = 6
-    const remainingHours = maxExtendHours - currentExtendedHours
-    
-    if (remainingHours <= 0) {
-      messageApi.warning('该实例已达到最大延长时间限制（6小时）')
+
+  // 复制生产数据相关函数
+  const handleTestSelectionChange = (selectedIds: string[]) => {
+    setSelectedTestIds(selectedIds)
+    // 清理不再选中的实例的映射关系
+    setMockPairings(prev => {
+      const newPairings = { ...prev }
+      Object.keys(newPairings).forEach(testId => {
+        if (!selectedIds.includes(testId)) {
+          delete newPairings[testId]
+        }
+      })
+      return newPairings
+    })
+  }
+
+  const handlePairingChange = (testId: string, prodId: string) => {
+    setMockPairings(prev => ({
+      ...prev,
+      [testId]: prodId
+    }))
+  }
+
+  const handleRemovePairing = (testId: string) => {
+    setMockPairings(prev => {
+      const newPairings = { ...prev }
+      delete newPairings[testId]
+      return newPairings
+    })
+  }
+
+  const getTestInstances = () => {
+    return data
+  }
+
+  const getProductionInstancesByType = (type: string) => {
+    return mockProductionData.filter(item => item.type === type)
+  }
+
+  const handleConfirmMapping = () => {
+    if (selectedTestIds.length === 0) {
+      messageApi.warning('请选择至少一个测试环境存储')
       return
     }
-    
-    let extendHours = Math.min(1, remainingHours) // 默认延长1小时，但不超过剩余时间
-    
-    modal.confirm({
-      title: '延长存活时间',
-      content: (
-        <div>
-          <Input
-            type="number"
-            min={1}
-            max={remainingHours}
-            defaultValue={extendHours}
-            suffix="小时"
-            onChange={(e) => {
-              const value = parseInt(e.target.value)
-              if (value >= 1 && value <= remainingHours) {
-                extendHours = value
-              }
-            }}
-            style={{ width: '120px' }}
-          />
-          <div style={{ marginTop: 12, fontSize: '12px', color: '#666' }}>
-            <p>当前销毁时间：{instance.deleteAt}</p>
-            {/* <p>已延长时间：{currentExtendedHours} 小时</p> */}
-            <span style={{ color: '#ff4d4f' }}>最大延长时间限制：6 小时</span> ,剩余可延长：{remainingHours} 小时
-          </div>
-        </div>
-      ),
-      okText: '确认延长',
-      cancelText: '取消',
-      onOk() {
-        // 计算新的删除时间（当前删除时间 + 用户选择的小时数）
-        const currentDeleteTime = new Date(instance.deleteAt?.replace(/-/g, '/') || new Date())
-        const newDeleteTime = new Date(currentDeleteTime.getTime() + extendHours * 60 * 60 * 1000)
-        const newDeleteTimeStr = newDeleteTime.toLocaleString('zh-CN', { 
-          year: 'numeric', 
-          month: '2-digit', 
-          day: '2-digit', 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          second: '2-digit',
-          hour12: false 
-        }).replace(/\//g, '-')
 
-        // 更新累积延长时间
-        const newTotalExtendedHours = currentExtendedHours + extendHours
+    const unpairedInstances = selectedTestIds.filter(id => !mockPairings[id])
+    if (unpairedInstances.length > 0) {
+      messageApi.warning(`请为所有选中的存储配置映射关系，还有 ${unpairedInstances.length} 个未配置`)
+      return
+    }
 
-        // 更新数据
-        setData(prev => prev.map(item => 
-          item.id === instance.id 
-            ? { 
-                ...item, 
-                deleteAt: newDeleteTimeStr,
-                totalExtendedHours: newTotalExtendedHours
-              }
-            : item
-        ))
-        
-        messageApi.success(`已延长 ${instance.alias} 的销毁时间 ${extendHours} 小时，累积延长 ${newTotalExtendedHours} 小时，新的销毁时间：${newDeleteTimeStr}`)
-      },
-      onCancel() {
-        console.log('用户取消了延长操作')
-      }
+    // 直接开始Mock，不需要二次确认
+    handleStartMock()
+  }
+
+  const handleStartMock = async () => {
+    setMockOpen(false)
+    
+    // 重置状态
+    const currentSelectedIds = [...selectedTestIds]
+    const currentPairings = { ...mockPairings }
+    setSelectedTestIds([])
+    setMockPairings({})
+    
+    const mockTime = new Date().toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit', 
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(/\//g, '-')
+    
+    const destroyTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit', 
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(/\//g, '-')
+
+    console.log('开始设置Mock进度条...')
+    setMockProgress({
+      visible: true,
+      progress: 0,
+      status: 'running',
+      mockTime,
+      destroyTime,
+      totalExtendedHours: 0
     })
+    console.log('Mock进度条已设置为visible')
+
+    // 模拟进度更新
+    for (let i = 0; i <= 100; i += 10) {
+      await new Promise(resolve => setTimeout(resolve, 300))
+      setMockProgress(prev => ({ ...prev, progress: i }))
+    }
+
+    setMockProgress(prev => ({ ...prev, status: 'completed' }))
+    
+    // 为配对的测试实例添加"公网域名已被使用"标签
+    setData(prev => prev.map(item => ({
+      ...item,
+      domainUsed: currentPairings[item.id] ? true : item.domainUsed
+    })))
+
+    messageApi.success('复制生产数据完成')
   }
 
   // 批量从备份创建实例
   const handleBatchCreateFromBackup = async (): Promise<void> => {
     try {
-      const sids = cloneForm.getFieldValue('sourceIds') as string[] | undefined
+      const sids = mockForm.getFieldValue('sourceIds') as string[] | undefined
       if (!sids || sids.length === 0) { 
         message.warning('请选择至少一个备份实例')
         return 
@@ -376,7 +407,7 @@ export default function ContainerDatabase() {
               fontSize: '12px',
               color: '#d46b08'
             }}>
-              <div>备份实例将在创建后 24 小时自动销毁，销毁后数据不可恢复，请及时完成相关操作</div>
+              <div>备份实例将在创建后 12 小时自动销毁，销毁后数据不可恢复，请及时完成相关操作</div>
             </div>
           </div>
         ),
@@ -396,8 +427,8 @@ export default function ContainerDatabase() {
   const executeBatchCreation = async (sourceInstances: DBInstance[]): Promise<void> => {
     try {
       // 关闭抽屉
-      setCloneOpen(false)
-      cloneForm.resetFields()
+      setMockOpen(false)
+      mockForm.resetFields()
 
       // 立即显示进度条
       setBatchCreating(true)
@@ -410,8 +441,8 @@ export default function ContainerDatabase() {
       })
 
       // 关闭对话框但保持进度显示
-      setCloneOpen(false)
-      cloneForm.resetFields()
+      setMockOpen(false)
+      mockForm.resetFields()
 
       // 模拟并行创建过程
       const steps = [
@@ -621,20 +652,12 @@ export default function ContainerDatabase() {
   const columns: ColumnsType<DBInstance> = [
     { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Button type="link" onClick={() => setSelectedInstance(record)}><Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag></Button>
-        {record.isBackup && (
-          <span style={{ 
-            fontSize: '11px', 
-            color: '#ff7a00', 
-            backgroundColor: '#fff7e6', 
-            border: '1px solid #ffd591', 
-            borderRadius: '2px', 
-            padding: '1px 4px',
-            fontWeight: 500
-          }}>
-            备份
-          </span>
-        )}
+        <Button 
+          type="link" 
+          onClick={() => setSelectedInstance(record)}
+        >
+          <Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag>
+        </Button>
       </div>
     )},
     { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => (
@@ -643,7 +666,14 @@ export default function ContainerDatabase() {
           <Dots />
           <span style={{ fontSize: 12, color: '#666' }}>{record.creatingStep} {record.creatingProgress ? `(${record.creatingProgress}%)` : ''}</span>
         </div>
-      ) : record.alias
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{record.alias}</span>
+          {record.domainUsed && (
+            <Tag color="orange" style={{ fontSize: '10px' }}>公网域名已被使用</Tag>
+          )}
+        </div>
+      )
     )},
     { title: '实例规格', dataIndex: 'spec', key: 'spec', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : <div style={{color: '#74b9ff'}}>{record.spec}</div> },
     { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.arch},
@@ -652,7 +682,11 @@ export default function ContainerDatabase() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>****</span>
         <Tooltip title="复制密码">
-          <Button type="text" icon={<CopyOutlined />} onClick={() => copyPassword(record.password)} />
+          <Button 
+            type="text" 
+            icon={<CopyOutlined />} 
+            onClick={() => copyPassword(record.password)} 
+          />
         </Tooltip>
       </div>
     )},
@@ -661,14 +695,17 @@ export default function ContainerDatabase() {
       key: 'actions',
       render: (_: unknown, record: DBInstance) => {
         const t = (record.type || '').toLowerCase()
-        const isBackup = record.isBackup
         
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
         <Space>
               {/* 数据库查询 - 所有类型都有 */}
           <Tooltip title="数据库查询">
-            <Button type="text" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${record.alias}（模拟）`)} />
+            <Button 
+              type="text" 
+              icon={<SearchOutlined />} 
+              onClick={() => message.info(`查询 ${record.alias}（模拟）`)} 
+            />
           </Tooltip>
               
               {/* IP白名单 - 所有类型都有 */}
@@ -685,20 +722,32 @@ export default function ContainerDatabase() {
           </Tooltip>
               
               {/* Mongo 特有操作 */}
-              {(t === 'mongo' || t === 'mongodb' || t === 'Mongo') && !isBackup && (
+              {(t === 'mongo' || t === 'mongodb' || t === 'Mongo') && (
                 <Tooltip title="慢日志">
-                  <Button type="text" icon={<ClockCircleOutlined />} onClick={() => message.info(`慢日志 ${record.alias}（模拟）`)} />
+                  <Button 
+                    type="text" 
+                    icon={<ClockCircleOutlined />} 
+                    onClick={() => message.info(`慢日志 ${record.alias}（模拟）`)} 
+                  />
                 </Tooltip>
               )}
               
               {/* MySQL 特有操作 */}
-              {t === 'mysql' && !isBackup && (
+              {t === 'mysql' && (
                 <>
           <Tooltip title="数据库恢复">
-            <Button type="text" icon={<RollbackOutlined />} onClick={() => message.info(`恢复 ${record.alias}（模拟）`)} />
+            <Button 
+              type="text" 
+              icon={<RollbackOutlined />} 
+              onClick={() => message.info(`恢复 ${record.alias}（模拟）`)} 
+            />
           </Tooltip>
                   <Tooltip title="慢SQL">
-                    <Button type="text" icon={<ClockCircleOutlined />} onClick={() => message.info(`慢SQL ${record.alias}（模拟）`)} />
+                    <Button 
+                      type="text" 
+                      icon={<ClockCircleOutlined />} 
+                      onClick={() => message.info(`慢SQL ${record.alias}（模拟）`)} 
+                    />
                   </Tooltip>
                 </>
               )}
@@ -706,45 +755,17 @@ export default function ContainerDatabase() {
               {/* Redis 特有操作 */}
               {t === 'redis' && (
           <Tooltip title="备份">
-            <Button type="text" icon={<CloudUploadOutlined />} onClick={() => message.info(`备份 ${record.alias}（模拟）`)} />
+            <Button 
+              type="text" 
+              icon={<CloudUploadOutlined />} 
+              onClick={() => message.info(`备份 ${record.alias}（模拟）`)} 
+            />
           </Tooltip>
               )}
               
               {/* Zookeeper 只有 IP白名单和数据库查询，已在上面处理 */}
         </Space>
             
-            {/* 备份实例延长时间按钮和自动销毁提示 */}
-            {isBackup && record.deleteAt && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#ff4d4f' }}>
-                  将于 {record.deleteAt} 自动销毁
-                </span>
-                <Tooltip title={
-                  (record.totalExtendedHours || 0) >= 6 
-                    ? '已达到最大延长时间限制（6小时）' 
-                    : `延长时间（剩余可延长：${6 - (record.totalExtendedHours || 0)}小时）`
-                }>
-                  <Button 
-                    type="link" 
-                    size="small" 
-                    icon={<FieldTimeOutlined />} 
-                    disabled={(record.totalExtendedHours || 0) >= 6}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleExtendBackupTime(record)
-                    }}
-                    style={{ 
-                      padding: '0 4px', 
-                      fontSize: 12,
-                      opacity: (record.totalExtendedHours || 0) >= 6 ? 0.5 : 1
-                    }}
-                  >
-                    延长时间
-                  </Button>
-                </Tooltip>
-              </div>
-            )}
           </div>
         )
       }
@@ -850,9 +871,13 @@ export default function ContainerDatabase() {
                 form.setFieldsValue({ type: 'MySQL' })
               }}
             >
-                      添加数据库实例
-        </Button>
-                    <Button onClick={() => setCloneOpen(true)}>从备份点创建实例</Button>
+              添加数据库实例
+            </Button>
+            <Button 
+              onClick={() => setMockOpen(true)}
+            >
+              复制生产数据
+            </Button>
       </div>
       </div>
               </Card>
@@ -883,6 +908,140 @@ export default function ContainerDatabase() {
                 </Card>
               )}
 
+              {/* 复制生产数据进度卡片 */}
+              {mockProgress.visible && (
+                <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 500 }}>
+                      {mockProgress.status === 'running' ? '复制生产数据进度' : '已切换至生产数据'}
+                    </span>
+                    {mockProgress.status === 'completed' && (
+                      <Button 
+                        type="link" 
+                        size="small"
+                        onClick={() => {
+                          modal.confirm({
+                            title: '确认结束生产数据切换吗',
+                            content: '结束切换后，测试环境将不再指向生产数据备份，并恢复为原来的测试数据',
+                            onOk: () => {
+                              // 关闭进度卡片
+                              setMockProgress(prev => ({ ...prev, visible: false }))
+                              // 清除所有测试存储的"公网域名已被使用"标签
+                              setData(prevData => 
+                                prevData.map(instance => ({
+                                  ...instance,
+                                  domainUsed: false
+                                }))
+                              )
+                            }
+                          })
+                        }}
+                      >
+                        结束切换
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {mockProgress.status === 'running' ? (
+                    <Progress 
+                      percent={mockProgress.progress} 
+                      status="active"
+                      strokeColor={{
+                        '0%': '#108ee9',
+                        '100%': '#87d068',
+                      }}
+                      format={(percent) => `${percent}%`}
+                    />
+                  ) : (
+                    <div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ color: '#666', marginRight: 8 }}>备份时间点:</span>
+                        <span>{mockProgress.mockTime}</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ color: '#666', marginRight: 8 }}>销毁时间点:</span>
+                        <span style={{ color: '#ff4d4f' }}>{mockProgress.destroyTime}</span>
+                      </div>
+                      <div>
+                        <Button 
+                          type="primary" 
+                          size="small"
+                          onClick={() => {
+                            // 使用现有的延长时间逻辑，但需要特殊处理Mock实例
+                            const currentExtendedHours = mockProgress.totalExtendedHours || 0
+                            const maxExtendHours = 60
+                            const remainingHours = maxExtendHours - currentExtendedHours
+                            
+                            if (remainingHours <= 0) {
+                              messageApi.warning('该实例已达到最大存活时间限制（72小时）')
+                              return
+                            }
+                            
+                            let extendHours = Math.min(1, remainingHours)
+                            
+                            modal.confirm({
+                               title: '延长销毁时间',
+                              content: (
+                                <div>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={remainingHours}
+                                    defaultValue={extendHours}
+                                    suffix="小时"
+                                    onChange={(e) => {
+                                      const value = parseInt(e.target.value)
+                                      if (value >= 1 && value <= remainingHours) {
+                                        extendHours = value
+                                      }
+                                    }}
+                                    style={{ width: '120px' }}
+                                  />
+                                  <div style={{ marginTop: 12, fontSize: '12px', color: '#666' }}>
+                                    <p>当前销毁时间：{mockProgress.destroyTime}</p>
+                                    <span style={{ color: '#ff4d4f' }}>最大存活时间限制：72 小时</span> ,剩余可延长：{remainingHours} 小时
+                                  </div>
+                                </div>
+                              ),
+                              okText: '确认延长',
+                              cancelText: '取消',
+                              onOk() {
+                                // 计算新的销毁时间
+                                const currentDestroyTime = new Date(mockProgress.destroyTime?.replace(/-/g, '/') || new Date())
+                                const newDestroyTime = new Date(currentDestroyTime.getTime() + extendHours * 60 * 60 * 1000)
+                                const newDestroyTimeStr = newDestroyTime.toLocaleString('zh-CN', { 
+                                  year: 'numeric', 
+                                  month: '2-digit', 
+                                  day: '2-digit', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit', 
+                                  second: '2-digit',
+                                  hour12: false 
+                                }).replace(/\//g, '-')
+
+                                // 更新累积延长时间
+                                const newTotalExtendedHours = currentExtendedHours + extendHours
+                                
+                                // 更新Mock进度状态
+                                setMockProgress(prev => ({
+                                  ...prev,
+                                  destroyTime: newDestroyTimeStr,
+                                  totalExtendedHours: newTotalExtendedHours
+                                }))
+                                
+                                messageApi.success(`已延长销毁时间 ${extendHours} 小时，累积延长 ${newTotalExtendedHours} 小时，新的销毁时间：${newDestroyTimeStr}`)
+                              }
+                            })
+                          }}
+                        >
+                          延长时间
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
+
               {/* 卡片模式（≤4 条）- 每卡一行 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {sorted.map((inst) => {
@@ -897,51 +1056,10 @@ export default function ContainerDatabase() {
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: 20, color: 'rgb(17,25,40)', display: 'flex', alignItems: 'center', gap: 8 }}>
                                   <strong>{inst.type}<span style={{fontSize: 18, color: 'rgba(0,0,0,0.45)', marginLeft: 4 }}>{inst.alias}</span></strong>
-                                  {inst.isBackup && (
-                                    <span style={{ 
-                                      fontSize: '11px', 
-                                      color: '#ff7a00', 
-                                      backgroundColor: '#fff7e6', 
-                                      border: '1px solid #ffd591', 
-                                      borderRadius: '2px', 
-                                      padding: '1px 4px',
-                                      fontWeight: 500
-                                    }}>
-                                      备份
-                                    </span>
+                                  {inst.domainUsed && (
+                                    <Tag color="orange" style={{ fontSize: '10px' }}>域名已指向生产数据备份</Tag>
                                   )}
                                 </span>
-                                {inst.isBackup && inst.deleteAt && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                                    <span style={{ fontSize: 12, color: '#ff4d4f' }}>
-                                      将于 {inst.deleteAt} 自动销毁
-                                    </span>
-                                    <Tooltip title={
-                                      (inst.totalExtendedHours || 0) >= 6 
-                                        ? '已达到最大延长时间限制（6小时）' 
-                                        : `延长时间（剩余可延长：${6 - (inst.totalExtendedHours || 0)}小时）`
-                                    }>
-                                      <Button 
-                                        type="link" 
-                                        size="small" 
-                                        icon={<FieldTimeOutlined />} 
-                                        disabled={(inst.totalExtendedHours || 0) >= 6}
-                                        onClick={(e) => {
-                                          e.preventDefault()
-                                          e.stopPropagation()
-                                          handleExtendBackupTime(inst)
-                                        }}
-                                        style={{ 
-                                          padding: '0 4px', 
-                                          fontSize: 12,
-                                          opacity: (inst.totalExtendedHours || 0) >= 6 ? 0.5 : 1
-                                        }}
-                                      >
-                                        延长时间
-                                      </Button>
-                                    </Tooltip>
-                                  </div>
-                                )}
                                 {(['mysql','Mongo','mongo','mongodb'].includes((inst.type || '').toLowerCase())) && (
                                   <span style={{ fontWeight: 400, fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>创建数据库时，名称需以 <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.65)' }}>{AUTO_GAME_ID}_</span> 开头</span>
                                 )}
@@ -955,42 +1073,131 @@ export default function ContainerDatabase() {
                                 if (t === 'mongo' || t === 'mongodb' || t === 'Mongo') {
                                   return (
                                     <>
-                                      {!inst.isBackup && <Button icon={<ClockCircleOutlined />} onClick={() => message.info(`慢日志 ${inst.alias}（模拟）`)}>慢日志</Button>}
-                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
-                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                      <Button 
+                                        icon={<ClockCircleOutlined />} 
+                                        onClick={() => message.info(`慢日志 ${inst.alias}（模拟）`)}
+                                      >
+                                        慢日志
+                                      </Button>
+                                      <Button 
+                                        icon={<UserAddOutlined />} 
+                                        onClick={() => { 
+                                          setWhitelistInstance(inst); 
+                                          setWhitelistOpen(true); 
+                                          setWlActiveTab('whiteList') 
+                                        }}
+                                      >
+                                        IP白名单
+                                      </Button>
+                                      <Button 
+                                        type="primary" 
+                                        icon={<SearchOutlined />} 
+                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                      >
+                                        数据库查询
+                                      </Button>
                                     </>
                                   )
                                 }
                                 if (t === 'mysql') {
                                   return (
                                     <>
-                                      {!inst.isBackup && <Button icon={<RollbackOutlined />} onClick={() => message.info(`恢复 ${inst.alias}（模拟）`)}>数据库恢复</Button>}
-                                      {!inst.isBackup && <Button icon={<ClockCircleOutlined />} onClick={() => message.info(`慢SQL ${inst.alias}（模拟）`)}>慢SQL</Button>}
-                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
-                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                      <Button 
+                                        icon={<RollbackOutlined />} 
+                                        onClick={() => message.info(`恢复 ${inst.alias}（模拟）`)}
+                                      >
+                                        数据库恢复
+                                      </Button>
+                                      <Button 
+                                        icon={<ClockCircleOutlined />} 
+                                        onClick={() => message.info(`慢SQL ${inst.alias}（模拟）`)}
+                                      >
+                                        慢SQL
+                                      </Button>
+                                      <Button 
+                                        icon={<UserAddOutlined />} 
+                                        onClick={() => { 
+                                          setWhitelistInstance(inst); 
+                                          setWhitelistOpen(true); 
+                                          setWlActiveTab('whiteList') 
+                                        }}
+                                      >
+                                        IP白名单
+                                      </Button>
+                                      <Button 
+                                        type="primary" 
+                                        icon={<SearchOutlined />} 
+                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                      >
+                                        数据库查询
+                                      </Button>
                                     </>
                                   )
                                 }
                                 if (t === 'redis') {
                                   return (
                                     <>
-                                      <Button icon={<CloudUploadOutlined />} onClick={() => message.info(`备份 ${inst.alias}（模拟）`)}>备份</Button>
-                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
-                                      <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                      <Button 
+                                        icon={<CloudUploadOutlined />} 
+                                        onClick={() => message.info(`备份 ${inst.alias}（模拟）`)}
+                                      >
+                                        备份
+                                      </Button>
+                                      <Button 
+                                        icon={<UserAddOutlined />} 
+                                        onClick={() => { 
+                                          setWhitelistInstance(inst); 
+                                          setWhitelistOpen(true); 
+                                          setWlActiveTab('whiteList') 
+                                        }}
+                                      >
+                                        IP白名单
+                                      </Button>
+                                      <Button 
+                                        type="primary" 
+                                        icon={<SearchOutlined />} 
+                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                      >
+                                        数据库查询
+                                      </Button>
                                     </>
                                   )
                                 }
                                 if (t === 'zookeeper') {
                                   return (
                                     <>
-                                      <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
+                                      <Button 
+                                        icon={<UserAddOutlined />} 
+                                        onClick={() => { 
+                                          setWhitelistInstance(inst); 
+                                          setWhitelistOpen(true); 
+                                          setWlActiveTab('whiteList') 
+                                        }}
+                                      >
+                                        IP白名单
+                                      </Button>
                                     </>
                                   )
                                 }
                                 return (
                                   <>
-                                    <Button icon={<UserAddOutlined />} onClick={() => { setWhitelistInstance(inst); setWhitelistOpen(true); setWlActiveTab('whiteList') }}>IP白名单</Button>
-                                    <Button type="primary" icon={<SearchOutlined />} onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}>数据库查询</Button>
+                                    <Button 
+                                      icon={<UserAddOutlined />} 
+                                      onClick={() => { 
+                                        setWhitelistInstance(inst); 
+                                        setWhitelistOpen(true); 
+                                        setWlActiveTab('whiteList') 
+                                      }}
+                                    >
+                                      IP白名单
+                                    </Button>
+                                    <Button 
+                                      type="primary" 
+                                      icon={<SearchOutlined />} 
+                                      onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                    >
+                                      数据库查询
+                                    </Button>
                                   </>
                                 )
                               })()}
@@ -1003,13 +1210,21 @@ export default function ContainerDatabase() {
                         <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)' }}>公网</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                           <span style={{ color: 'rgba(0,0,0,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conn.pub}</span>
-                          <Button type="text" icon={<CopyOutlined />} onClick={() => copyText(conn.pub)} />
+                          <Button 
+                            type="text" 
+                            icon={<CopyOutlined />} 
+                            onClick={() => copyText(conn.pub)} 
+                          />
                         </div>
                         {/* 内网 */}
                         <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)' }}>内网</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                           <span style={{ color: 'rgba(0,0,0,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conn.pri}</span>
-                          <Button type="text" icon={<CopyOutlined />} onClick={() => copyText(conn.pri)} />
+                          <Button 
+                            type="text" 
+                            icon={<CopyOutlined />} 
+                            onClick={() => copyText(conn.pri)} 
+                          />
                         </div>
                         {/* 配置 */}
                         <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)', marginBottom: 8 }}>配置</div>
@@ -1017,7 +1232,13 @@ export default function ContainerDatabase() {
                           <Descriptions.Item label="用户名">{inst.username || '-'}</Descriptions.Item>
                           <Descriptions.Item label="密码">
                             <span>{maskPassword(inst.password)}</span>
-                            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyPassword(inst.password)} style={{ paddingLeft: 8 }} />
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              icon={<CopyOutlined />} 
+                              onClick={() => copyPassword(inst.password)} 
+                              style={{ paddingLeft: 8 }} 
+                            />
                           </Descriptions.Item>
                           <Descriptions.Item label="版本">{inst.version || '-'}</Descriptions.Item>
                           <Descriptions.Item label="实例规格">{inst.spec}</Descriptions.Item>
@@ -1067,7 +1288,11 @@ export default function ContainerDatabase() {
                     >
                       添加数据库实例
                     </Button>
-                    <Button onClick={() => setCloneOpen(true)}>从备份点创建实例</Button>
+                    <Button 
+                      onClick={() => setMockOpen(true)}
+                    >
+                      复制生产数据
+                    </Button>
               </div>
               </div>
               </Card>
@@ -1098,11 +1323,151 @@ export default function ContainerDatabase() {
                 </Card>
               )}
 
+              {/* 复制生产数据进度卡片 */}
+              {mockProgress.visible && (
+                <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 500 }}>
+                      {mockProgress.status === 'running' ? '复制生产数据进度' : 'Mock生产中'}
+                    </span>
+                    {mockProgress.status === 'completed' && (
+                      <Button 
+                        type="link" 
+                        size="small"
+                        onClick={() => {
+                          modal.confirm({
+                            title: '确认结束生产mock吗',
+                            content: '结束后将无法继续查看Mock进度信息',
+                            onOk: () => {
+                              // 关闭进度卡片
+                              setMockProgress(prev => ({ ...prev, visible: false }))
+                              // 清除所有测试存储的"公网域名已被使用"标签
+                              setData(prevData => 
+                                prevData.map(instance => ({
+                                  ...instance,
+                                  domainUsed: false
+                                }))
+                              )
+                            }
+                          })
+                        }}
+                      >
+                        关闭
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {mockProgress.status === 'running' ? (
+                    <Progress 
+                      percent={mockProgress.progress} 
+                      status="active"
+                      strokeColor={{
+                        '0%': '#108ee9',
+                        '100%': '#87d068',
+                      }}
+                      format={(percent) => `${percent}%`}
+                    />
+                  ) : (
+                    <div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ color: '#666', marginRight: 8 }}>备份时间点:</span>
+                        <span>{mockProgress.mockTime}</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ color: '#666', marginRight: 8 }}>销毁时间点:</span>
+                        <span style={{ color: '#ff4d4f' }}>{mockProgress.destroyTime}</span>
+                      </div>
+                      <div>
+                        <Button 
+                          type="primary" 
+                          size="small"
+                          onClick={() => {
+                            // 使用现有的延长时间逻辑，但需要特殊处理Mock实例
+                            const currentExtendedHours = mockProgress.totalExtendedHours || 0
+                            const maxExtendHours = 60
+                            const remainingHours = maxExtendHours - currentExtendedHours
+                            
+                            if (remainingHours <= 0) {
+                              messageApi.warning('该实例已达到最大存活时间限制（72小时）')
+                              return
+                            }
+                            
+                            let extendHours = Math.min(1, remainingHours)
+                            
+                            modal.confirm({
+                              title: '延长Mock存活时间',
+                              content: (
+                                <div>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={remainingHours}
+                                    defaultValue={extendHours}
+                                    suffix="小时"
+                                    onChange={(e) => {
+                                      const value = parseInt(e.target.value)
+                                      if (value >= 1 && value <= remainingHours) {
+                                        extendHours = value
+                                      }
+                                    }}
+                                    style={{ width: '120px' }}
+                                  />
+                                  <div style={{ marginTop: 12, fontSize: '12px', color: '#666' }}>
+                                    <p>当前销毁时间：{mockProgress.destroyTime}</p>
+                                    <span style={{ color: '#ff4d4f' }}>最大存活时间限制：72 小时</span> ,剩余可延长：{remainingHours} 小时
+                                  </div>
+                                </div>
+                              ),
+                              okText: '确认延长',
+                              cancelText: '取消',
+                              onOk() {
+                                // 计算新的销毁时间
+                                const currentDestroyTime = new Date(mockProgress.destroyTime?.replace(/-/g, '/') || new Date())
+                                const newDestroyTime = new Date(currentDestroyTime.getTime() + extendHours * 60 * 60 * 1000)
+                                const newDestroyTimeStr = newDestroyTime.toLocaleString('zh-CN', { 
+                                  year: 'numeric', 
+                                  month: '2-digit', 
+                                  day: '2-digit', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit', 
+                                  second: '2-digit',
+                                  hour12: false 
+                                }).replace(/\//g, '-')
+
+                                // 更新累积延长时间
+                                const newTotalExtendedHours = currentExtendedHours + extendHours
+                                
+                                // 更新Mock进度状态
+                                setMockProgress(prev => ({
+                                  ...prev,
+                                  destroyTime: newDestroyTimeStr,
+                                  totalExtendedHours: newTotalExtendedHours
+                                }))
+                                
+                                 messageApi.success(`已延长销毁时间 ${extendHours} 小时，累积延长 ${newTotalExtendedHours} 小时，新的销毁时间：${newDestroyTimeStr}`)
+                              }
+                            })
+                          }}
+                        >
+                          延长时间
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
+
               <Table columns={columns} dataSource={sorted} rowKey="id" pagination={{ pageSize: 10 }} />
 
         </>
           )
         )
+      })()}
+      
+      {/* 调试信息 */}
+      {(() => {
+        console.log('当前Mock进度状态:', mockProgress)
+        return null
       })()}
 
       {/* 白名单 Drawer */}
@@ -1395,77 +1760,199 @@ export default function ContainerDatabase() {
         </Form>
       </Modal>
 
-      {/* 从备份点创建实例 Drawer */}
-      <Drawer
-        title="从备份点创建实例"
-        width={520}
-        open={cloneOpen}
-        onClose={() => setCloneOpen(false)}
-        destroyOnClose
+      {/* 复制生产数据 Modal */}
+      <Modal
+        title="复制生产数据"
+        width={900}
+        open={mockOpen}
+        onCancel={() => {
+          setMockOpen(false)
+          setSelectedTestIds([])
+          setMockPairings({})
+        }}
+        
+        footer={[
+          <Button key="cancel" onClick={() => {
+            setMockOpen(false)
+            setSelectedTestIds([])
+            setMockPairings({})
+          }}>
+            取消
+          </Button>,
+          <Button key="confirm" type="primary" onClick={handleConfirmMapping}>
+            确认
+          </Button>
+        ]}
+        destroyOnHidden
       >
-        <Form form={cloneForm} layout="vertical" initialValues={{ sourceIds: [] }}>
-          <Form.Item label="选择源实例（支持多选）" name="sourceIds" rules={[{ required: true, message: '请选择至少一个源实例' }]}>
-            <Select
-              mode="multiple"
-              placeholder="请选择实例，支持多选"
-              options={data.filter(it => !it.isBackup).map(it => ({ 
-                value: it.id, 
-                label: `${it.type} / ${it.alias}`,
-                disabled: false
-              }))}
-              showSearch
-              optionFilterProp="label"
-              maxTagCount="responsive"
-              allowClear
+         <Alert
+           type="info"
+           showIcon
+           message={
+             <div>
+               1. 系统将基于生产环境创建指定时间点的备份，并将测试环境存储挂载到备份数据，实现生产环境数据的临时使用。
+               <br />
+               2. 测试存储将挂载生产备份数据，原测试数据暂时不可用。
+               <br />
+               <strong>3. 挂载数据为临时资源，12 小时后自动清理，请及时测试。</strong>
+               <br />
+               4. 挂载/解除挂载过程中可能出现短暂数据切换，结束后恢复原测试数据。
+               <br />
+               5. 域名需使用 CPP 域名，不支持阿里域名。
+               <br />
+             </div>
+           }
+           style={{ marginBottom: 12 }}
+         />
+        <Form form={mockForm} layout="vertical" initialValues={{ mockTime: dayjs() }}>
+          <Form.Item label="备份时间点" name="mockTime" rules={[{ required: true, message: '请选择备份时间点' }]}>
+            <DatePicker
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              placeholder="选择备份时间点"
+              style={{ width: '100%' }}
             />
           </Form.Item>
           
-          {cloneSourceIds && cloneSourceIds.length > 0 && (
+          {/* 操作区 */}
+          <div style={{ 
+            padding: '16px', 
+            backgroundColor: '#fafafa', 
+            borderRadius: '8px', 
+            marginBottom: 16,
+            border: '1px solid #f0f0f0'
+          }}>
+            
+            {/* 多选测试环境存储 */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ marginBottom: 8, fontWeight: 500 }}>将创建以下备份实例：</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {cloneSourceIds.map(sid => {
-                  const src = data.find(d => d.id === sid)
-                  if (!src) return null
+              <div style={{ marginBottom: 8, fontSize: 14 }}>选择测试环境存储：</div>
+              <Select
+                mode="multiple"
+                placeholder="请选择需要替换的存储"
+                style={{ width: '100%' }}
+                value={selectedTestIds}
+                onChange={handleTestSelectionChange}
+                options={getTestInstances().map(inst => ({
+                  value: inst.id,
+                  label: `${inst.type}-${inst.alias}`
+                }))}
+                maxTagCount="responsive"
+              />
+              <div style={{ 
+                marginTop: 8, 
+                fontSize: 12, 
+                color: '#666', 
+                lineHeight: '16px' 
+              }}>
+                选择测试环境存储后，系统将更新该域名的指向，使其使用生产环境的备份数据。
+              </div>
+            </div>
+            
+            {/* 动态映射关系操作栏 */}
+            {selectedTestIds.length > 0 && (
+              <div>
+                <div style={{ marginBottom: 12, fontSize: 14 }}>配置指向关系：</div>
+                {selectedTestIds.map(testId => {
+                  const testInstance = getTestInstances().find(inst => inst.id === testId)
+                  const prodOptions = getProductionInstancesByType(testInstance?.type || '')
+                  const selectedProdId = mockPairings[testId]
+                  
                   return (
-                    <div key={sid} style={{ 
-                      padding: '4px 8px', 
-                      backgroundColor: '#f0f2f5', 
-                      borderRadius: '4px',
-                      fontSize: '12px'
+                    <div key={testId} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      marginBottom: 8,
+                      padding: '8px 12px',
+                      backgroundColor: '#fff',
+                      borderRadius: '6px',
+                      border: '1px solid #e8e8e8'
                     }}>
-                      {src.type}-backup
+                      <div style={{ minWidth: 200 }}>
+                        <span style={{ fontWeight: 500 }}>
+                          {testInstance?.type}-{testInstance?.alias}
+                        </span>
+                      </div>
+                      <div style={{ color: '#666' }}>→</div>
+                      <Select
+                        placeholder="选择生产环境存储"
+                        style={{ flex: 1, minWidth: 200 }}
+                        value={selectedProdId}
+                        onChange={(value) => handlePairingChange(testId, value)}
+                        options={prodOptions.map(prod => ({
+                          value: prod.id,
+                          label: `${prod.type}-${prod.alias}`
+                        }))}
+                        allowClear
+                        onClear={() => handleRemovePairing(testId)}
+                      />
+                      <div style={{ minWidth: 60, textAlign: 'center' }}>
+                        {selectedProdId ? (
+                          <span style={{ color: '#52c41a', fontSize: 16 }}>✓</span>
+                        ) : (
+                          <span style={{ color: '#ff4d4f', fontSize: 16 }}>○</span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
               </div>
+            )}
+          </div>
+          
+          {/* 结果栏 */}
+          {Object.keys(mockPairings).length > 0 && (
+            <div style={{ 
+              padding: '16px', 
+              backgroundColor: '#ecf0f1', 
+              borderRadius: '8px',
+              border: '1px solid #dfe6e9'
+            }}>
+              <div style={{ fontWeight: 500, marginBottom: 12 }}>指向关系预览</div>
+              {Object.entries(mockPairings).map(([testId, prodId]) => {
+                const testInstance = data.find(d => d.id === testId)
+                const prodInstance = mockProductionData.find(p => p.id === prodId)
+                
+                return (
+                  <div key={testId} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '8px 12px',
+                    marginBottom: '8px',
+                    backgroundColor: '#fff',
+                    borderRadius: '4px',
+                    border: '1px solid #dfe6e9'
+                  }}>
+                    <div style={{ flex: 1, fontWeight: 500 }}>
+                      {testInstance?.type}-{testInstance?.alias}
+                    </div>
+                    <div style={{ margin: '0 12px', color: '#52c41a' }}>→</div>
+                    <div style={{ flex: 1, fontWeight: 500 }}>
+                      {prodInstance?.type}-{prodInstance?.alias}
+                    </div>
+                    <div style={{ color: '#52c41a', fontSize: 16 }}>✓</div>
+                  </div>
+                )
+              })}
+              <div style={{ 
+                textAlign: 'center', 
+                marginTop: 12, 
+                padding: '8px',
+                backgroundColor: '#fff',
+                borderRadius: '4px',
+                fontSize: 14,
+                color: '#636e72'
+              }}>
+                已配置 {Object.keys(mockPairings).length} 个存储实例
+              </div>
             </div>
           )}
-          <Alert
-            type="info"
-           /* showIcon */
-            message={
-              <>
-                <div>1. 系统将为所选实例创建统一时间点的备份，并分别新建备份实例，将备份数据恢复至新实例</div>
-                <div>2. 新实例默认别名为 backup</div>
-                <div>3. 新实例将自动继承源实例的白名单及账号密码配置</div>
-                <div>4. 备份实例为临时资源，创建后 24 小时将自动销毁，销毁后数据不可恢复。</div>
-              </>
-            }
-            style={{ marginBottom: 16 }}
-          />
-          <div style={{ marginTop: 16 }}>
-            <Space>
-              <Button type="primary" onClick={handleBatchCreateFromBackup} loading={batchCreating}>
-                确 定
-              </Button>
-              <Button onClick={() => setCloneOpen(false)} disabled={batchCreating}>
-                取 消
-              </Button>
-            </Space>
-          </div>
         </Form>
-      </Drawer>
+      </Modal>
     </div>
   )
 }
+
+
+
+
