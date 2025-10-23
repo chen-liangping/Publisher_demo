@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
 import { 
   Card,
   Tabs,
@@ -40,7 +41,9 @@ import {
   SettingOutlined,
   SearchOutlined,
   ReloadOutlined,
-  UndoOutlined
+  UndoOutlined,
+  FileSearchOutlined,
+  BarChartOutlined
 } from '@ant-design/icons'
 
 const { Title, Text } = Typography
@@ -128,10 +131,11 @@ export default function AlertPage(): React.ReactElement {
 
   // 人员配置（默认包含一名联系人 slime）
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: '史迪仔', dingId: 'dingtalk:slime' },
+    { id: 'slime', name: 'slime', dingId: 'dingtalk:slime' },
     { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin' }
   ])
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
   const [personForm] = Form.useForm<Person>()
 
   // 客户端提醒矩阵：noticeKey -> { personId: boolean }，默认开启
@@ -1038,7 +1042,27 @@ export default function AlertPage(): React.ReactElement {
   ]), [])
 
   const NoticeSection = (
-    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+    <>
+      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+        <Space>
+          <Input placeholder="请输入消息类型" style={{ width: 240 }} suffix={<SearchOutlined />} />
+        </Space>
+      </div>
+      <Table
+        rowKey="key"
+        columns={treeColumns}
+        dataSource={[...clientTreeDataA, ...serverTreeDataA, ...cdnTreeDataA]}
+        pagination={false}
+        scroll={{ x: 1190, y: 420 }}
+        expandable={{ defaultExpandAllRows: false }}
+      />
+    </>
+  )
+
+  const [webhookDrawerOpen, setWebhookDrawerOpen] = useState<boolean>(false)
+
+  return (
+    <div>
       <Card
         title={
           <Space>
@@ -1047,40 +1071,17 @@ export default function AlertPage(): React.ReactElement {
           </Space>
         }
         styles={{ body: { paddingTop: 8 } }}
+        extra={
+          <Tooltip title="自建群机器人">
+            <Button
+              type="text"
+              icon={<RobotOutlined />}
+              onClick={() => setWebhookDrawerOpen(true)}
+            />
+          </Tooltip>
+        }
       >
-        <>
-          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-            <Space>
-              <Input placeholder="请输入消息类型" style={{ width: 240 }} suffix={<SearchOutlined />} />
-            </Space>
-          </div>
-          <Table
-            rowKey="key"
-            columns={treeColumns}
-            dataSource={[...clientTreeDataA, ...serverTreeDataA, ...cdnTreeDataA]}
-            pagination={false}
-            scroll={{ x: 1190, y: 420 }}
-            expandable={{ defaultExpandAllRows: false }}
-          />
-        </>
-      </Card>
-    </Space>
-  )
-
-  const items: TabsProps['items'] = [
-    { key: 'notice', label: '告警管理', children: NoticeSection },
-    { key: 'people', label: '人员配置', children: PeopleSection },
-    { key: 'webhook', label: '自建群机器人', children: WebhookSection }
-  ]
-
-  return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>告警配置</Title>
-      </div>
-
-      <Card>
-        <Tabs items={items} />
+        {NoticeSection}
       </Card>
 
       {/* Webhook 配置 Modal：应用于被点击的节点（整行） */}
@@ -1202,6 +1203,40 @@ export default function AlertPage(): React.ReactElement {
           >新增规则</Button>
         </Space>
       </Modal>
+
+
+      {/* 数据看板 Drawer */}
+      <Drawer
+        title={<span>埋点数据仪表盘</span>}
+        placement="left"
+        width={'100%'}
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
+        destroyOnClose
+      >
+        <PlausibleLikeDashboard />
+      </Drawer>
+
+      {/* 自建群机器人 Drawer */}
+      <Drawer
+        title="自建群机器人"
+        placement="right"
+        width={800}
+        open={webhookDrawerOpen}
+        onClose={() => setWebhookDrawerOpen(false)}
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Button onClick={() => setWebhookDrawerOpen(false)} style={{ marginRight: 8 }}>
+              取消
+            </Button>
+            <Button type="primary" onClick={() => setWebhookDrawerOpen(false)}>
+              保存
+            </Button>
+          </div>
+        }
+      >
+        {WebhookSection}
+      </Drawer>
     </div>
   )
 }

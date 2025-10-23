@@ -29,7 +29,6 @@ const { Title } = Typography
 interface VirtualMachine {
   id: string
   name: string
-  alias: string
   status: 'running' | 'stopped' | 'starting' | 'stopping'
   spec: string
   systemImage: string
@@ -67,7 +66,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
     return [
       {
         key: `${vm.id}-created`,
-        vmName: vm.alias,
+        vmName: vm.name,
         operation: '创建实例',
         time: vm.createTime,
       },
@@ -80,12 +79,12 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
   const addLog = React.useCallback((operation: string) => {
     const entry: LogEntry = {
       key: `${vm.id}-${Date.now()}`,
-      vmName: vm.alias,
+      vmName: vm.name,
       operation,
       time: new Date().toLocaleString(),
     }
     setLogs((s) => [entry, ...s])
-  }, [vm.id, vm.alias])
+  }, [vm.id, vm.name])
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
     const statusConfig = {
       running: { color: 'success', text: '运行中' },
@@ -117,7 +116,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
       title: '远程连接',
       content: (
         <div>
-          <p><strong>虚机名称：</strong>{vm.alias}</p>
+          <p><strong>虚机名称：</strong>{vm.name}</p>
           <p><strong>IP地址：</strong>{publicIp}</p>
           <p><strong>连接方式：</strong>RDP (Windows) / SSH (Linux)</p>
           <p><strong>用户名：</strong>{vm.loginUser}</p>
@@ -182,7 +181,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
             返回列表
           </Button>
           <Title level={3} style={{ margin: 0 }}>
-            {vm.alias}
+            {vm.name}
           </Title>
         </div>
         
@@ -254,8 +253,8 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
                   <Row gutter={[48, 24]}>
                     <Col xs={24} sm={12} lg={8}>
                       <div style={{ marginBottom: '16px' }}>
-                        <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>实例ID</div>
-                        <div style={{ fontSize: '14px', fontFamily: 'Monaco, monospace' }}>{vm.id}</div>
+                        <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>实例名称</div>
+                        <div style={{ fontSize: '14px', fontFamily: 'Monaco, monospace' }}>{vm.name}</div>
                       </div>
                       <div style={{ marginBottom: '16px' }}>
                         <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>系统盘</div>

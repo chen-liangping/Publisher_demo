@@ -57,15 +57,14 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
       setTimeout(() => {
         const newVM = {
           id: `i-bp${Date.now()}`,
-          name: `vm-${Date.now()}`,
-          alias: values.alias,
+          name: values.name,
           status: 'starting' as const,
           spec: values.instanceType,
           systemImage: systemImages.find(img => img.value === values.systemImage)?.label || '',
           privateIp: `172.16.0.${Math.floor(Math.random() * 200) + 10}`,
           publicIp: `47.96.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
           createTime: new Date().toLocaleString('zh-CN'),
-          domain: `${values.alias.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}.com`
+          domain: `${values.name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}.com`
         }
         
         onCreate(newVM)
@@ -117,7 +116,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             
             <Col span={24}>
               <Form.Item
-                name="alias"
+                name="name"
                 label="虚拟机名称"
                 rules={[{ required: true, message: '请输入虚拟机名称' }]}
               >

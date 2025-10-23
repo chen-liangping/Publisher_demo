@@ -1,5 +1,5 @@
 "use client"
-
+//公共组件，变更记录
 import React from 'react'
 import { Card, Table, Typography, Space, Button } from 'antd'
 import type { ColumnsType } from 'antd/es/table'

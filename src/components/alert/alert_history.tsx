@@ -1,11 +1,10 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { Card, Space, Table, Tag, Typography, Input, DatePicker, Tabs, message } from 'antd'
-import type { TabsProps } from 'antd'
+import { Card, Space, Table, Tag, Typography, Input, DatePicker } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined } from '@ant-design/icons'
-import { BUSINESS_DEFAULT_PAGINATION, CDN_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
+import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
 
 const { RangePicker } = DatePicker
 const { Text } = Typography
@@ -39,7 +38,7 @@ const buildMock = (): HistoryRecord[] => {
     const fail = t.includes('失败')
     const success = t.includes('成功')
     const channels: string[] = fail ? ['kumo_webhook', '小包'] : ['kumo_webhook']
-    const people = fail ? ['徐音', '史迪仔'] : (success ? ['史迪仔'] : [])
+    const people = fail ? ['徐音', 'slime'] : (success ? ['slime'] : [])
     const time = new Date(baseTime + idx * 7 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
     const content = success
       ? `${t}：操作已完成，系统运行正常`
@@ -95,81 +94,32 @@ export default function AlertHistory(): React.ReactElement {
     })
   }, [keyword, range])
 
-  // CDN 告警 Tab
-  interface CdnRow { id: string; status: string; uri: string; counts: number }
-  const cdnRows: CdnRow[] = useMemo(() => {
-    const rows: Array<[string, number]> = [
-      ['/', 21],
-      ['/favicon.ico', 9],
-      ['/offliciate', 3],
-      ['/images/favicon-icon.png', 2],
-      ['/images/favicon.png', 2],
-      ['/imgs/logox.png', 2],
-      ['/image/favicon.ico', 2],
-      ['/images/favicon-196x196.png', 2],
-      ['/assets/img/favicon.png', 2],
-      ['/favicon.ico', 2]
-    ]
-    return rows.map((r, idx) => ({ id: String(idx + 1), status: '4XX', uri: r[0], counts: r[1] }))
-  }, [])
-  const cdnColumns: ColumnsType<CdnRow> = useMemo(() => ([
-    { title: 'Status', dataIndex: 'status', key: 'status', width: 100 },
-    { title: 'URI', dataIndex: 'uri', key: 'uri' },
-    { title: 'Counts', dataIndex: 'counts', key: 'counts', width: 100 },
-    { title: '操作', key: 'actions', width: 120, render: (_: unknown, r) => (
-      <Typography.Link onClick={() => message.success(`已发起重新扫描：${r.uri}`)}>重新扫描</Typography.Link>
-    ) }
-  ]), [])
 
   return (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card title={<span style={{ fontSize: 18 }}>告警事件</span>} styles={{ body: { paddingTop: 8 } }}>
-        <Tabs
-          items={[
-            {
-                key: 'cdn',
-                label: 'CDN告警',
-                children: (
-                  <Table<CdnRow>
-                    rowKey="id"
-                    columns={cdnColumns}
-                    dataSource={cdnRows}
-                    pagination={CDN_DEFAULT_PAGINATION}
-                  />
-                )
-              },
-            {
-              key: 'history',
-              label: '业务告警',
-              children: (
-                <>
-                  <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
-                    <Input
-                      allowClear
-                      placeholder="搜索告警类型或消息内容"
-                      prefix={<SearchOutlined />}
-                      style={{ width: 280 }}
-                      value={keyword}
-                      onChange={(e) => setKeyword(e.target.value)}
-                    />
-                    <RangePicker
-                      showTime
-                      onChange={(vals) => setRange([
-                        vals?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? null,
-                        vals?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? null
-                      ])}
-                    />
-                  </div>
-                  <Table
-                    rowKey="id"
-                    columns={columns}
-                    dataSource={dataSource}
-                    pagination={BUSINESS_DEFAULT_PAGINATION}
-                  />
-                </>
-              )
-            }
-          ] as TabsProps['items']}
+        <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
+          <Input
+            allowClear
+            placeholder="搜索告警类型或消息内容"
+            prefix={<SearchOutlined />}
+            style={{ width: 280 }}
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+          <RangePicker
+            showTime
+            onChange={(vals) => setRange([
+              vals?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? null,
+              vals?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? null
+            ])}
+          />
+        </div>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={dataSource}
+          pagination={BUSINESS_DEFAULT_PAGINATION}
         />
       </Card>
     </Space>

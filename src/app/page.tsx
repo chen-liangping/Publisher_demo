@@ -13,7 +13,9 @@ import {
   MobileOutlined,
   BellOutlined,
   FileSearchOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  TeamOutlined,
+  MessageOutlined
 } from '@ant-design/icons'
 import PlausibleLikeDashboard from '../components/Analytics/PlausibleLikeDashboard'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
@@ -24,6 +26,7 @@ import CommandManagement from '../components/VirtualMachineServices/CommandManag
 // 命令详情由列表组件内部自管理
 import UserAvatarMenu from '../components/Common/UserAvatarMenu'
 import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
+import LoadBalancerManagement from '../components/VirtualMachineServices/LoadBalancer/LoadBalancerManagement'
 // 详情由组件内部自管理
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
 import { apps as demoApps } from '../components/ContainerServices/Application/apps'
@@ -42,12 +45,16 @@ import I18nPage from '../components/tool/i18n'
 import AlertPage from '../components/alert/alert'
 import AlertHistory from '../components/alert/alert_history'
 import LogPage from '../components/log'
+import PeopleManagement from '../components/Common/PeopleManagement'
+import MessageNotification from '../components/Common/MessageNotification'
+import CdnAlert from '../components/alert/CdnAlert'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert'
+
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
 
@@ -84,6 +91,7 @@ export default function Home() {
   // 命令列表/详情由组件内部自管理
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
+  
 
   // 模拟当前用户信息
   const currentUser = {
@@ -103,6 +111,7 @@ export default function Home() {
     params.set('mode', mode)
     router.push(`${pathname}?${params.toString()}`)
   }
+
 
   // VM 列表/详情由组件内部自管理
 
@@ -133,6 +142,8 @@ export default function Home() {
         return <CommandManagement />
       case 'security-group':
         return <SecurityGroupManagement />
+      case 'load-balancer':
+        return <LoadBalancerManagement />
       case 'container-app':
         // 如果有选中的应用 id，展示 Deployment 页面，否则展示应用卡片列表
         if (selectedAppId) {
@@ -171,6 +182,12 @@ export default function Home() {
         return <AlertHistory />
       case 'log':
         return <LogPage />
+      case 'people-config':
+        return <PeopleManagement />
+      case 'message-notification':
+        return <MessageNotification />
+      case 'cdn-alert':
+        return <CdnAlert />
       default:
         return <VirtualMachineList />
     }
@@ -207,6 +224,10 @@ export default function Home() {
               router.push(`${pathname}?${params.toString()}`)
             }}
           />
+        </div>
+        
+        {/* 右侧功能区域 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* 日志图标，仅图标不显示文字：点击后路由到日志页 */}
           <Tooltip title="日志">
             <Button
@@ -225,10 +246,27 @@ export default function Home() {
               aria-label="数据看板"
             />
           </Tooltip>
+          {/* 消息通知入口 */}
+          <Tooltip title="消息通知">
+            <Button
+              type="text"
+              icon={<MessageOutlined />}
+              onClick={() => handleMenuClick('message-notification')}
+              aria-label="消息通知"
+            />
+          </Tooltip>
+          {/* 人员配置入口 */}
+          <Tooltip title="人员配置">
+            <Button
+              type="text"
+              icon={<TeamOutlined />}
+              onClick={() => handleMenuClick('people-config')}
+              aria-label="人员配置"
+            />
+          </Tooltip>
+          {/* 用户头像菜单 */}
+          <UserAvatarMenu user={currentUser} />
         </div>
-        
-        {/* 用户头像菜单 */}
-        <UserAvatarMenu user={currentUser} />
       </Header>
 
       {/* 数据看板 Drawer */}
@@ -242,6 +280,7 @@ export default function Home() {
       >
         <PlausibleLikeDashboard />
       </Drawer>
+
 
       <Layout>
         {/* 左侧导航栏 */}
@@ -294,6 +333,12 @@ export default function Home() {
                       icon: <CodeOutlined />,
                       label: '命令',
                       onClick: () => handleMenuClick('command-management')
+                    },
+                    {
+                      key: 'load-balancer',
+                      icon: <CloudServerOutlined />,
+                      label: '负载均衡',
+                      onClick: () => handleMenuClick('load-balancer')
                     }
                   ] : []),
                   ...(mode === 'container' ? [
@@ -303,6 +348,18 @@ export default function Home() {
                       label: '应用',
                       onClick: () => handleMenuClick('container-app')
                     },
+                    {
+                      key: 'file-management',
+                      icon: <CloudServerOutlined />,
+                      label: '共享文件',
+                      onClick: () => handleMenuClick('file-management')
+                    },
+                    {
+                      key: 'cron-job',
+                      icon: <CloudServerOutlined />,
+                      label: '定时任务',
+                      onClick: () => handleMenuClick('cron-job')
+                    },
                   ] : []),
                   {
                     key: 'storage',
@@ -310,19 +367,6 @@ export default function Home() {
                     label: '存储',
                     onClick: () => handleMenuClick('container-database')
                   },
-                  {
-                    key: 'file-management',
-                    icon: <EyeOutlined />,
-                    label: '共享文件',
-                    onClick: () => handleMenuClick('file-management')
-                  },
-                  {
-                    key: 'cron-job',
-                    icon: <CloudServerOutlined />,
-                    label: '定时任务',
-                    onClick: () => handleMenuClick('cron-job')
-                  },
-                
                   /*注释秘钥，因为秘钥管理功能未开发
                   {
                     key: 'key-management',
@@ -335,16 +379,10 @@ export default function Home() {
                 ]
               },
               {
-                key: 'alert',
+                key: 'cdn-alert',
                 icon: <BellOutlined />,
-                label: '告警配置',
-                onClick: () => handleMenuClick('alert')
-              },
-              {
-                key: 'alert-history',
-                icon: <BellOutlined />,
-                label: '告警事件',
-                onClick: () => handleMenuClick('alert-history')
+                label: 'CDN告警',
+                onClick: () => handleMenuClick('cdn-alert')
               },
               {
                 key: 'Integration',

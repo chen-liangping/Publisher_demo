@@ -38,7 +38,6 @@ interface VirtualMachineListProps {
 export interface VirtualMachine {
   id: string
   name: string
-  alias: string
   status: 'running' | 'stopped' | 'starting' | 'stopping'
   spec: string
   systemImage: string
@@ -58,7 +57,6 @@ const mockVMData: VirtualMachine[] = [
   {
     id: 'i-bp1234567890abcdef',
     name: 'web-server-01',
-    alias: 'Web服务器1',
     status: 'running',
     spec: '4c.8G',
     systemImage: 'CentOS 7.9 64位',
@@ -75,7 +73,6 @@ const mockVMData: VirtualMachine[] = [
   {
     id: 'i-bp0987654321fedcba',
     name: 'db-server-01',
-    alias: '数据库服务器',
     status: 'stopped',
     spec: '8c.16G',
     systemImage: 'Ubuntu 18.04 64位',
@@ -153,7 +150,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
   const handleDelete = (vm: VirtualMachine): void => {
     Modal.confirm({
       title: '确认删除虚拟机',
-      content: `确定要删除虚拟机 "${vm.alias}" 吗？此操作不可恢复。`,
+      content: `确定要删除虚拟机 "${vm.name}" 吗？此操作不可恢复。`,
       okText: '确认删除',
       okType: 'danger',
       cancelText: '取消',
@@ -212,11 +209,9 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
               onClick={() => openDetails(vm)}
               style={{ color: '#1677ff' }}
             >
-              {vm.alias}
+              {vm.name}
             </Link>
           </div>
-          <div style={{ color: '#666', fontSize: '12px' }}>{vm.name}</div>
-          <div style={{ color: '#999', fontSize: '11px' }}>ID: {vm.id}</div>
         </div>
       )
     },
@@ -324,7 +319,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       title: '远程连接',
       content: (
         <div>
-          <p><strong>虚机名称：</strong>{vm.alias}</p>
+          <p><strong>虚机名称：</strong>{vm.name}</p>
           <p><strong>IP地址：</strong>{vm.publicIp}</p>
           <p><strong>连接方式：</strong>RDP (Windows) / SSH (Linux)</p>
           <p><strong>用户名：</strong>{vm.loginUser}</p>
@@ -414,7 +409,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         onOk={handleConfirmBind}
       >
         <div style={{ marginBottom: 12 }}>
-          <div style={{ marginBottom: 8 }}>目标虚机：{bindTargetVm?.alias}</div>
+          <div style={{ marginBottom: 8 }}>目标虚机：{bindTargetVm?.name}</div>
           <Select
             mode="tags"
             style={{ width: '100%' }}
