@@ -230,7 +230,7 @@ export default function MessageNotification(): React.ReactElement {
       render: (channels: string[]) => (
         <Space direction="vertical" size={2}>
           {channels.map(ch => (
-            <Tag bordered={false} key={ch} size="small">{ch}</Tag>
+            <Tag bordered={false} key={ch}>{ch}</Tag>
           ))}
         </Space>
       )
@@ -243,7 +243,7 @@ export default function MessageNotification(): React.ReactElement {
       render: (people: string[]) => (
         <Space direction="vertical" size={2}>
           {people.map(p => (
-            <Tag bordered={false} key={p} size="small" color="blue">{p}</Tag>
+            <Tag bordered={false} key={p} color="blue">{p}</Tag>
           ))}
         </Space>
       )
