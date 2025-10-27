@@ -1,10 +1,9 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { Card, Collapse, Table, Button, Switch, Space, Typography, Select, Tooltip } from 'antd'
 import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import type { CardProps } from 'antd'
 
 const { Title, Text } = Typography
 
@@ -68,18 +67,18 @@ export default function AlertSystem(): React.ReactElement {
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
 
   // 切换告警开关
-  const handleToggleAlert = (id: string, enabled: boolean) => {
+  const handleToggleAlert = useCallback((id: string, enabled: boolean) => {
     setAlertConfigs(prev => 
       prev.map(config => 
         config.id === id ? { ...config, enabled } : config
       )
     )
-  }
+  }, [])
 
   // 删除告警配置
-  const handleDeleteAlert = (id: string) => {
+  const handleDeleteAlert = useCallback((id: string) => {
     setAlertConfigs(prev => prev.filter(config => config.id !== id))
-  }
+  }, [])
 
   // 故障报警表格列配置
   const alertColumns: ColumnsType<AlertConfig> = useMemo(() => [
@@ -195,28 +194,6 @@ export default function AlertSystem(): React.ReactElement {
     }
   ]
 
-  // 标签页配置
-  const cardItems: CardProps[] = [
-    {
-      title: '故障报警',
-      extra: (
-        <Button icon={<SettingOutlined />}>
-          设置
-        </Button>
-      ),
-      children: (
-          <Table
-            rowKey="id"
-            columns={alertColumns}
-            dataSource={alertConfigs}
-            pagination={false}
-            scroll={{ x: 740 }}
-            style={{ minWidth: '100%' }}
-          />
-      )
-    }
-  ]
-
   return (
     <div style={{ padding: '24px' }}>
       
@@ -264,10 +241,24 @@ export default function AlertSystem(): React.ReactElement {
         />
       </Card>
 
-      {/* 主要内容标签页 */}
-      {cardItems.map(item => (
-        <Card key={item.title as string} title={item.title} extra={item.extra} children={item.children} />
-      ))}
+      {/* 主要内容 - 故障报警 */}
+      <Card 
+        title="故障报警"
+        extra={
+          <Button icon={<SettingOutlined />}>
+            设置
+          </Button>
+        }
+      >
+        <Table
+          rowKey="id"
+          columns={alertColumns}
+          dataSource={alertConfigs}
+          pagination={false}
+          scroll={{ x: 740 }}
+          style={{ minWidth: '100%' }}
+        />
+      </Card>
     </div>
   )
 }
