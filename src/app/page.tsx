@@ -15,7 +15,8 @@ import {
   FileSearchOutlined,
   BarChartOutlined,
   TeamOutlined,
-  MessageOutlined
+  MessageOutlined,
+  MonitorOutlined
 } from '@ant-design/icons'
 import PlausibleLikeDashboard from '../components/Analytics/PlausibleLikeDashboard'
 import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
@@ -27,6 +28,7 @@ import CommandManagement from '../components/VirtualMachineServices/CommandManag
 import UserAvatarMenu from '../components/Common/UserAvatarMenu'
 import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
 import LoadBalancerManagement from '../components/VirtualMachineServices/LoadBalancer/LoadBalancerManagement'
+import AlertSystem from '../components/alert/AlertSystem'
 // 详情由组件内部自管理
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
 import { apps as demoApps } from '../components/ContainerServices/Application/apps'
@@ -53,7 +55,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert'
+type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system' | 'Monitor'
 
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
@@ -188,6 +190,8 @@ export default function Home() {
         return <MessageNotification />
       case 'cdn-alert':
         return <CdnAlert />
+      case 'alert-system':
+        return <AlertSystem />
       default:
         return <VirtualMachineList />
     }
@@ -379,12 +383,25 @@ export default function Home() {
                 ]
               },
               {
-                key: 'cdn-alert',
-                icon: <BellOutlined />,
-                label: 'CDN告警',
-                onClick: () => handleMenuClick('cdn-alert')
+              key: 'Monitor',
+              icon: <MonitorOutlined />,
+              label: '监控',
+              children: [
+                  {
+                    key: 'cdn-alert',
+                    icon: <BellOutlined />,
+                    label: '客户端告警',
+                    onClick: () => handleMenuClick('cdn-alert')
+                  },
+                  {
+                    key: 'alert-system',
+                    icon: <BellOutlined />,
+                    label: '服务端告警',
+                    onClick: () => handleMenuClick('alert-system')
+                  }
+                ],
               },
-              {
+                {
                 key: 'Integration',
                 icon: <CodeOutlined />,
                 label: '接入',

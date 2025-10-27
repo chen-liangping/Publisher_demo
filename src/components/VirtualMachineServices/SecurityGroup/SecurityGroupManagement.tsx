@@ -33,7 +33,6 @@ const { Search } = Input
 
 // 安全组数据类型定义
 interface SecurityGroup {
-  id: string
   name: string
   description: string
   inboundRules: number
@@ -62,7 +61,6 @@ interface SecurityGroupManagementProps {
 export default function SecurityGroupManagement({ onViewDetails }: SecurityGroupManagementProps) {
   const [groupList, setGroupList] = useState<SecurityGroup[]>([
     {
-      id: 'sg-001',
       name: 'default-web',
       description: '默认Web服务器安全组',
       inboundRules: 3,
@@ -113,7 +111,6 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
       boundInstances: ['i-bp1234567890abcdef']
     },
     {
-      id: 'sg-002',
       name: 'database-group',
       description: '数据库服务器安全组',
       inboundRules: 2,
@@ -184,7 +181,6 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     // 模拟API调用
     setTimeout(() => {
       const newGroup: SecurityGroup = {
-        id: `sg-${Date.now()}`,
         name: values.name,
         description: values.description,
         inboundRules: 0,
@@ -215,8 +211,8 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
   }
 
   // 删除安全组
-  const handleDeleteGroup = (groupId: string) => {
-    const updatedList = groupList.filter(group => group.id !== groupId)
+  const handleDeleteGroup = (groupName: string) => {
+    const updatedList = groupList.filter(group => group.name !== groupName)
     setGroupList(updatedList)
     setFilteredGroupList(updatedList)
     message.success('安全组删除成功！')
@@ -251,7 +247,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     }
 
     const updatedList = groupList.map(group => 
-      group.id === currentGroup.id ? updatedGroup : group
+      group.name === currentGroup.name ? updatedGroup : group
     )
     
     setGroupList(updatedList)
@@ -276,7 +272,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
     }
 
     const updatedList = groupList.map(group => 
-      group.id === currentGroup.id ? updatedGroup : group
+      group.name === currentGroup.name ? updatedGroup : group
     )
     
     setGroupList(updatedList)
@@ -305,7 +301,6 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
                onClick={() => openDetails(record)}>
             {name}
           </div>
-          <div style={{ color: '#666', fontSize: '12px' }}>ID: {record.id}</div>
         </div>
       )
     },
@@ -346,7 +341,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           <Popconfirm
             title="确定要删除这个安全组吗？"
             description="删除后无法恢复，请谨慎操作。"
-            onConfirm={() => handleDeleteGroup(record.id)}
+            onConfirm={() => handleDeleteGroup(record.name)}
             okText="确定"
             cancelText="取消"
           >
@@ -481,7 +476,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
         <Table
           columns={columns}
           dataSource={filteredGroupList}
-          rowKey="id"
+          rowKey="name"
           pagination={{
             total: filteredGroupList.length,
             pageSize: 10,

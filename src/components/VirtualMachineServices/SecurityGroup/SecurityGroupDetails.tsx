@@ -47,7 +47,6 @@ interface SecurityRule {
 
 // 安全组数据类型定义
 interface SecurityGroup {
-  id: string
   name: string
   description: string
   inboundRules: number
@@ -285,14 +284,6 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
       {/* 基本信息卡片 */}
       <Card title="基本信息" style={{ marginBottom: 24 }}>
         <Row gutter={[24, 16]}>
-          <Col xs={24} sm={12} md={8}>
-            <div>
-              <Text strong>安全组ID：</Text>
-              <div style={{ fontSize: '14px', fontFamily: 'Monaco, monospace', marginTop: 4 }}>
-                {currentGroup.id}
-              </div>
-            </div>
-          </Col>
           <Col xs={24} sm={12} md={8}>
             <div>
               <Text strong>入方向规则：</Text>

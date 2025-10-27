@@ -264,16 +264,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
             onClick={() => handleVMOperation(vm.id, 'restart')}
             disabled={vm.status === 'stopped'}
             title="重启"
-          />
-          
-          <Button
-            size="small"
-            icon={<DesktopOutlined />}
-            onClick={() => handleRemoteConnect(vm)}
-            disabled={vm.status !== 'running'}
-            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : '远程连接'}
-          />
-            
+          />         
           <Button
             size="small"
             danger
