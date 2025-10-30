@@ -49,7 +49,7 @@ export default function AutoServerModule() {
           <div style={{ display: 'flex' }}>
             <div style={{ width: labelColumnWidth, fontWeight: 700, whiteSpace: 'nowrap' }}>下次开服策略</div>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#888' }}>满足"付费人数 100 人"任一条件后自动开服</div>
+              <div style={{ color: '#888' }}>满足&ldquo;付费人数 100 人&rdquo;任一条件后自动开服</div>
             </div>
           </div>
 
