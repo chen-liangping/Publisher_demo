@@ -44,7 +44,7 @@ interface ListenerRule {
   certificate?: string // HTTPS证书
   serverGroup: string // 服务器组
   healthCheck: 'enabled' | 'disabled' // 健康检查
-  status: 'active' | 'inactive'
+  status: 'running' | 'stopped' | 'starting' | 'stopping'
 }
 
 // 转发策略类型
@@ -96,7 +96,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       port: 80,
       serverGroup: 'web-server-group',
       healthCheck: 'enabled',
-      status: 'active'
+      status: 'running'
     },
     {
       id: 'listener-2',
@@ -106,7 +106,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       certificate: 'cert-example-com',
       serverGroup: 'web-server-group',
       healthCheck: 'enabled',
-      status: 'active'
+      status: 'running'
     }
   ])
 
@@ -199,6 +199,10 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
   const [forwardingPolicyModalOpen, setForwardingPolicyModalOpen] = useState(false)
   const [currentListenerRule, setCurrentListenerRule] = useState<ListenerRule | null>(null)
   
+  // 监听规则详情相关状态
+  const [listenerDetailModalOpen, setListenerDetailModalOpen] = useState(false)
+  const [selectedListenerDetail, setSelectedListenerDetail] = useState<ListenerRule | null>(null)
+  
   // 转发规则列表（临时存储，用于批量添加）
   interface ForwardingRule {
     id: string
@@ -242,20 +246,38 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     {
       title: '规则名称',
       dataIndex: 'name',
-      key: 'name'
-    },
-    {
-      title: '协议',
-      dataIndex: 'protocol',
-      key: 'protocol',
-      render: (protocol: string) => (
-        <Tag color="blue" bordered={false}>{protocol}</Tag>
+      key: 'name',
+      render: (name: string, record: ListenerRule) => (
+        <Typography.Link 
+          onClick={() => {
+            setSelectedListenerDetail(record)
+            setListenerDetailModalOpen(true)
+          }}
+        >
+          {name}
+        </Typography.Link>
       )
     },
     {
-      title: '监听端口',
-      dataIndex: 'port',
-      key: 'port'
+      title: '前端协议/端口',
+      key: 'protocolPort',
+      render: (_: unknown, record: ListenerRule) => (
+        <span>
+          <Tag color="blue" bordered={false}>{record.protocol}</Tag>
+          <span style={{ margin: '0 4px' }}>:</span>
+          <span>{record.port}</span>
+        </span>
+      )
+    },
+    {
+      title: '后端协议',
+      dataIndex: 'protocol',
+      key: 'backendProtocol',
+      render: (protocol: string) => {
+        // HTTP 和 HTTPS 的后端协议都是 HTTP，其他协议保持不变
+        const backendProtocol = (protocol === 'HTTP' || protocol === 'HTTPS') ? 'HTTP' : protocol
+        return <Tag color="green" bordered={false}>{backendProtocol}</Tag>
+      }
     },
     {
       title: '证书',
@@ -283,8 +305,17 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'active' ? 'success' : 'default'} bordered={false}>
-          {status === 'active' ? '活跃' : '未激活'}
+        <Tag 
+          color={
+            status === 'running' ? 'success' :
+            status === 'stopped' ? 'default' :
+            'processing'
+          } 
+          bordered={false}
+        >
+          {status === 'running' ? '运行中' :
+           status === 'stopped' ? '已停止' :
+           status === 'starting' ? '启动中' : '停止中'}
         </Tag>
       )
     },
@@ -293,6 +324,36 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       key: 'action',
       render: (_: unknown, record: ListenerRule) => (
         <Space size="small">
+          {/* 启动/停止按钮 */}
+          {record.status === 'running' && (
+            <Button 
+              type="link" 
+              size="small" 
+              onClick={() => handleStopListener(record.id)}
+            >
+              停止
+            </Button>
+          )}
+          {record.status === 'stopped' && (
+            <Button 
+              type="link" 
+              size="small" 
+              onClick={() => handleStartListener(record.id)}
+            >
+              启动
+            </Button>
+          )}
+          {(record.status === 'starting' || record.status === 'stopping') && (
+            <Button 
+              type="link" 
+              size="small" 
+              loading
+              disabled
+            >
+              {record.status === 'starting' ? '启动中' : '停止中'}
+            </Button>
+          )}
+          
           <Button 
             type="link" 
             size="small" 
@@ -492,7 +553,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
           certificate: values.certificate,
           serverGroup: values.serverGroup,
           healthCheck: values.healthCheck as 'enabled' | 'disabled',
-          status: 'active'
+          status: 'running'
         }
         setListeners([...listeners, newListener])
         message.success('监听规则添加成功')
@@ -522,6 +583,38 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     setSelectedProtocol(listener.protocol)
     setSelectedServerGroup(listener.serverGroup)
     setListenerModalOpen(true)
+  }
+
+  // 启动监听规则
+  const handleStartListener = (id: string): void => {
+    // 更新状态为 starting
+    setListeners(prev => prev.map(l => 
+      l.id === id ? { ...l, status: 'starting' as const } : l
+    ))
+    
+    // 模拟启动过程
+    setTimeout(() => {
+      setListeners(prev => prev.map(l => 
+        l.id === id ? { ...l, status: 'running' as const } : l
+      ))
+      message.success('监听规则已启动')
+    }, 1500)
+  }
+
+  // 停止监听规则
+  const handleStopListener = (id: string): void => {
+    // 更新状态为 stopping
+    setListeners(prev => prev.map(l => 
+      l.id === id ? { ...l, status: 'stopping' as const } : l
+    ))
+    
+    // 模拟停止过程
+    setTimeout(() => {
+      setListeners(prev => prev.map(l => 
+        l.id === id ? { ...l, status: 'stopped' as const } : l
+      ))
+      message.success('监听规则已停止')
+    }, 1500)
   }
 
   // 删除监听规则
@@ -1299,6 +1392,147 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
               })()}
             </div>
           </Card>
+        )}
+      </Modal>
+
+      {/* 监听规则详情Modal */}
+      <Modal
+        title="监听规则详情"
+        open={listenerDetailModalOpen}
+        onCancel={() => {
+          setListenerDetailModalOpen(false)
+          setSelectedListenerDetail(null)
+        }}
+        footer={[
+          <Button key="close" onClick={() => setListenerDetailModalOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        width={800}
+      >
+        {selectedListenerDetail && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* 基本信息 */}
+            <Card title="基本信息" size="small">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>规则名称：</Text>
+                  <Text>{selectedListenerDetail.name}</Text>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>前端协议：</Text>
+                  <Tag color="blue" bordered={false}>{selectedListenerDetail.protocol}</Tag>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>后端协议：</Text>
+                  <Tag color="green" bordered={false}>
+                    {(selectedListenerDetail.protocol === 'HTTP' || selectedListenerDetail.protocol === 'HTTPS') ? 'HTTP' : selectedListenerDetail.protocol}
+                  </Tag>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>监听端口：</Text>
+                  <Text>{selectedListenerDetail.port}</Text>
+                </div>
+                {selectedListenerDetail.certificate && (
+                  <div style={{ display: 'flex' }}>
+                    <Text strong style={{ width: 120 }}>证书：</Text>
+                    <Text>{selectedListenerDetail.certificate}</Text>
+                  </div>
+                )}
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>服务器组：</Text>
+                  <Text>{selectedListenerDetail.serverGroup}</Text>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>健康检查：</Text>
+                  <Tag color={selectedListenerDetail.healthCheck === 'enabled' ? 'success' : 'default'} bordered={false}>
+                    {selectedListenerDetail.healthCheck === 'enabled' ? '已启用' : '未启用'}
+                  </Tag>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <Text strong style={{ width: 120 }}>状态：</Text>
+                  <Tag 
+                    color={
+                      selectedListenerDetail.status === 'running' ? 'success' :
+                      selectedListenerDetail.status === 'stopped' ? 'default' :
+                      'processing'
+                    } 
+                    bordered={false}
+                  >
+                    {selectedListenerDetail.status === 'running' ? '运行中' :
+                     selectedListenerDetail.status === 'stopped' ? '已停止' :
+                     selectedListenerDetail.status === 'starting' ? '启动中' : '停止中'}
+                  </Tag>
+                </div>
+              </div>
+            </Card>
+
+            {/* 关联的转发策略 */}
+            <Card 
+              title={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>关联的转发策略</span>
+                  <Text type="secondary" style={{ fontSize: 14, fontWeight: 'normal' }}>
+                    共 {policies.filter((p: ForwardingPolicy) => p.listenerId === selectedListenerDetail.id).length} 条
+                  </Text>
+                </div>
+              } 
+              size="small"
+            >
+              {(() => {
+                const relatedPolicies = policies.filter((p: ForwardingPolicy) => p.listenerId === selectedListenerDetail.id)
+                
+                if (relatedPolicies.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#999' }}>
+                      暂无关联的转发策略
+                    </div>
+                  )
+                }
+                
+                return (
+                  <Table
+                    dataSource={relatedPolicies}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    columns={[
+                      {
+                        title: '域名',
+                        dataIndex: 'domain',
+                        key: 'domain',
+                        render: (domain: string) => (
+                          <Tag color="blue" style={{ fontFamily: 'monospace' }}>{domain}</Tag>
+                        )
+                      },
+                      {
+                        title: 'URL',
+                        dataIndex: 'path',
+                        key: 'path',
+                        render: (path: string) => (
+                          <Tag color="blue" style={{ fontFamily: 'monospace' }}>{path}</Tag>
+                        )
+                      },
+                      {
+                        title: '服务器组',
+                        dataIndex: 'serverGroup',
+                        key: 'serverGroup',
+                        render: (group: string) => (
+                          <Tag color="green">{group}</Tag>
+                        )
+                      },
+                      {
+                        title: '备注',
+                        dataIndex: 'remark',
+                        key: 'remark',
+                        render: (remark: string) => remark || '-'
+                      }
+                    ]}
+                  />
+                )
+              })()}
+            </Card>
+          </div>
         )}
       </Modal>
 

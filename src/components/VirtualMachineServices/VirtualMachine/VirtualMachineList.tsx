@@ -24,6 +24,7 @@ import {
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
 import VirtualMachineDetails from './VirtualMachineDetails'
+import AutoServerModule from '../../Common/AutoServerModule'
 
 const { Title, Link } = Typography
 
@@ -32,6 +33,7 @@ interface VirtualMachineListProps {
   onViewDetails?: (vm: VirtualMachine) => void
   vmList?: VirtualMachine[]
   setVmList?: (list: VirtualMachine[]) => void
+  onNavigateToLoadBalancer?: () => void
 }
 
 // 虚拟机数据类型定义
@@ -63,7 +65,7 @@ const mockVMData: VirtualMachine[] = [
     privateIp: '172.16.0.10',
     publicIp: '47.96.123.45',
     createTime: '2024-01-15 10:30:00',
-    domain: 'g123-web01.com',
+    domain: 'g123-web01',
     systemDiskSize: 40,
     dataDiskSize: 100,
     loginUser: 'appid',
@@ -78,7 +80,7 @@ const mockVMData: VirtualMachine[] = [
     systemImage: 'Ubuntu 18.04 64位',
     privateIp: '172.16.0.11',
     createTime: '2024-01-14 15:20:00',
-    domain: 'g123-db01.com',
+    domain: 'g123-db01',
     systemDiskSize: 60,
     loginUser: 'appid',
     securityGroups: ['sg-002'],
@@ -92,7 +94,7 @@ const mockSecurityGroups = [
   { id: 'sg-002', name: 'database-group' }
 ]
 
-export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList }: VirtualMachineListProps = {}) {
+export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList, onNavigateToLoadBalancer }: VirtualMachineListProps = {}) {
   const [internalVmList, internalSetVmList] = useState<VirtualMachine[]>(mockVMData)
   const vmList = propVmList ?? internalVmList
   const setVmList = propSetVmList ?? internalSetVmList
@@ -240,48 +242,36 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       title: '操作',
       key: 'actions',
       render: (_: unknown, vm: VirtualMachine) => (
-        <Space>
+        <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
           {vm.status === 'stopped' ? (
-            <Button
-              type="primary"
-              size="small"
-              icon={<PlayCircleOutlined />}
+            <Link
               onClick={() => handleVMOperation(vm.id, 'start')}
-              title="启动"
-            />
+              style={{ color: '#1677ff' }}
+            >
+              启动
+            </Link>
           ) : (
-            <Button
-              size="small"
-              icon={<PoweroffOutlined />}
+            <Link
               onClick={() => handleVMOperation(vm.id, 'stop')}
-              title="关机"
-            />
+              style={{ color: '#1677ff' }}
+            >
+              关机
+            </Link>
           )}
           
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
+          <Link
             onClick={() => handleVMOperation(vm.id, 'restart')}
-            disabled={vm.status === 'stopped'}
-            title="重启"
-          />         
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
+            style={{ color: vm.status === 'stopped' ? '#d9d9d9' : '#1677ff', cursor: vm.status === 'stopped' ? 'not-allowed' : 'pointer' }}
+          >
+            重启
+          </Link>
+          
+          <Link
             onClick={() => handleDelete(vm)}
-            title="删除"
-          />
-          <Button
-            size="small"
-            icon={<LinkOutlined />}
-            onClick={() => {
-              setBindTargetVm(vm)
-              setSelectedGroupIds(vm.securityGroups || [])
-              setShowBindModal(true)
-            }}
-            title="绑定安全组"
-          />
+            style={{ color: '#ff4d4f' }}
+          >
+            删除
+          </Link>
         </Space>
       )
     }
@@ -341,6 +331,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         vm={selectedVm}
         onBack={() => setSelectedVm(null)}
         onOperation={handleOperationFromDetails}
+        onNavigateToLoadBalancer={onNavigateToLoadBalancer}
       />
     )
   }
@@ -367,19 +358,31 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
 
 
   return (
-    <Card>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          虚拟机列表
-        </Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={() => setShowCreateForm(true)}
-        >
-          创建虚拟机
-        </Button>
-      </div>
+    <>
+      {/* 虚拟机介绍卡片 */}
+      <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+        <Title level={4} style={{ margin: 0 }}>虚拟机</Title>
+        <div style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
+          <strong>描述：</strong> 提供可弹性伸缩的计算服务，支持多种规格配置，满足不同业务场景需求。通过虚拟机可以快速部署应用、搭建开发环境，实现业务的灵活扩展。
+        </div>
+      </Card>
+
+      {/* 自动开服模块 */}
+      <AutoServerModule />
+
+      <Card>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            虚拟机列表
+          </Title>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => setShowCreateForm(true)}
+          >
+            创建虚拟机
+          </Button>
+        </div>
       
       <Table
         columns={columns}
@@ -411,5 +414,6 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         </div>
       </Modal>
     </Card>
+    </>
   )
 }

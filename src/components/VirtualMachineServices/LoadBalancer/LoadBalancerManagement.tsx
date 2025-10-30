@@ -9,33 +9,103 @@ import {
   Form,
   Input,
   message,
-  Space
+  Space,
+  Tag
 } from 'antd'
 import { 
   PlusOutlined,
   ApiOutlined,
-  ArrowRightOutlined
+  DeleteOutlined
 } from '@ant-design/icons'
 import LoadBalancerDetails from './LoadBalancerDetails'
 import CertificateManagement from './CertificateManagement'
 
 const { Title, Text } = Typography
 
+// 虚拟机端口配置
+interface VMPort {
+  vmName: string
+  privateIp: string
+  ports: number[]
+}
+
+// 转发策略配置
+interface ForwardingRule {
+  domain: string
+  path: string
+  serverGroup: string
+  vms: VMPort[]
+}
+
+// 监听配置
+interface ListenerConfig {
+  protocol: string
+  port: number
+  serverGroup: string
+  vms: VMPort[]
+  forwardingRules?: ForwardingRule[] // 转发策略（可选）
+}
+
 // 负载均衡实例数据类型定义
 interface LoadBalancer {
   id: string
   name: string
+  serviceAddress: string
   listenerCount: number
   serverGroupName: string
+  status: 'running' | 'stopped' | 'starting' | 'stopping'
+  listeners: ListenerConfig[]
 }
 
-// 模拟负载均衡数据（只保留1-2条）
+// 模拟负载均衡数据
 const mockLoadBalancerData: LoadBalancer[] = [
   {
-    id: 'lb-bp1234567890abcdef',
+    id: 'lb-bp1234567890',
     name: 'web-lb-prod',
-    listenerCount: 3,
-    serverGroupName: 'web-server-group'
+    serviceAddress: '47.96.123.45',
+    listenerCount: 2,
+    serverGroupName: 'web-server-group',
+    status: 'running',
+    listeners: [
+      {
+        protocol: 'HTTP',
+        port: 80,
+        serverGroup: 'web-server-group',
+        vms: [
+          { vmName: 'web-server-01', privateIp: '172.16.0.10', ports: [8080, 8081] },
+          { vmName: 'web-server-02', privateIp: '172.16.0.11', ports: [8080, 8081] }
+        ],
+        forwardingRules: [
+          {
+            domain: 'www.example.com',
+            path: '/api/*',
+            serverGroup: 'api-server-group',
+            vms: [
+              { vmName: 'api-server-01', privateIp: '172.16.0.20', ports: [3000] },
+              { vmName: 'api-server-02', privateIp: '172.16.0.21', ports: [3000] }
+            ]
+          },
+          {
+            domain: 'www.example.com',
+            path: '/admin/*',
+            serverGroup: 'admin-server-group',
+            vms: [
+              { vmName: 'admin-server-01', privateIp: '172.16.0.30', ports: [8888] }
+            ]
+          }
+        ]
+      },
+      {
+        protocol: 'TCP',
+        port: 3306,
+        serverGroup: 'mysql-server-group',
+        vms: [
+          { vmName: 'mysql-master', privateIp: '172.16.1.10', ports: [3306] },
+          { vmName: 'mysql-slave-01', privateIp: '172.16.1.11', ports: [3306] }
+        ]
+        // 注意：TCP监听没有转发策略，所有流量直接转发到默认服务器组
+      }
+    ]
   }
 ]
 
@@ -46,10 +116,29 @@ export default function LoadBalancerManagement(): React.ReactElement {
   const [showCertificateManagement, setShowCertificateManagement] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(false)
   const [createForm] = Form.useForm<{ name: string }>()
+  
+  // 控制每个负载均衡的每个监听规则的展开/收起状态
+  // key: `${lbId}-${listenerIndex}`
+  const [expandedListeners, setExpandedListeners] = useState<Record<string, boolean>>({})
+
+  // 切换监听规则的展开/收起状态
+  const toggleListenerExpand = (lbId: string, listenerIndex: number) => {
+    const key = `${lbId}-${listenerIndex}`
+    setExpandedListeners(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }))
+  }
 
   // 创建负载均衡
   const handleCreate = async (): Promise<void> => {
     try {
+      // 检查是否已存在负载均衡实例
+      if (loadBalancers.length > 0) {
+        message.warning('已存在负载均衡实例，无法创建新的实例')
+        return
+      }
+
       const values = await createForm.validateFields()
       setLoading(true)
       
@@ -58,8 +147,11 @@ export default function LoadBalancerManagement(): React.ReactElement {
         const newLB: LoadBalancer = {
           id: `lb-bp${Date.now()}`,
           name: values.name,
+          serviceAddress: `http://47.96.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
           listenerCount: 0,
-          serverGroupName: '未配置'
+          serverGroupName: '未配置',
+          status: 'running',
+          listeners: []
         }
         
         setLoadBalancers(prev => [...prev, newLB])
@@ -73,6 +165,42 @@ export default function LoadBalancerManagement(): React.ReactElement {
       setLoading(false)
       console.error('创建失败:', error)
     }
+  }
+
+  // 停止负载均衡
+  const handleStop = (id: string, e: React.MouseEvent): void => {
+    e.stopPropagation()
+    
+    // 更新状态为 stopping
+    setLoadBalancers(prev => prev.map(lb => 
+      lb.id === id ? { ...lb, status: 'stopping' as const } : lb
+    ))
+    
+    // 模拟停止过程
+    setTimeout(() => {
+      setLoadBalancers(prev => prev.map(lb => 
+        lb.id === id ? { ...lb, status: 'stopped' as const } : lb
+      ))
+      message.success('负载均衡已停止')
+    }, 2000)
+  }
+
+  // 启动负载均衡
+  const handleStart = (id: string, e: React.MouseEvent): void => {
+    e.stopPropagation()
+    
+    // 更新状态为 starting
+    setLoadBalancers(prev => prev.map(lb => 
+      lb.id === id ? { ...lb, status: 'starting' as const } : lb
+    ))
+    
+    // 模拟启动过程
+    setTimeout(() => {
+      setLoadBalancers(prev => prev.map(lb => 
+        lb.id === id ? { ...lb, status: 'running' as const } : lb
+      ))
+      message.success('负载均衡已启动')
+    }, 2000)
   }
 
   // 删除负载均衡
@@ -127,6 +255,7 @@ export default function LoadBalancerManagement(): React.ReactElement {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setCreateModalOpen(true)}
+            disabled={loadBalancers.length > 0}
           >
             创建负载均衡
           </Button>
@@ -158,52 +287,256 @@ export default function LoadBalancerManagement(): React.ReactElement {
               style={{ 
                 borderRadius: '8px',
                 transition: 'all 0.3s',
-                minHeight: '120px'
+                minHeight: '120px',
+                position: 'relative'
               }}
               styles={{ body: { padding: '28px 24px' } }}
               onClick={() => setSelectedLB(lb)}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* 左侧：名称和信息 */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 40 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', minWidth: 200 }}>
-                    <ApiOutlined style={{ fontSize: 20, color: '#1890ff', marginRight: 12 }} />
-                    <Text strong style={{ fontSize: 16 }}>{lb.name}</Text>
-                  </div>
-                  
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Text type="secondary" style={{ fontSize: 13 }}>监听规则：</Text>
-                    <Text strong style={{ color: '#1890ff' }}>{lb.listenerCount} 个</Text>
-                  </div>
-                  
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Text type="secondary" style={{ fontSize: 13 }}>虚拟服务器组：</Text>
-                    <Text strong>{lb.serverGroupName}</Text>
-                  </div>
+              {/* 右上角操作按钮区域 */}
+              <div style={{ 
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                display: 'flex',
+                gap: 8
+              }}>
+                {/* 停止/启动按钮 */}
+                {lb.status === 'running' && (
+                  <Button
+                    size="small"
+                    onClick={(e) => handleStop(lb.id, e)}
+                  >
+                    停止
+                  </Button>
+                )}
+                {lb.status === 'stopped' && (
+                  <Button
+                    size="small"
+                    type="primary"
+                    onClick={(e) => handleStart(lb.id, e)}
+                  >
+                    启动
+                  </Button>
+                )}
+                {lb.status === 'starting' && (
+                  <Button
+                    size="small"
+                    loading
+                  >
+                    启动中
+                  </Button>
+                )}
+                {lb.status === 'stopping' && (
+                  <Button
+                    size="small"
+                    loading
+                  >
+                    停止中
+                  </Button>
+                )}
+
+                {/* 删除按钮 */}
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  size="small"
+                  style={{ fontSize: 12 }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(lb.id)
+                  }}
+                />
+              </div>
+
+              {/* 内容区域 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* 负载均衡名称 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ApiOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                  <Text strong style={{ fontSize: 16 }}>{lb.name}</Text>
+                  <Tag 
+                    bordered={false}
+                    color={
+                      lb.status === 'running' ? 'success' :
+                      lb.status === 'stopped' ? 'default' :
+                      'processing'
+                    }
+                  >
+                    {lb.status === 'running' ? '运行中' :
+                     lb.status === 'stopped' ? '已停止' :
+                     lb.status === 'starting' ? '启动中' : '停止中'}
+                  </Tag>
                 </div>
 
-                {/* 右侧：操作按钮 */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    type="link"
-                    icon={<ArrowRightOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedLB(lb)
-                    }}
-                  >
-                    查看详情
-                  </Button>
-                  <Button
-                    danger
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDelete(lb.id)
-                    }}
-                  >
-                    删除
-                  </Button>
+                {/* 服务地址 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>📍</span>
+                  <Text strong style={{ color: '#1890ff' }}>{lb.serviceAddress}</Text>
                 </div>
+
+                {/* 监听配置 */}
+                {lb.listeners.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {lb.listeners.map((listener, index) => {
+                      const listenerKey = `${lb.id}-${index}`
+                      const isExpanded = expandedListeners[listenerKey]
+                      
+                      return (
+                        <div key={index}>
+                          {/* 监听规则标签行 - 可点击展开/收起 */}
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 8,
+                              cursor: 'pointer',
+                              padding: '4px 0'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleListenerExpand(lb.id, index)
+                            }}
+                          >
+                            <Tag 
+                              bordered={false}
+                              color="blue" 
+                              style={{ 
+                                fontSize: 13, 
+                                padding: '4px 12px',
+                                margin: 0,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {listener.protocol}:{listener.port}
+                            </Tag>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {isExpanded ? '▼' : '▶'} 点击查看流量转发
+                            </Text>
+                          </div>
+                          
+                          {/* 展开内容：流量转发树形结构 */}
+                          {isExpanded && (
+                            <div style={{ marginLeft: 16, marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {/* 转发策略列表 */}
+                              {listener.forwardingRules && listener.forwardingRules.length > 0 && (
+                                <>
+                                  {listener.forwardingRules.map((rule, ruleIndex) => (
+                                    <div key={ruleIndex} style={{ fontSize: 13 }}>
+                                      {/* 转发策略行 */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#666' }}>
+                                        <Text type="secondary">├─</Text>
+                                        <Text type="secondary">转发策略{ruleIndex + 1}:</Text>
+                                        <Tag bordered={false} color="blue" style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                          {rule.domain}
+                                        </Tag>
+                                        <Tag bordered={false} color="blue" style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                          {rule.path}
+                                        </Tag>
+                                        <Text type="secondary">→</Text>
+                                        <Tag 
+                                          bordered={false}
+                                          color="#636e72" 
+                                          style={{ 
+                                            fontSize: 12, 
+                                            margin: 0
+                                          }}
+                                        >
+                                          {rule.serverGroup}
+                                        </Tag>
+                                      </div>
+                                      
+                                      {/* 服务器组虚机详情 - 直接显示 */}
+                                      <div style={{ marginLeft: 32, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        {rule.vms.map((vm, vmIndex) => (
+                                          <div 
+                                            key={vmIndex}
+                                            style={{ 
+                                              fontSize: 12, 
+                                              color: '#999',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: 6
+                                            }}
+                                          >
+                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                              {vmIndex === rule.vms.length - 1 ? '└─' : '├─'}
+                                            </Text>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>{vm.vmName}</Text>
+                                            <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                                              ({vm.privateIp})
+                                            </Text>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
+                                            <Text style={{ color: '#999', fontSize: 12, fontWeight: 500 }}>
+                                              {vm.ports.join(', ')}
+                                            </Text>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                              
+                              {/* 默认服务器组（其他请求） */}
+                              <div style={{ fontSize: 13 }}>
+                                {/* 默认后端行 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#666' }}>
+                                  <Text type="secondary">└─</Text>
+                                  <Text type="secondary">其他请求</Text>
+                                  <Text type="secondary">→</Text>
+                                  <Tag 
+                                    bordered={false}
+                                    color="#636e72" 
+                                    style={{ 
+                                      fontSize: 12, 
+                                      margin: 0
+                                    }}
+                                  >
+                                    {listener.serverGroup}
+                                  </Tag>
+                                </div>
+                                
+                                {/* 默认服务器组虚机详情 - 直接显示 */}
+                                <div style={{ marginLeft: 32, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  {listener.vms.map((vm, vmIndex) => (
+                                    <div 
+                                      key={vmIndex}
+                                      style={{ 
+                                        fontSize: 12, 
+                                        color: '#999',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6
+                                      }}
+                                    >
+                                      <Text type="secondary" style={{ fontSize: 12 }}>
+                                        {vmIndex === listener.vms.length - 1 ? '└─' : '├─'}
+                                      </Text>
+                                      <Text type="secondary" style={{ fontSize: 12 }}>{vm.vmName}</Text>
+                                      <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                                        ({vm.privateIp})
+                                      </Text>
+                                      <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
+                                      <Text style={{ color: '#999', fontSize: 12, fontWeight: 500 }}>
+                                        {vm.ports.join(', ')}
+                                      </Text>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div>
+                    <Text type="secondary">暂无监听配置</Text>
+                  </div>
+                )}
               </div>
             </Card>
           ))}

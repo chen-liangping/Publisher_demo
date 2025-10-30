@@ -73,7 +73,9 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
   const [currentGroup, setCurrentGroup] = useState<SecurityGroup>(group)
   const [showAddRuleModal, setShowAddRuleModal] = useState(false)
   const [editingRule, setEditingRule] = useState<SecurityRule | null>(null)
+  const [showBindVMModal, setShowBindVMModal] = useState(false)
   const [form] = Form.useForm()
+  const [bindVMForm] = Form.useForm()
 
   // 模拟绑定的虚拟机实例数据
   const mockVMInstances: VMInstance[] = [
@@ -86,6 +88,25 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
   const getBoundInstances = () => {
     if (!currentGroup.boundInstances) return []
     return mockVMInstances.filter(vm => currentGroup.boundInstances?.includes(vm.id))
+  }
+
+  // 绑定虚拟机处理
+  const handleBindVM = async () => {
+    try {
+      const values = await bindVMForm.validateFields()
+      const selectedVMIds = values.vmIds || []
+      
+      setCurrentGroup(prev => ({
+        ...prev,
+        boundInstances: selectedVMIds
+      }))
+      
+      setShowBindVMModal(false)
+      bindVMForm.resetFields()
+      message.success('虚拟机绑定更新成功')
+    } catch (error) {
+      console.error('绑定失败:', error)
+    }
   }
 
   // 添加规则
@@ -314,8 +335,20 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
 
         {/* 绑定的实例 */}
         <div>
-          <Text strong>绑定的实例：</Text>
-          <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text strong>绑定的虚拟机：</Text>
+            <Button 
+              type="primary" 
+              size="small"
+              onClick={() => {
+                bindVMForm.setFieldsValue({ vmIds: currentGroup.boundInstances || [] })
+                setShowBindVMModal(true)
+              }}
+            >
+              绑定虚拟机
+            </Button>
+          </div>
+          <div>
             {getBoundInstances().length > 0 ? (
               <Space wrap>
                 {getBoundInstances().map(instance => (
@@ -535,6 +568,70 @@ export default function SecurityGroupDetails({ group, onBack }: SecurityGroupDet
                 {editingRule ? '更新' : '添加'}
               </Button>
             </Space>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* 绑定虚拟机Modal */}
+      <Modal
+        title="绑定虚拟机"
+        open={showBindVMModal}
+        onOk={handleBindVM}
+        onCancel={() => {
+          setShowBindVMModal(false)
+          bindVMForm.resetFields()
+        }}
+        okText="确定"
+        cancelText="取消"
+        width={600}
+      >
+        <Form form={bindVMForm} layout="vertical">
+          <Form.Item
+            name="vmIds"
+            label="选择虚拟机"
+            extra="支持多选，已绑定的虚拟机会显示标识"
+          >
+            <Select
+              mode="multiple"
+              placeholder="请选择要绑定的虚拟机"
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={mockVMInstances.map(vm => ({
+                label: vm.alias,
+                value: vm.id,
+                disabled: false
+              }))}
+              optionRender={(option) => {
+                const vm = mockVMInstances.find(v => v.id === option.value)
+                const isBound = currentGroup.boundInstances?.includes(option.value as string)
+                return (
+                  <Space>
+                    <span>{option.label}</span>
+                    {vm && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        ({vm.name})
+                      </Text>
+                    )}
+                    {isBound && (
+                      <Tag color="green" style={{ fontSize: 11 }}>已绑定</Tag>
+                    )}
+                  </Space>
+                )
+              }}
+            />
+          </Form.Item>
+
+          <div style={{ 
+            background: '#f0f5ff', 
+            padding: '12px', 
+            borderRadius: '4px',
+            marginTop: 16
+          }}>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              <strong>当前已绑定：</strong> {currentGroup.boundInstances?.length || 0} 台虚拟机
+            </Text>
           </div>
         </Form>
       </Modal>

@@ -133,7 +133,7 @@ export default function Home() {
   const renderContent = (): React.ReactElement => {
     switch (selectedMenu) {
       case 'vm-management':
-        return <VirtualMachineList />
+        return <VirtualMachineList onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')} />
       case 'cron-job':
         return <Task />
       case 'key-management':
@@ -193,7 +193,7 @@ export default function Home() {
       case 'alert-system':
         return <AlertSystem />
       default:
-        return <VirtualMachineList />
+        return <VirtualMachineList onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')} />
     }
   }
 
@@ -333,16 +333,16 @@ export default function Home() {
                       onClick: () => handleMenuClick('security-group')
                     },
                     {
-                      key: 'command-management',
-                      icon: <CodeOutlined />,
-                      label: '命令',
-                      onClick: () => handleMenuClick('command-management')
-                    },
-                    {
                       key: 'load-balancer',
                       icon: <CloudServerOutlined />,
                       label: '负载均衡',
                       onClick: () => handleMenuClick('load-balancer')
+                    },
+                    {
+                      key: 'command-management',
+                      icon: <CodeOutlined />,
+                      label: '命令',
+                      onClick: () => handleMenuClick('command-management')
                     }
                   ] : []),
                   ...(mode === 'container' ? [

@@ -33,11 +33,11 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
   const [loading, setLoading] = useState(false)
 
   const instanceTypes = [
-    { value: '4c.16G.10Mbps', label: 'ecs.g6.xlarge' },
-    { value: '8c.16G.200Mbps', label: 'ecs.c6.2xlarge' },
-    { value: '2c.8G.5Mbps', label: 'ecs.g7.large' },
-    { value: '2c.4G.200Mbps', label: 'ecs.c6.large' },
-    { value: '2c.4G.10Mbp', label: 'ecs.c7.large' }
+    { value: 'ecs.c6.2xlarge', label: '8 核（vCPU）16 GiB' },
+    { value: 'ecs.g6.xlarge', label: '4 核（vCPU）16 GiB' },
+    { value: 'ecs.c8a.xlarge', label: '4 核（vCPU）8 GiB' },
+    { value: 'ecs.g7.large', label: '2 核（vCPU）8 GiB' },
+    { value: 'ecs.c6.large', label: '2 核（vCPU）4 GiB' }
   ]
 
   const systemImages = [
@@ -105,7 +105,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             storage: 50,
             needDataDisk: 'no',
             loginMethod: 'password',
-            username: 'appid'
+            username: 'root'
           }}
         >
           <Row gutter={24}>
@@ -148,9 +148,16 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="storage"
                 label="系统盘大小(GB)"
+                rules={[
+                  { required: true, message: '请输入系统盘大小' },
+                  { type: 'number', min: 50, max: 100, message: '系统盘大小必须在50-100GB之间' }
+                ]}
+                initialValue={50}
               >
                 <InputNumber 
-                  disabled
+                  min={50}
+                  max={100}
+                  placeholder="50-100"
                   style={{ width: '100%' }}
                   addonAfter="GB"
                 />
@@ -181,9 +188,9 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                       >
                         <InputNumber 
                           min={20} 
-                          max={500} 
+                          max={1000} 
                           style={{ width: '100%' }}
-                          placeholder="数据盘大小 (20-500GB)"
+                          placeholder="数据盘大小 (20-1000GB)"
                         />
                       </Form.Item>
                     </Col>
@@ -197,16 +204,6 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             <Col span={24}>
               <Title level={4} style={{ marginTop: 24 }}>登录配置</Title>
             </Col>
-            
-            <Col span={12}>
-              <Form.Item
-                name="loginMethod"
-                label="登录方式"
-              >
-                <Select disabled options={[{ value: 'password', label: '账号密码' }]} />
-              </Form.Item>
-            </Col>
-
             <Col span={12}>
               <Form.Item
                 name="username"

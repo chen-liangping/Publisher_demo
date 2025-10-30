@@ -26,7 +26,8 @@ import {
   PlayCircleOutlined,
   
   DesktopOutlined,
-  MinusCircleTwoTone
+  MinusCircleTwoTone,
+  ArrowRightOutlined
 } from '@ant-design/icons'
 import type { FormInstance } from 'antd/es/form'
 
@@ -54,6 +55,7 @@ interface VirtualMachineDetailsProps {
   vm: VirtualMachine
   onBack: () => void
   onOperation: (vmId: string, operation: string, payload?: string | undefined) => void
+  onNavigateToLoadBalancer?: () => void
 }
 
 // 块存储数据结构
@@ -89,7 +91,7 @@ interface SecurityGroupRule {
   description: string
 }
 
-export default function VirtualMachineDetails({ vm, onBack, onOperation }: VirtualMachineDetailsProps) {
+export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavigateToLoadBalancer }: VirtualMachineDetailsProps) {
   const [publicIp, setPublicIp] = useState<string | undefined>(vm.publicIp)
   
   // 挂载存储弹窗状态
@@ -701,7 +703,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
                         </div>
                       </div>
                       <div style={{ marginBottom: '16px' }}>
-                        <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>域名</div>
+                        <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>负载均衡</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ fontSize: '14px', fontFamily: 'Monaco, monospace' }}>{vm.domain}</div>
                           {vm.sslCertName ? (
@@ -709,6 +711,23 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation }: Virtu
                               {`ssl 证书：${vm.sslCertName}`}
                             </div>
                           ) : null}
+                          {onNavigateToLoadBalancer && (
+                            <ArrowRightOutlined 
+                              style={{ 
+                                fontSize: 14, 
+                                color: '#1890ff', 
+                                cursor: 'pointer',
+                                transition: 'all 0.3s'
+                              }}
+                              onClick={onNavigateToLoadBalancer}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateX(3px)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateX(0)'
+                              }}
+                            />
+                          )}
                         </div>
                       </div>
                     </Col>
