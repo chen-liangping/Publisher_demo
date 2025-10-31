@@ -24,7 +24,7 @@ import {
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
 import VirtualMachineDetails from './VirtualMachineDetails'
-import AutoServerModule from '../../Common/AutoServerModule'
+import AutoServerModule from '../../common/AutoServerModule'
 
 const { Title, Link } = Typography
 
