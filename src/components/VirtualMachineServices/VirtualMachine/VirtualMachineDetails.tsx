@@ -164,59 +164,8 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
       createTime: '2024-01-10 09:20:00'
     }
   ])
-  // 操作日志项类型定义
-  interface LogEntry {
-    key: string
-    operation: string
-    user: string
-    time: string
-    ipAddress: string
-  }
-
-  // 本地维护操作日志（原型用途），实际可由后端拉取
-  const [logs, setLogs] = useState<LogEntry[]>(() => {
-    // 初始示例日志：包含创建时的记录
-    return [
-      {
-        key: `${vm.id}-created`,
-        operation: '创建实例',
-        user: 'admin',
-        time: vm.createTime,
-        ipAddress: '192.168.1.100',
-      },
-    ]
-  })
 
   const prevSecurityGroupsRef = useRef<string | undefined>(vm.securityGroupNames?.join(','))
-
-  // 模拟操作用户列表
-  const mockUsers = ['admin', 'operator', 'devops', 'xuyin', 'slime']
-  
-  // 生成随机IP地址（模拟）
-  const generateRandomIp = (): string => {
-    const octet = () => Math.floor(Math.random() * 255)
-    return `${octet()}.${octet()}.${octet()}.${octet()}`
-  }
-
-  // 添加一条日志的简易函数
-  const addLog = React.useCallback((operation: string) => {
-    const entry: LogEntry = {
-      key: `${vm.id}-${Date.now()}`,
-      operation,
-      user: mockUsers[Math.floor(Math.random() * mockUsers.length)],
-      time: new Date().toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      ipAddress: generateRandomIp(),
-    }
-    setLogs((s) => [entry, ...s])
-  }, [vm.id])
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
     const statusConfig = {
       running: { color: 'success', text: '运行中' },
@@ -230,9 +179,6 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
   }
 
   const handleOperation = (operation: string) => {
-    // 记录开/关机操作日志（原型前端记录）
-    if (operation === 'start') addLog('启动实例')
-    if (operation === 'stop') addLog('停止实例')
     onOperation(vm.id, operation)
   }
 
@@ -259,9 +205,6 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
       
       // 添加到块存储列表
       setBlockStorageList([...blockStorageList, newStorage])
-      
-      // 添加操作日志
-      addLog(`挂载数据盘 ${values.name} (${values.size}GB)`)
       
       // 提示用户
       message.success(`成功挂载数据盘 "${values.name}" (${values.size}GB)`)
@@ -297,20 +240,6 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
       setMountedSecurityGroups(newMountedGroups)
       
       // 记录操作日志
-      toMount.forEach(id => {
-        const sg = allSecurityGroups.find(s => s.id === id)
-        if (sg) {
-          addLog(`挂载安全组 ${sg.name}`)
-        }
-      })
-      
-      toUnmount.forEach(id => {
-        const sg = allSecurityGroups.find(s => s.id === id)
-        if (sg) {
-          addLog(`解挂安全组 ${sg.name}`)
-        }
-      })
-      
       // 提示用户
       if (toMount.length > 0 && toUnmount.length > 0) {
         message.success(`成功挂载 ${toMount.length} 个安全组，解挂 ${toUnmount.length} 个安全组`)
@@ -335,11 +264,9 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
     const prev = prevSecurityGroupsRef.current
     const curr = vm.securityGroupNames?.join(',')
     if (prev !== curr) {
-      // 若之前为空且现在有新配置，视为绑定；若变更也写一条记录
-      addLog('绑定/更新安全组')
       prevSecurityGroupsRef.current = curr
     }
-  }, [vm.securityGroupNames, addLog])
+  }, [vm.securityGroupNames])
 
   // 当打开安全组管理弹窗时，更新表单的初始值
   useEffect(() => {
@@ -498,42 +425,6 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
     return rules
   }
 
-  // Table 列定义，用于操作日志展示
-  const columns = [
-    {
-      title: '操作名称',
-      dataIndex: 'operation',
-      key: 'operation',
-      width: 180,
-    },
-    {
-      title: '操作用户',
-      dataIndex: 'user',
-      key: 'user',
-      width: 120,
-      render: (user: string) => (
-        <Tag bordered={false} color="blue">{user}</Tag>
-      ),
-    },
-    {
-      title: '操作时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 180,
-    },
-    {
-      title: 'IP地址',
-      dataIndex: 'ipAddress',
-      key: 'ipAddress',
-      width: 150,
-      render: (ipAddress: string) => (
-        <Typography.Text style={{ fontFamily: 'Monaco, monospace', fontSize: '12px' }}>
-          {ipAddress}
-        </Typography.Text>
-      ),
-    },
-  ]
-
   return (
     <div>
       {/* 头部区域 - 包含返回按钮、标题和操作按钮 */}
@@ -660,15 +551,11 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                                 setPublicIp(undefined)
                                 message.success('公网IP 已关闭')
                                 onOperation(vm.id, 'updatePublicIp', undefined)
-                                // 记录日志：关闭公网IP
-                                addLog('关闭公网IP')
                               } else {
                                 const newIp = '47.96.123.100'
                                 setPublicIp(newIp)
                                 message.success('已分配公网IP')
                                 onOperation(vm.id, 'updatePublicIp', newIp)
-                                // 记录日志：分配公网IP
-                                addLog('分配公网IP')
                               }
                             }}
                             title={publicIp ? '关闭公网IP' : '分配公网IP'}
@@ -954,19 +841,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                   />
                 </div>
               )
-            },
-            {
-              key: 'logs',
-              label: '操作日志',
-              children: (
-                <Table
-                  columns={columns}
-                  dataSource={logs}
-                  pagination={{ pageSize: 6 }}
-                  rowKey="key"
-                />
-              ),
-            },
+            }
           ]}
         />
       </div>

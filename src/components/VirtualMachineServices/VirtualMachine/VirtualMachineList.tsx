@@ -259,6 +259,21 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
             </Link>
           )}
           
+          {/* 连接操作：仅运行中状态可用 */}
+          <Link
+            onClick={() => {
+              if (vm.status === 'running') {
+                handleConnect(vm)
+              }
+            }}
+            style={{ 
+              color: vm.status === 'running' ? '#1677ff' : '#d9d9d9', 
+              cursor: vm.status === 'running' ? 'pointer' : 'not-allowed' 
+            }}
+          >
+            连接
+          </Link>
+          
           <Link
             onClick={() => handleVMOperation(vm.id, 'restart')}
             style={{ color: vm.status === 'stopped' ? '#d9d9d9' : '#1677ff', cursor: vm.status === 'stopped' ? 'not-allowed' : 'pointer' }}
@@ -288,10 +303,10 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
     setShowCreateForm(false)
   }
 
-  // 处理远程连接
-  const handleRemoteConnect = (vm: VirtualMachine) => {
+  // 处理连接操作
+  const handleConnect = (vm: VirtualMachine) => {
     if (vm.status !== 'running') {
-      message.warning('虚机需要处于运行状态才能远程连接')
+      message.warning('虚机需要处于运行状态才能连接')
       return
     }
     

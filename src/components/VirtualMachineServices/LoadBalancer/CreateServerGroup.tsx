@@ -168,9 +168,9 @@ const CreateServerGroup: React.FC<CreateServerGroupProps> = ({ onBack, onSubmit,
 
   // 提交表单
   const handleSubmit = (): void => {
-    // 验证服务器组名称
+    // 验证虚拟机组名称
     if (!groupName.trim()) {
-      message.error('请填写服务器组名称')
+      message.error('请填写虚拟机组名称')
       return
     }
     if (groupName.length < 1 || groupName.length > 80) {
@@ -213,7 +213,7 @@ const CreateServerGroup: React.FC<CreateServerGroupProps> = ({ onBack, onSubmit,
             <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
               返回
             </Button>
-            <Title level={4} style={{ margin: 0 }}>{editingGroup ? '编辑虚拟服务器组' : '新增虚拟服务器组'}</Title>
+            <Title level={4} style={{ margin: 0 }}>{editingGroup ? '编辑虚拟机组' : '新增虚拟机组'}</Title>
           </Space>
           <Space>
             <Button onClick={onBack}>取消</Button>
@@ -229,8 +229,8 @@ const CreateServerGroup: React.FC<CreateServerGroupProps> = ({ onBack, onSubmit,
       </Card>
 
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        {/* 1. 服务器组名称 */}
-        <Card title="1. 服务器组名称" style={{ marginBottom: 16 }}>
+        {/* 1. 虚拟机组名称 */}
+        <Card title="1. 虚拟机组名称" style={{ marginBottom: 16 }}>
           <Form layout="vertical">
             <Form.Item
               label="名称"

@@ -73,7 +73,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           protocol: 'TCP',
           portRange: '80',
           action: 'allow',
-          source: '0.0.0.0/0',
+          source: '所有IPv4(0.0.0.0/0)',
           priority: 1,
           description: 'HTTP访问'
         },
@@ -83,8 +83,8 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           protocol: 'TCP',
           portRange: '443',
           action: 'allow',
-          source: '0.0.0.0/0',
-          priority: 2,
+          source: '所有IPv4(0.0.0.0/0)',
+          priority: 1,
           description: 'HTTPS访问'
         },
         {
@@ -93,8 +93,8 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           protocol: 'TCP',
           portRange: '22',
           action: 'allow',
-          source: '192.168.1.0/24',
-          priority: 3,
+          source: '所有IPv4(0.0.0.0/0)',
+          priority: 1,
           description: 'SSH访问'
         },
         {
@@ -103,7 +103,7 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
           protocol: 'ALL',
           portRange: 'ALL',
           action: 'allow',
-          source: '0.0.0.0/0',
+          source: '所有IPv4(0.0.0.0/0)',  
           priority: 1,
           description: '允许所有出站流量'
         }
