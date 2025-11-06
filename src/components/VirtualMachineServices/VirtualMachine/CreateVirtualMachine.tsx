@@ -44,8 +44,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
     { value: 'centos7.9', label: 'CentOS 7.9 64位' },
     { value: 'ubuntu18.04', label: 'Ubuntu 18.04 64位' },
     { value: 'ubuntu20.04', label: 'Ubuntu 20.04 64位' },
-    { value: 'Linux', label: 'Linux SP5 64位' },
-    { value: 'windows2019', label: 'Windows Server 2019' }
+    { value: 'Linux', label: 'Linux SP5 64位' }
   ]
 
   const handleSubmit = async () => {
@@ -190,7 +189,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                           min={20} 
                           max={1000} 
                           style={{ width: '100%' }}
-                          placeholder="数据盘大小 (20-1000GB)"
+                          placeholder="数据盘大小 (GB)"
                         />
                       </Form.Item>
                     </Col>

@@ -24,7 +24,7 @@ import {
   Progress,
   DatePicker
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 
 const { Title } = Typography
@@ -93,7 +93,7 @@ const AUTO_GAME_ID = 'gamedemo'
 const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
   { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
-  { id: '3', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
+  { id: '3', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '分片集群实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
   { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' }
 ]
 
@@ -157,6 +157,8 @@ export default function ContainerDatabase() {
   const [mockOpen, setMockOpen] = useState<boolean>(false)
   const [mockForm] = Form.useForm()
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]) // 选中的测试实例ID
+  // Mongo 分片集群详情 Modal
+  const [mongoShardDetailOpen, setMongoShardDetailOpen] = useState<boolean>(false)
   const [mockPairings, setMockPairings] = useState<Record<string, string>>({}) // testId -> prodId
   const [mockProgress, setMockProgress] = useState<{
     visible: boolean
@@ -660,23 +662,68 @@ export default function ContainerDatabase() {
         </Button>
       </div>
     )},
-    { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => (
-      record.creatingProgress != null ? (
+    { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => {
+      const isRedis = (record.type || '').toLowerCase() === 'redis'
+      const shortText = '未启用持久化...'
+      const fullText = '未启用持久化，若实例重启或宕机，数据仅可从备份恢复，无法保留实时数据。不建议用于核心业务或需实时数据恢复的场景。'
+      
+      return record.creatingProgress != null ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Dots />
           <span style={{ fontSize: 12, color: '#666' }}>{record.creatingStep} {record.creatingProgress ? `(${record.creatingProgress}%)` : ''}</span>
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>{record.alias}</span>
-          {record.domainUsed && (
-            <Tag color="orange" style={{ fontSize: '10px' }}>公网域名已被使用</Tag>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>{record.alias}</span>
+            {record.domainUsed && (
+              <Tag color="orange" style={{ fontSize: '10px' }}>公网域名已被使用</Tag>
+            )}
+          </div>
+          {/* Redis 警告 toast */}
+          {isRedis && (
+            <Tooltip title={fullText} placement="topLeft">
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                backgroundColor: '#fffbe6',
+                border: '1px solid #ffe58f',
+                borderRadius: '4px',
+                fontSize: '12px',
+                color: '#d46b08',
+                cursor: 'pointer'
+              }}>
+                <ExclamationCircleFilled style={{ fontSize: '14px', color: '#faad14' }} />
+                <span>{shortText}</span>
+              </div>
+            </Tooltip>
           )}
         </div>
       )
-    )},
+    }},
     { title: '实例规格', dataIndex: 'spec', key: 'spec', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : <div style={{color: '#74b9ff'}}>{record.spec}</div> },
-    { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.arch},
+    { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => {
+      if (record.creatingProgress != null) return null
+      
+      const isMongoCon = record.type === 'Mongo' && record.arch === '分片集群实例'
+      
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{record.arch}</span>
+          {/* Mongo 分片集群实例显示查看详情链接 */}
+          {isMongoCon && (
+            <Typography.Link 
+              onClick={() => setMongoShardDetailOpen(true)}
+              style={{ fontSize: 14 }}
+            >
+              查看详情
+            </Typography.Link>
+          )}
+        </div>
+      )
+    }},
     { title: '用户名', dataIndex: 'username', key: 'username', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : record.username },
     { title: '密码', dataIndex: 'password', key: 'password', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -841,7 +888,7 @@ export default function ContainerDatabase() {
           const bb = (b.alias || '').toLowerCase()
           return aa.localeCompare(bb)
         })
-        const showCards = sorted.length <= 5
+        const showCards = sorted.length <= 4
         if (showCards) {
           return (
             <>
@@ -1063,6 +1110,12 @@ export default function ContainerDatabase() {
                                 {(['mysql','Mongo','mongo','mongodb'].includes((inst.type || '').toLowerCase())) && (
                                   <span style={{ fontWeight: 400, fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>创建数据库时，名称需以 <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.65)' }}>{AUTO_GAME_ID}_</span> 开头</span>
                                 )}
+                                {/* Redis 警告提示 */}
+                                {(inst.type || '').toLowerCase() === 'redis' && (
+                                  <span style={{ fontWeight: 400, fontSize: 12, color: '#00000073', marginTop: 4, lineHeight: '18px' }}>
+                                    未启用持久化，若实例重启或宕机，数据仅可从备份恢复，无法保留实时数据。不建议用于核心业务或需实时数据恢复的场景。
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1242,7 +1295,20 @@ export default function ContainerDatabase() {
                           </Descriptions.Item>
                           <Descriptions.Item label="版本">{inst.version || '-'}</Descriptions.Item>
                           <Descriptions.Item label="实例规格">{inst.spec}</Descriptions.Item>
-                          <Descriptions.Item label="架构类型">{inst.arch || '-'}</Descriptions.Item>
+                          <Descriptions.Item label="架构类型">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span>{inst.arch || '-'}</span>
+                              {/* Mongo 分片集群实例显示查看详情链接 */}
+                              {inst.type === 'Mongo' && inst.arch === '分片集群实例' && (
+                                <Typography.Link 
+                                  onClick={() => setMongoShardDetailOpen(true)}
+                                  style={{ fontSize: 14 }}
+                                >
+                                  查看详情
+                                </Typography.Link>
+                              )}
+                            </div>
+                          </Descriptions.Item>
                           <Descriptions.Item label="最大连接数">{inst.connectionCount ?? '-'}</Descriptions.Item>
                           <Descriptions.Item label="默认端口" span={2}>{inst.defaultPort ?? '-'}</Descriptions.Item>
                         </Descriptions>
@@ -1948,6 +2014,106 @@ export default function ContainerDatabase() {
             </div>
           )}
         </Form>
+      </Modal>
+
+      {/* Mongo 分片集群详情 Modal */}
+      <Modal
+        title="Mongo 分片集群架构详情"
+        open={mongoShardDetailOpen}
+        onCancel={() => setMongoShardDetailOpen(false)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setMongoShardDetailOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1000}
+      >
+        <Table
+          dataSource={[
+            {
+              key: '1',
+              component: 'Mongos',
+              nodes: 2,
+              spec: '2核8G',
+              storage: '-',
+              iops: '-',
+              connectionCount: '8000',
+              throughput: '-'
+            },
+            {
+              key: '2',
+              component: 'Shard',
+              nodes: 3,
+              spec: '4核16G',
+              storage: '20GB',
+              iops: '200',
+              connectionCount: '-',
+              throughput: '133MB/s'
+            },
+            {
+              key: '3',
+              component: 'ConfigServer',
+              nodes: 3,
+              spec: '2核8G',
+              storage: '20GB',
+              iops: '-',
+              connectionCount: '-',
+              throughput: '-'
+            }
+          ]}
+          columns={[
+            {
+              title: '组件',
+              dataIndex: 'component',
+              key: 'component',
+              width: 100,
+              render: (text: string) => <strong>{text}</strong>
+            },
+            {
+              title: '节点数',
+              dataIndex: 'nodes',
+              key: 'nodes',
+              width: 80,
+              align: 'center'
+            },
+            {
+              title: '规格（CPU / 内存）',
+              dataIndex: 'spec',
+              key: 'spec',
+              width: 150
+            },
+            {
+              title: '存储',
+              dataIndex: 'storage',
+              key: 'storage',
+              width: 150
+            },
+            {
+              title: '最大连接数',
+              dataIndex: 'connectionCount',
+              key: 'connectionCount',
+              width: 120,
+              align: 'center'
+            },
+            {
+              title: '最大 IOPS',
+              dataIndex: 'iops',
+              key: 'iops',
+              width: 100,
+              align: 'center'
+            },
+            {
+              title: '最大吞吐量',
+              dataIndex: 'throughput',
+              key: 'throughput',
+              width: 120,
+              align: 'center'
+            }
+          ]}
+          pagination={false}
+          size="small"
+          bordered
+        />
       </Modal>
     </div>
   )

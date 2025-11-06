@@ -184,11 +184,14 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
 
   // 处理挂载存储的提交
   const handleMountStorage = () => {
-    mountStorageForm.validateFields().then((values: { name: string; size: number }) => {
+    mountStorageForm.validateFields().then((values: { size: number }) => {
+      // 自动生成存储名称
+      const storageName = `appid-data-volume-${Date.now()}`
+      
       // 生成新的块存储数据
       const newStorage: BlockStorage = {
         id: `d-bp${Date.now()}`,
-        name: values.name,
+        name: storageName,
         status: 'In_use',
         diskType: 'cloud_essd',
         size: values.size,
@@ -207,7 +210,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
       setBlockStorageList([...blockStorageList, newStorage])
       
       // 提示用户
-      message.success(`成功挂载数据盘 "${values.name}" (${values.size}GB)`)
+      message.success(`成功挂载数据盘 "${storageName}" (${values.size}GB)`)
       
       // 关闭弹窗并重置表单
       setMountStorageModalVisible(false)
@@ -542,24 +545,20 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                         <div style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>公网IP</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: '14px', fontFamily: 'Monaco, monospace' }}>{publicIp || '未分配'}</div>
-                          <Button
-                            size="small"
-                            icon={<MinusCircleTwoTone/>}
-                            onClick={() => {
-                              // 直接切换公网IP状态并同步到父组件（无确认弹窗）
-                              if (publicIp) {
-                                setPublicIp(undefined)
-                                message.success('公网IP 已关闭')
-                                onOperation(vm.id, 'updatePublicIp', undefined)
-                              } else {
+                          {/* 公网IP开启后不可关闭，只允许未分配时开启 */}
+                          {!publicIp && (
+                            <Button
+                              size="small"
+                              icon={<MinusCircleTwoTone/>}
+                              onClick={() => {
                                 const newIp = '47.96.123.100'
                                 setPublicIp(newIp)
                                 message.success('已分配公网IP')
                                 onOperation(vm.id, 'updatePublicIp', newIp)
-                              }
-                            }}
-                            title={publicIp ? '关闭公网IP' : '分配公网IP'}
-                          />
+                              }}
+                              title="分配公网IP"
+                            />
+                          )}
                         </div>
                       </div>
                     </Col>
@@ -806,7 +805,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                         key: 'diskType',
                         render: (diskType: string) => (
                           <Tag color={diskType === 'system' ? 'green' : 'blue'}>
-                            {diskType === 'cloud_essd' ? '数据盘' : '系统盘'}
+                            {diskType === 'data' ? '数据盘' : '系统盘'}
                           </Tag>
                         )
                       },
@@ -862,37 +861,18 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
         <Form
           form={mountStorageForm}
           layout="vertical"
-          initialValues={{ name: '', size: 20 }}
+          initialValues={{ size: 20 }}
         >
-          <Form.Item
-            label="存储名称"
-            name="name"
-            rules={[
-              { required: true, message: '请输入存储名称' },
-              { 
-                min: 2, 
-                max: 128, 
-                message: '名称长度必须在 2-128 个字符之间' 
-              },
-              {
-                pattern: /^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5a-zA-Z0-9._:\-]*$/,
-                message: '必须以大小写字母或中文开头，可包含字母、中文、数字、点号（.）、下划线（_）、半角冒号（:）或连字符（-）'
-              }
-            ]}
-            extra={
-              <div style={{ marginTop: 4, color: '#666', fontSize: '12px' }}>
-                <div>• 长度为 2～128 个字符</div>
-                <div>• 以大小写字母或中文开头</div>
-                <div>• 可包含大小写字母、中文、数字、点号（.）、下划线（_）、半角冒号（:）或连字符（-）</div>
-              </div>
-            }
-          >
-            <Input
-              placeholder="请输入存储名称，例如：data-disk-01"
-              showCount
-              maxLength={128}
-            />
-          </Form.Item>
+          <div style={{ 
+            marginBottom: 16, 
+            padding: '12px 16px', 
+            background: '#f5f5f5', 
+            borderRadius: '4px',
+            fontSize: '13px',
+            color: '#666'
+          }}>
+            存储名称将自动生成为：<span style={{ fontFamily: 'monospace', color: '#1890ff' }}>appid-data-volume</span>
+          </div>
 
           <Form.Item
             label="存储大小"

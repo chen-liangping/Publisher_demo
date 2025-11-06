@@ -5,9 +5,6 @@ import {
   Card, 
   Button, 
   Typography, 
-  Modal,
-  Form,
-  Input,
   message,
   Space,
   Tag
@@ -65,7 +62,7 @@ const mockLoadBalancerData: LoadBalancer[] = [
     listenerCount: 2,
     serverGroupName: 'web-server-group',
     status: 'running',
-    expiryDate: '2026年9月16日 11:12:26',
+    expiryDate: '2026年9月16日',
     listeners: [
       {
         protocol: 'HTTP',
@@ -111,10 +108,8 @@ const mockLoadBalancerData: LoadBalancer[] = [
 
 export default function LoadBalancerManagement(): React.ReactElement {
   const [loadBalancers, setLoadBalancers] = useState<LoadBalancer[]>(mockLoadBalancerData)
-  const [createModalOpen, setCreateModalOpen] = useState<boolean>(false)
   const [selectedLB, setSelectedLB] = useState<LoadBalancer | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
-  const [createForm] = Form.useForm<{ name: string }>()
   
   // 控制每个负载均衡的流量转发展开/收起状态
   // key: lbId
@@ -129,42 +124,36 @@ export default function LoadBalancerManagement(): React.ReactElement {
     }))
   }
 
-  // 创建负载均衡
-  const handleCreate = async (): Promise<void> => {
-    try {
-      // 检查是否已存在负载均衡实例
-      if (loadBalancers.length > 0) {
-        message.warning('已存在负载均衡实例，无法创建新的实例')
-        return
-      }
-
-      const values = await createForm.validateFields()
-      setLoading(true)
-      
-      // 模拟创建过程
-      setTimeout(() => {
-        const newLB: LoadBalancer = {
-          id: `lb-bp${Date.now()}`,
-          name: values.name,
-          serviceAddress: `http://47.96.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-          listenerCount: 0,
-          serverGroupName: '未配置',
-          status: 'running',
-          listeners: [],
-          expiryDate: '2026年9月16日 11:12:26' // 固定证书到期时间
-        }
-        
-        setLoadBalancers(prev => [...prev, newLB])
-        setCreateModalOpen(false)
-        createForm.resetFields()
-        setLoading(false)
-        message.success('负载均衡创建成功！')
-      }, 1500)
-      
-    } catch (error) {
-      setLoading(false)
-      console.error('创建失败:', error)
+  // 启用负载均衡
+  const handleEnable = (): void => {
+    // 检查是否已启用负载均衡实例
+    if (loadBalancers.length > 0) {
+      message.warning('负载均衡已启用')
+      return
     }
+
+    setLoading(true)
+    
+    // 模拟启用过程
+    setTimeout(() => {
+      // 自动生成负载均衡名称
+      const lbName = `appid-load-balancer`
+      
+      const newLB: LoadBalancer = {
+        id: `lb-bp${Date.now()}`,
+        name: lbName,
+        serviceAddress: `http://47.96.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        listenerCount: 0,
+        serverGroupName: '未配置',
+        status: 'running',
+        listeners: [],
+        expiryDate: '2026年9月16日' // 固定到期时间
+      }
+      
+      setLoadBalancers(prev => [...prev, newLB])
+      setLoading(false)
+      message.success('负载均衡已启用！')
+    }, 1500)
   }
 
   // 如果选中了负载均衡，显示详情页
@@ -188,10 +177,11 @@ export default function LoadBalancerManagement(): React.ReactElement {
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => setCreateModalOpen(true)}
+          onClick={handleEnable}
           disabled={loadBalancers.length > 0}
+          loading={loading}
         >
-          创建负载均衡
+          启用负载均衡
         </Button>
       </div>
 
@@ -200,14 +190,18 @@ export default function LoadBalancerManagement(): React.ReactElement {
         <Card>
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
             <ApiOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-            <div>暂无负载均衡实例</div>
+            <div>负载均衡未启用</div>
+            <div style={{ fontSize: 13, color: '#999', marginTop: 8 }}>
+              启用后将自动创建负载均衡实例：<span style={{ fontFamily: 'monospace', color: '#1890ff' }}>appid-load-balancer</span>
+            </div>
             <Button 
               type="primary" 
               icon={<PlusOutlined />}
               style={{ marginTop: 16 }}
-              onClick={() => setCreateModalOpen(true)}
+              onClick={handleEnable}
+              loading={loading}
             >
-              创建第一个负载均衡
+              启用负载均衡
             </Button>
           </div>
         </Card>
@@ -391,35 +385,6 @@ export default function LoadBalancerManagement(): React.ReactElement {
           ))}
         </Space>
       )}
-
-      {/* 创建负载均衡Modal */}
-      <Modal
-        title="创建负载均衡"
-        open={createModalOpen}
-        onCancel={() => {
-          setCreateModalOpen(false)
-          createForm.resetFields()
-        }}
-        onOk={handleCreate}
-        confirmLoading={loading}
-        width={500}
-        okText="创建"
-        cancelText="取消"
-      >
-        <Form
-          form={createForm}
-          layout="vertical"
-        >
-          <Form.Item
-            name="name"
-            label="负载均衡名称"
-            rules={[{ required: true, message: '请输入负载均衡名称' }]}
-          >
-            <Input placeholder="请输入负载均衡名称，例如：web-lb-01" />
-          </Form.Item>
- 
-        </Form>
-      </Modal>
     </div>
   )
 }

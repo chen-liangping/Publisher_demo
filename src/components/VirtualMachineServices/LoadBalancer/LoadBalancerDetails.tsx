@@ -1688,7 +1688,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
         onCancel={handleCloseListenerModal}
         footer={null}
         width={800}
-        destroyOnClose
+        destroyOnHidden
       >
         {/* 多步骤表单（新建和编辑共用） */}
         <div>

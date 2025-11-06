@@ -24,7 +24,8 @@ import {
   Modal,
   message,
   Slider,
-  Switch
+  Switch,
+  Alert
 } from 'antd'
 import { MoreOutlined, EditOutlined, ReloadOutlined, CopyOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
@@ -698,11 +699,19 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
           <div style={{ textAlign: 'left' }}>
                   <Space>
               <Button onClick={() => setDrawerVisible(false)}>取消</Button>
-              <Button type="primary" onClick={handleSaveResources}>保存</Button>
+              <Button type="primary" onClick={handleSaveResources}>重新部署后生效</Button>
+              <Button type="primary" danger onClick={handleSaveResources}>立即生效</Button>
                   </Space>
                 </div>
               }
             >
+              <Alert
+                type="warning"
+                showIcon
+                message="选择立即生效会触发 Pod 立刻重建，可能造成业务短暂中断，请谨慎操作"
+                style={{ marginBottom: 16 }}
+              />
+              
               <Form form={editForm} layout="vertical">
                 <Form.List name="resources">
             {(fields) => (
@@ -727,44 +736,82 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
                         <span>{editForm.getFieldValue(['resources', name, 'image'])}</span>
                           </div>
                     </div>
-                    <Row gutter={16}>
-                      <Col span={12}>
+                    {/* 内存 */}
+                    <Form.Item
+                      {...restField}
+                      label={<span><span style={{ color: '#ff4d4f' }}>* </span>内存</span>}
+                      required={false}
+                      style={{ marginBottom: 8 }}
+                    >
+                      <Space.Compact style={{ width: '100%' }}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'memoryNum']}
+                          noStyle
+                          rules={[{ required: true, message: '请输入内存大小' }]}
+                        >
+                          <InputNumber min={1} placeholder="385" style={{ flex: 1 }} />
+                        </Form.Item>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'memoryUnit']}
+                          noStyle
+                          initialValue="Mi"
+                        >
+                          <Select style={{ width: 100 }}>
+                            <Select.Option value="Mi">Mi</Select.Option>
+                            <Select.Option value="Gi">Gi</Select.Option>
+                          </Select>
+                        </Form.Item>
+                      </Space.Compact>
+                    </Form.Item>
+                    <div style={{ marginBottom: 16, fontSize: 13, color: '#faad14' }}>
+                      检测到内存偏离推荐值，建议将内存调整为960Mi
+                    </div>
+
+                    {/* CPU */}
+                    <Form.Item
+                      {...restField}
+                      label={<span><span style={{ color: '#ff4d4f' }}>* </span>CPU</span>}
+                      required={false}
+                      style={{ marginBottom: 8 }}
+                    >
+                      <Space.Compact style={{ width: '100%' }}>
                         <Form.Item
                           {...restField}
                           name={[name, 'cpuBase']}
-                          label="CPU (C)"
+                          noStyle
                           rules={[{ required: true, message: '请输入CPU配置' }]}
                         >
-                          <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
-                            </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Row gutter={8}>
-                          <Col span={16}>
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'memoryNum']}
-                              label="内存"
-                              rules={[{ required: true, message: '请输入内存大小' }]}
-                            >
-                              <InputNumber min={1} style={{ width: '100%' }} />
-                            </Form.Item>
-                          </Col>
-                          <Col span={8}>
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'memoryUnit']}
-                              label="单位"
-                            >
-                              <Select>
-                                <Select.Option value="Mi">Mi</Select.Option>
-                                <Select.Option value="Gi">Gi</Select.Option>
-                              </Select>
-                          </Form.Item>
-                          </Col>
-                        </Row>
-                      </Col>
-                    </Row>
+                          <InputNumber min={0.001} step={0.001} placeholder="0.1" style={{ flex: 1 }} />
+                        </Form.Item>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          padding: '0 11px', 
+                          border: '1px solid #d9d9d9',
+                          borderLeft: 'none',
+                          backgroundColor: '#fafafa',
+                          color: 'rgba(0, 0, 0, 0.45)'
+                        }}>
+                          可突发至0.4C
+                        </div>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          padding: '0 11px', 
+                          border: '1px solid #d9d9d9',
+                          borderLeft: 'none',
+                          backgroundColor: '#fff',
+                          color: 'rgba(0, 0, 0, 0.88)'
+                        }}>
+                          C
+                        </div>
+                      </Space.Compact>
+                    </Form.Item>
+                    <div style={{ marginBottom: 16, fontSize: 13, color: '#faad14' }}>
+                      检测到CPU偏离推荐值，建议将CPU调整为0.08C
+                    </div>
                         </div>
                       ))}
                     </div>
