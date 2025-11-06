@@ -1,11 +1,10 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Row, Col, Card, Button, Input, Typography, Space, Tag, Progress, Drawer, Form, Select, Radio, InputNumber, Alert, Collapse, Tooltip, Modal, Table } from 'antd'
 import Deployment from './deployment'
 import DeploymentOther from './deployment_other'
-import { MoreOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, StopOutlined, QuestionCircleOutlined, CaretUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { QuestionCircleOutlined, CaretUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { apps, AppItem as AppItemType } from './apps'
 
 const { Title, Text } = Typography
@@ -19,7 +18,6 @@ const statusColor = (s: AppItemType['status']) => {
 }
 
 export default function ContainerApplication({ onOpenDeployment }: { onOpenDeployment?: (id: string) => void }) {
-  const router = useRouter()
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false)
   const [selectedApp, setSelectedApp] = useState<AppItemType | null>(null)
   const [updateDrawerOpen, setUpdateDrawerOpen] = useState<boolean>(false)
@@ -484,7 +482,7 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
                             }
                             extra={
                               <span>
-                                使用","分隔，例：executable,param1,param2
+                                使用&ldquo;,&rdquo;分隔，例：executable,param1,param2
                               </span>
                             }
                           >
