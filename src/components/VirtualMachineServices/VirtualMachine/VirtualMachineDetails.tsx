@@ -96,7 +96,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
   
   // 挂载存储弹窗状态
   const [mountStorageModalVisible, setMountStorageModalVisible] = useState<boolean>(false)
-  const [mountStorageForm] = Form.useForm<{ name: string; size: number }>()
+  const [mountStorageForm] = Form.useForm<{ size: number; mountPath: string }>()
   
   // 挂载安全组弹窗状态
   const [mountSecurityGroupModalVisible, setMountSecurityGroupModalVisible] = useState<boolean>(false)
@@ -184,7 +184,8 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
 
   // 处理挂载存储的提交
   const handleMountStorage = () => {
-    mountStorageForm.validateFields().then((values: { size: number }) => {
+    mountStorageForm.validateFields().then((values) => {
+      const { size, mountPath } = values
       // 自动生成存储名称
       const storageName = `appid-data-volume-${Date.now()}`
       
@@ -194,7 +195,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
         name: storageName,
         status: 'In_use',
         diskType: 'cloud_essd',
-        size: values.size,
+        size: size,
         createTime: new Date().toLocaleString('zh-CN', {
           year: 'numeric',
           month: '2-digit',
@@ -210,7 +211,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
       setBlockStorageList([...blockStorageList, newStorage])
       
       // 提示用户
-      message.success(`成功挂载数据盘 "${storageName}" (${values.size}GB)`)
+      message.success(`成功挂载数据盘 "${storageName}" (${size}GB) 到路径 "${mountPath}"`)
       
       // 关闭弹窗并重置表单
       setMountStorageModalVisible(false)
@@ -861,7 +862,10 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
         <Form
           form={mountStorageForm}
           layout="vertical"
-          initialValues={{ size: 20 }}
+          initialValues={{ 
+            size: 20,
+            mountPath: 'gamedemo/date01'
+          }}
         >
           <div style={{ 
             marginBottom: 16, 
@@ -875,6 +879,19 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
           </div>
 
           <Form.Item
+            label="挂载路径"
+            name="mountPath"
+            rules={[
+              { required: true, message: '请输入挂载路径' }
+            ]}
+          >
+            <Input
+              placeholder="请输入挂载路径"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Form.Item
             label="存储大小"
             name="size"
             rules={[
@@ -883,13 +900,13 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                 type: 'number', 
                 min: 1, 
                 max: 500, 
-                message: '存储大小必须在 1GB 到 500GB 之间' 
+                message: '存储大小必须在 1GB 到 100GB 之间' 
               }
             ]}
             extra={
               <div style={{ marginTop: 4 }}>
                 <div style={{ color: '#666', fontSize: '12px', marginBottom: 4 }}>
-                  • 存储大小范围：1GB - 500GB
+                  • 存储大小范围：1GB - 100GB
                 </div>
                 <div style={{ color: '#ff9800', fontSize: '12px' }}>
                   • 随实例释放：该数据卷将随虚拟机实例释放而自动删除
@@ -899,7 +916,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
           >
             <InputNumber
               min={1}
-              max={500}
+              max={100}
               precision={0}
               addonAfter="GB"
               style={{ width: '100%' }}

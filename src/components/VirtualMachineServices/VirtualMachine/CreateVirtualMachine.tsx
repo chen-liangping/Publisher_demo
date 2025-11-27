@@ -179,20 +179,35 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 
                 if (needDataDisk === 'yes') {
                   return (
-                    <Col span={12}>
-                      <Form.Item
-                        name="dataDiskSize"
-                        label="数据盘大小(GB)"
-                        rules={[{ required: true, message: '请设置数据盘大小' }]}
-                      >
-                        <InputNumber 
-                          min={20} 
-                          max={1000} 
-                          style={{ width: '100%' }}
-                          placeholder="数据盘大小 (GB)"
-                        />
-                      </Form.Item>
-                    </Col>
+                    <>
+                      <Col span={12}>
+                        <Form.Item
+                          name="dataDiskMountPath"
+                          label="数据盘挂载路径"
+                          rules={[{ required: true, message: '请输入挂载路径' }]}
+                          initialValue="gamedemo/date01"
+                        >
+                          <Input 
+                            style={{ width: '100%' }}
+                            placeholder="请输入挂载路径"
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="dataDiskSize"
+                          label="数据盘大小(GB)"
+                          rules={[{ required: true, message: '请设置数据盘大小' }]}
+                        >
+                          <InputNumber 
+                            min={20} 
+                            max={1000} 
+                            style={{ width: '100%' }}
+                            placeholder="数据盘大小 (GB)"
+                          />
+                        </Form.Item>
+                      </Col>
+                    </>
                   )
                 }
                 return null

@@ -1,5 +1,5 @@
 'use client'
-
+//控制数量
 import React, { useState, useEffect } from 'react'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
@@ -93,8 +93,10 @@ const AUTO_GAME_ID = 'gamedemo'
 const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
   { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
-  { id: '3', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '分片集群实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
-  { id: '4', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' }
+  { id: '3', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '分片集群', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
+  { id: '4', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '分片集群实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
+  { id: '5', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
+  { id: '6', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' }
 ]
 
 // 模拟生产环境数据
@@ -157,8 +159,9 @@ export default function ContainerDatabase() {
   const [mockOpen, setMockOpen] = useState<boolean>(false)
   const [mockForm] = Form.useForm()
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]) // 选中的测试实例ID
-  // Mongo 分片集群详情 Modal
-  const [mongoShardDetailOpen, setMongoShardDetailOpen] = useState<boolean>(false)
+  // 规格详情 Modal
+  const [specDetailOpen, setSpecDetailOpen] = useState<boolean>(false)
+  const [selectedSpecInstance, setSelectedSpecInstance] = useState<DBInstance | null>(null)
   const [mockPairings, setMockPairings] = useState<Record<string, string>>({}) // testId -> prodId
   const [mockProgress, setMockProgress] = useState<{
     visible: boolean
@@ -653,14 +656,9 @@ export default function ContainerDatabase() {
 
   const columns: ColumnsType<DBInstance> = [
     { title: '类型', dataIndex: 'type', key: 'type', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? <Dots /> : (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Button 
-          type="link" 
-          onClick={() => setSelectedInstance(record)}
-        >
-          <Tag color={typeColorMap[record.type] || 'blue'}>{record.type}</Tag>
-        </Button>
-      </div>
+      <Typography.Link onClick={() => setSelectedInstance(record)}>
+        {record.type}
+      </Typography.Link>
     )},
     { title: '别名', dataIndex: 'alias', key: 'alias', render: (_value: string, record: DBInstance) => {
       const isRedis = (record.type || '').toLowerCase() === 'redis'
@@ -674,10 +672,10 @@ export default function ContainerDatabase() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>{record.alias}</span>
-            {record.domainUsed && (
-              <Tag color="orange" style={{ fontSize: '10px' }}>公网域名已被使用</Tag>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{record.alias}</span>
+          {record.domainUsed && (
+            <Tag color="orange" style={{ fontSize: '10px' }}>公网域名已被使用</Tag>
             )}
           </div>
           {/* Redis 警告 toast */}
@@ -703,24 +701,22 @@ export default function ContainerDatabase() {
         </div>
       )
     }},
-    { title: '实例规格', dataIndex: 'spec', key: 'spec', render: (_value: string, record: DBInstance) => record.creatingProgress != null ? null : <div style={{color: '#74b9ff'}}>{record.spec}</div> },
     { title: '架构类型', dataIndex: 'arch', key: 'arch', render: (_value: string, record: DBInstance) => {
       if (record.creatingProgress != null) return null
-      
-      const isMongoCon = record.type === 'Mongo' && record.arch === '分片集群实例'
       
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{record.arch}</span>
-          {/* Mongo 分片集群实例显示查看详情链接 */}
-          {isMongoCon && (
-            <Typography.Link 
-              onClick={() => setMongoShardDetailOpen(true)}
-              style={{ fontSize: 14 }}
-            >
-              查看详情
-            </Typography.Link>
-          )}
+          {/* 所有实例都显示查看规格链接 */}
+          <Typography.Link 
+            onClick={() => {
+              setSelectedSpecInstance(record)
+              setSpecDetailOpen(true)
+            }}
+            style={{ fontSize: 12 }}
+          >
+            查看规格
+          </Typography.Link>
         </div>
       )
     }},
@@ -888,7 +884,7 @@ export default function ContainerDatabase() {
           const bb = (b.alias || '').toLowerCase()
           return aa.localeCompare(bb)
         })
-        const showCards = sorted.length <= 4
+        const showCards = sorted.length <= 8 //控制数量
         if (showCards) {
           return (
             <>
@@ -1294,19 +1290,18 @@ export default function ContainerDatabase() {
                             />
                           </Descriptions.Item>
                           <Descriptions.Item label="版本">{inst.version || '-'}</Descriptions.Item>
-                          <Descriptions.Item label="实例规格">{inst.spec}</Descriptions.Item>
                           <Descriptions.Item label="架构类型">
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span>{inst.arch || '-'}</span>
-                              {/* Mongo 分片集群实例显示查看详情链接 */}
-                              {inst.type === 'Mongo' && inst.arch === '分片集群实例' && (
-                                <Typography.Link 
-                                  onClick={() => setMongoShardDetailOpen(true)}
-                                  style={{ fontSize: 14 }}
-                                >
-                                  查看详情
-                                </Typography.Link>
-                              )}
+                              <Typography.Link 
+                                onClick={() => {
+                                  setSelectedSpecInstance(inst)
+                                  setSpecDetailOpen(true)
+                                }}
+                                style={{ fontSize: 12 }}
+                              >
+                                查看规格
+                              </Typography.Link>
                             </div>
                           </Descriptions.Item>
                           <Descriptions.Item label="最大连接数">{inst.connectionCount ?? '-'}</Descriptions.Item>
@@ -1701,10 +1696,10 @@ export default function ContainerDatabase() {
               }
             }}
               options={[
-                { value: 'MySQL', label: (<Tooltip title={(typeCounts['MySQL'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>), disabled: (typeCounts['MySQL'] || 0) >= 2 },
-                { value: 'Redis', label: (<Tooltip title={(typeCounts['Redis'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Redis</span></Tooltip>), disabled: (typeCounts['Redis'] || 0) >= 2 },
-                { value: 'Mongo', label: (<Tooltip title={(typeCounts['Mongo'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Mongo</span></Tooltip>), disabled: (typeCounts['Mongo'] || 0) >= 2 },
-                { value: 'Zookeeper', label: (<Tooltip title={(typeCounts['Zookeeper'] || 0) >= 2 ? '实例数量已超出最大限制' : ''}><span>Zookeeper</span></Tooltip>), disabled: (typeCounts['Zookeeper'] || 0) >= 2 },
+                { value: 'MySQL', label: (<Tooltip title={(typeCounts['MySQL'] || 0) >= 3 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>), disabled: (typeCounts['MySQL'] || 0) >= 3 },
+                { value: 'Redis', label: (<Tooltip title={(typeCounts['Redis'] || 0) >= 3 ? '实例数量已超出最大限制' : ''}><span>Redis</span></Tooltip>), disabled: (typeCounts['Redis'] || 0) >= 3 },
+                { value: 'Mongo', label: (<Tooltip title={(typeCounts['Mongo'] || 0) >= 3 ? '实例数量已超出最大限制' : ''}><span>Mongo</span></Tooltip>), disabled: (typeCounts['Mongo'] || 0) >= 3 },
+                { value: 'Zookeeper', label: (<Tooltip title={(typeCounts['Zookeeper'] || 0) >= 3 ? '实例数量已超出最大限制' : ''}><span>Zookeeper</span></Tooltip>), disabled: (typeCounts['Zookeeper'] || 0) >= 3 },
               ]}
             />
           </Form.Item>
@@ -2016,104 +2011,440 @@ export default function ContainerDatabase() {
         </Form>
       </Modal>
 
-      {/* Mongo 分片集群详情 Modal */}
+      {/* 规格详情 Modal */}
       <Modal
-        title="Mongo 分片集群架构详情"
-        open={mongoShardDetailOpen}
-        onCancel={() => setMongoShardDetailOpen(false)}
+        title="查看规格详情"
+        open={specDetailOpen}
+        onCancel={() => {
+          setSpecDetailOpen(false)
+          setSelectedSpecInstance(null)
+        }}
         footer={[
-          <Button key="close" type="primary" onClick={() => setMongoShardDetailOpen(false)}>
+          <Button key="close" type="primary" onClick={() => {
+            setSpecDetailOpen(false)
+            setSelectedSpecInstance(null)
+          }}>
             关闭
           </Button>
         ]}
-        width={1000}
+        width={600}
       >
-        <Table
-          dataSource={[
-            {
-              key: '1',
-              component: 'Mongos',
-              nodes: 2,
-              spec: '2核8G',
-              storage: '-',
-              iops: '-',
-              connectionCount: '8000',
-              throughput: '-'
-            },
-            {
-              key: '2',
-              component: 'Shard',
-              nodes: 3,
-              spec: '4核16G',
-              storage: '20GB',
-              iops: '200',
-              connectionCount: '-',
-              throughput: '133MB/s'
-            },
-            {
-              key: '3',
-              component: 'ConfigServer',
-              nodes: 3,
-              spec: '2核8G',
-              storage: '20GB',
-              iops: '-',
-              connectionCount: '-',
-              throughput: '-'
+        {selectedSpecInstance && (() => {
+          const inst = selectedSpecInstance
+          
+          // 定义数据库类型图标样式
+          const getDbIcon = (type: string) => {
+            if (type === 'Mongo' || type === 'MongoDB') {
+              return (
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}>
+                  <svg viewBox="0 0 32 32" width="40" height="40">
+                    <path fill="#13aa52" d="M15.9.087l.854 1.604c.192.296.4.558.645.802a22.406 22.406 0 012.004 2.266c1.447 1.9 2.423 4.01 3.12 6.292.418 1.394.645 2.824.662 4.27.07 4.323-1.412 8.035-4.4 11.12a12.7 12.7 0 01-1.57 1.342c-.296 0-.436-.227-.558-.436a3.589 3.589 0 01-.436-1.255c-.105-.523-.174-1.046-.14-1.586v-.244C16.057 24.21 15.796.21 15.9.087z"/>
+                    <path fill="#13aa52" d="M15.9.034c-.035-.07-.07-.017-.105.017.017.35-.105.662-.296.96-.21.296-.488.523-.767.767-1.55 1.342-2.77 2.963-3.747 4.776-1.3 2.44-1.97 5.055-2.16 7.808-.087.993.314 4.497.627 5.508.854 2.684 2.388 4.933 4.375 6.885.488.47 1.01.906 1.55 1.325.157 0 .174-.14.21-.244a4.78 4.78 0 00.157-.68l.35-2.614z"/>
+                  </svg>
+    </div>
+  )
             }
-          ]}
-          columns={[
-            {
-              title: '组件',
-              dataIndex: 'component',
-              key: 'component',
-              width: 100,
-              render: (text: string) => <strong>{text}</strong>
-            },
-            {
-              title: '节点数',
-              dataIndex: 'nodes',
-              key: 'nodes',
-              width: 80,
-              align: 'center'
-            },
-            {
-              title: '规格（CPU / 内存）',
-              dataIndex: 'spec',
-              key: 'spec',
-              width: 150
-            },
-            {
-              title: '存储',
-              dataIndex: 'storage',
-              key: 'storage',
-              width: 150
-            },
-            {
-              title: '最大连接数',
-              dataIndex: 'connectionCount',
-              key: 'connectionCount',
-              width: 120,
-              align: 'center'
-            },
-            {
-              title: '最大 IOPS',
-              dataIndex: 'iops',
-              key: 'iops',
-              width: 100,
-              align: 'center'
-            },
-            {
-              title: '最大吞吐量',
-              dataIndex: 'throughput',
-              key: 'throughput',
-              width: 120,
-              align: 'center'
+            if (type === 'Redis') {
+              return (
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}>
+                  <svg viewBox="0 0 32 32" width="40" height="40">
+                    <path fill="#a41e11" d="M31 22.151c0 1.359-3.458 2.489-8.109 2.867l-4.266 1.161c-3.663.994-6.07 1.41-7.832 1.41-2.917 0-10.793-1.121-10.793-3.437v-5.382c0 2.316 7.876 3.437 10.793 3.437 1.762 0 4.169-.416 7.832-1.41l4.266-1.161c4.651-.378 8.109-1.508 8.109-2.867z"/>
+                    <path fill="#d82c20" d="M31 18.056c0 1.359-3.458 2.489-8.109 2.867l-4.266 1.161c-3.663.994-6.07 1.41-7.832 1.41-2.917 0-10.793-1.121-10.793-3.437v-5.382c0 2.316 7.876 3.437 10.793 3.437 1.762 0 4.169-.416 7.832-1.41l4.266-1.161c4.651-.378 8.109-1.508 8.109-2.867z"/>
+                    <ellipse cx="16" cy="14.524" fill="#a41e11" rx="15" ry="3.437"/>
+                    <ellipse cx="16" cy="13.904" fill="#d82c20" rx="15" ry="3.437"/>
+                    <path fill="#a41e11" d="M22.859 10.846c2.054-.472 3.433-1.083 3.433-1.769 0-.937-2.417-1.738-5.917-2.11l-3.2.872c-3.663.994-6.07 1.41-7.832 1.41-2.917 0-10.343-1.03-10.343-3.165S7.426 3.437 10.343 3.437c1.762 0 4.169.273 7.832 1.267l4.266 1.161c4.651.378 7.559 1.446 7.559 2.805s-2.908 1.704-7.141 2.176"/>
+                    <path fill="#d82c20" d="M22.859 10.043c2.054-.472 3.433-1.083 3.433-1.769 0-.937-2.417-1.738-5.917-2.11l-3.2.872c-3.663.994-6.07 1.41-7.832 1.41-2.917 0-10.343-1.03-10.343-3.165S7.426 2.635 10.343 2.635c1.762 0 4.169.273 7.832 1.267l4.266 1.161c4.651.378 7.559 1.446 7.559 2.805s-2.908 1.704-7.141 2.176"/>
+                  </svg>
+                </div>
+              )
             }
-          ]}
-          pagination={false}
-          size="small"
-          bordered
-        />
+            if (type === 'MySQL') {
+              return (
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}>
+                  <svg viewBox="0 0 32 32" width="40" height="40">
+                    <path fill="#00758f" d="M8.719 28.886a40.623 40.623 0 01-3.677-.12c-.877-.068-1.665-.237-2.317-.474a3.73 3.73 0 01-1.408-.882 1.617 1.617 0 01-.322-1.269c.068-.407.322-.78.763-1.137a5.779 5.779 0 011.492-.865 8.881 8.881 0 002.233-.966 28.794 28.794 0 002.233-1.356c.576-.373 1.137-.78 1.662-1.237a7.82 7.82 0 001.222-1.373 3.067 3.067 0 00.5-1.39c.034-.356 0-.729-.068-1.085a8.584 8.584 0 00-.254-.982c-.119-.39-.254-.763-.407-1.12a7.348 7.348 0 00-.543-.99 6.35 6.35 0 00-.644-.865 6.062 6.062 0 00-.814-.729 5.17 5.17 0 00-1.085-.559 4.373 4.373 0 00-1.1-.203c-.322-.017-.644-.017-.949 0a3.864 3.864 0 00-.982.169c-.339.085-.661.203-.966.356-.305.153-.576.322-.814.508-.254.186-.475.39-.661.611-.203.22-.373.458-.508.712a1.917 1.917 0 00-.254.763c-.034.254-.034.508 0 .763.034.271.102.525.203.78.102.254.237.491.39.712.153.22.339.424.543.61.203.187.424.356.66.508.237.153.492.288.746.407.271.119.543.22.814.305.288.085.559.153.814.203.271.051.525.085.746.102.237.034.458.051.644.068.169.017.305.034.407.051.102 0 .153.017.169.034 0 0 .017.017.034.034 0 .017.017.034.034.051 0 .034.017.051.017.085v.119a.425.425 0 01-.119.305c-.085.102-.22.186-.39.254a2.747 2.747 0 01-.576.169 3.55 3.55 0 01-.644.068h-.644a4.51 4.51 0 01-.644-.102 4.235 4.235 0 01-.61-.186 3.94 3.94 0 01-.559-.254 3.15 3.15 0 01-.475-.322 2.416 2.416 0 01-.39-.39 1.915 1.915 0 01-.271-.407 1.49 1.49 0 01-.136-.441c-.034-.153-.034-.305-.017-.475 0-.186.034-.373.102-.559s.169-.373.288-.542c.136-.186.305-.356.508-.508s.441-.288.695-.407a5.17 5.17 0 01.814-.254c.288-.068.576-.119.865-.136.305-.034.61-.051.915-.034.305.017.61.051.915.119.305.068.593.169.865.305.271.136.525.305.763.508.237.203.441.441.61.712.169.271.305.576.407.915.102.339.169.695.186 1.068.017.39-.017.78-.119 1.17a4.29 4.29 0 01-.508 1.204c-.237.39-.525.763-.865 1.119a9.225 9.225 0 01-1.17 1.034c-.407.339-.831.661-1.271.966-.441.305-.899.593-1.373.865-.475.271-.949.525-1.441.763-.475.237-.949.458-1.424.661-.475.203-.932.373-1.39.525-.441.153-.865.271-1.271.373a6.744 6.744 0 01-1.102.186c-.322.034-.627.051-.899.051z"/>
+                    <path fill="#f29111" d="M28.973 20.413c-.254-.051-.525-.085-.814-.102-.271-.017-.559-.034-.831 0a3.65 3.65 0 00-.831.136 4.235 4.235 0 00-.78.305 3.15 3.15 0 00-.644.458c-.186.169-.339.373-.475.593-.119.22-.22.458-.288.712s-.102.525-.119.814c-.017.288 0 .576.051.865.051.288.136.559.254.814.119.254.271.491.458.712.186.203.407.373.661.508.254.136.525.237.814.305.288.068.593.102.899.102.305 0 .61-.051.899-.136.288-.085.559-.203.797-.373a2.4 2.4 0 00.644-.593c.186-.237.339-.491.458-.763.119-.271.22-.559.288-.848.068-.288.119-.593.136-.882.017-.305 0-.61-.051-.899-.051-.288-.136-.576-.254-.848a3.067 3.067 0 00-.458-.746 2.416 2.416 0 00-.644-.576 3.018 3.018 0 00-.814-.373c-.288-.085-.593-.136-.915-.153z"/>
+                  </svg>
+                </div>
+              )
+            }
+            if (type === 'Zookeeper') {
+              return (
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}>
+                  <svg viewBox="0 0 32 32" width="40" height="40">
+                    <path fill="#1890ff" d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2zm0 25c-6.065 0-11-4.935-11-11S9.935 5 16 5s11 4.935 11 11-4.935 11-11 11z"/>
+                    <path fill="#40a9ff" d="M16 7c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 15c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z"/>
+                    <circle cx="16" cy="16" r="4" fill="#096dd9"/>
+                    <path fill="#40a9ff" d="M16 8v3m0 10v3m8-8h-3m-10 0H8"/>
+                  </svg>
+                </div>
+              )
+            }
+            return null
+          }
+          
+          // Mongo 分片集群实例
+          if (inst.type === 'Mongo' && inst.arch === '分片集群实例') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type} <span style={{ color: '#999', fontWeight: 400 }}>replica</span>
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch}</div>
+                  </div>
+                </div>
+                <Table
+                columns={[
+                  {
+                    title: '组件类型',
+                    dataIndex: 'component',
+                    key: 'component',
+                    width: 80,
+                    render: (text: string) => <strong>{text}</strong>
+                  },
+                  {
+                    title: '节点数',
+                    dataIndex: 'nodes',
+                    key: 'nodes',
+                    width: 80
+                  },
+                  {
+                    title: '规格（CPU / 内存）',
+                    dataIndex: 'spec',
+                    key: 'spec',
+                    width: 80
+                  },
+                  {
+                    title: '存储',
+                    dataIndex: 'storage',
+                    key: 'storage',
+                    width: 80
+                  }
+                ]}
+                dataSource={[
+                  {
+                    key: 1,
+                    component: 'Mongos',
+                    nodes: 2,
+                    spec: '2核8G',
+                    storage: '-'
+                  },
+                  {
+                    key: 2,
+                    component: 'Shard',
+                    nodes: 3,
+                    spec: '4核16G',
+                    storage: '20GB'
+                  },
+                  {
+                    key: 3,
+                    component: 'ConfigServer',
+                    nodes: 3,
+                    spec: '2核8G',
+                    storage: '20GB'
+                  }
+                ]}
+                pagination={false}
+                size="small"
+                bordered
+              />
+              </>
+            )
+          }
+          
+          // Mongo 副本集实例
+          if (inst.type === 'Mongo' && inst.arch === '副本集实例') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type} <span style={{ color: '#999', fontWeight: 400 }}>replica</span>
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch}</div>
+                  </div>
+                </div>
+                <Table
+                columns={[
+                  {
+                    title: '类型',
+                    dataIndex: 'type',
+                    key: 'type',
+                    render: (text: string) => <strong>{text}</strong>
+                  },
+                  {
+                    title: '规格',
+                    dataIndex: 'spec',
+                    key: 'spec'
+                  },
+                  {
+                    title: '存储',
+                    dataIndex: 'storage',
+                    key: 'storage'
+                  }
+                ]}
+                dataSource={[
+                  {
+                    key: 1,
+                    type: '主节点（1主）',
+                    spec: '4核8G',
+                    storage: '20GB'
+                  },
+                  {
+                    key: 2,
+                    type: '从节点（2从）',
+                    spec: '2核8G',
+                    storage: '20GB'
+                  }
+                ]}
+                pagination={false}
+                size="small"
+                bordered
+              />
+              </>
+            )
+          }
+          
+          // Redis 双机主备架构
+          if (inst.type === 'Redis' && inst.arch === '双机主备架构') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type} <span style={{ color: '#999', fontWeight: 400 }}>shard</span>
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch}</div>
+                  </div>
+                </div>
+                <Table
+                columns={[
+                  {
+                    title: '类型',
+                    dataIndex: 'type',
+                    key: 'type',
+                    render: (text: string) => <strong>{text}</strong>
+                  },
+                  {
+                    title: '规格',
+                    dataIndex: 'spec',
+                    key: 'spec'
+                  }
+                ]}
+                dataSource={[
+                  {
+                    key: 1,
+                    type: '主节点（1主）',
+                    spec: '4核8G'
+                  },
+                  {
+                    key: 2,
+                    type: '备节点（1备）',
+                    spec: '4核8G'
+                  }
+                ]}
+                pagination={false}
+                size="small"
+                bordered
+              />
+              </>
+            )
+          }
+          
+          // Redis 分片集群
+          if (inst.type === 'Redis' && inst.arch === '分片集群') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type} <span style={{ color: '#999', fontWeight: 400 }}>shard</span>
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch}</div>
+                  </div>
+                </div>
+                <Table
+                  columns={[
+                    {
+                      title: '分片',
+                      dataIndex: 'shard',
+                      key: 'shard',
+                      width: 100,
+                      render: (text: string) => <strong>{text}</strong>
+                    },
+                    {
+                      title: () => (
+                        <span>
+                          主节点 <span style={{ fontSize: 12, color: '#999' }}>（个）</span>
+                        </span>
+                      ),
+                      dataIndex: 'primaryNodes',
+                      key: 'primaryNodes',
+                      align: 'center',
+                      render: (text: string) => <span style={{ color: '#999' }}>{text}</span>
+                    },
+                    {
+                      title: () => (
+                        <span>
+                          备节点 <span style={{ fontSize: 12, color: '#999' }}>（个）</span>
+                        </span>
+                      ),
+                      dataIndex: 'backupNodes',
+                      key: 'backupNodes',
+                      align: 'center',
+                      render: (text: string) => <span style={{ color: '#999' }}>{text}</span>
+                    }
+                  ]}
+                  dataSource={[
+                    {
+                      key: 1,
+                      shard: '分片1',
+                      primaryNodes: '1 主（1GB ）',
+                      backupNodes: '1 备（1GB）'
+                    },
+                    {
+                      key: 2,
+                      shard: '分片2',
+                      primaryNodes: '1 主（1GB）',
+                      backupNodes: '1 备（1GB）'
+                    }
+                  ]}
+                  pagination={false}
+                  size="small"
+                  bordered
+                />
+                <div style={{ marginTop: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', gap: 24 }}>
+                  <span><strong>节点总数：</strong>4</span>
+                </div>
+              </>
+            )
+          }
+          
+          // MySQL
+          if (inst.type === 'MySQL') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch || '标准'}</div>
+                  </div>
+                </div>
+                <Table
+                columns={[
+                  {
+                    title: '类型',
+                    dataIndex: 'type',
+                    key: 'type',
+                    render: (text: string) => <strong>{text}</strong>
+                  },
+                  {
+                    title: '规格',
+                    dataIndex: 'spec',
+                    key: 'spec'
+                  },
+                  {
+                    title: '存储',
+                    dataIndex: 'storage',
+                    key: 'storage'
+                  }
+                ]}
+                dataSource={[
+                  {
+                    key: 1,
+                    type: '主节点（1主）',
+                    spec: '2核8G',
+                    storage: '100GB'
+                  },
+                  {
+                    key: 2,
+                    type: '只读节点（2只读）',
+                    spec: '2核8G',
+                    storage: '100GB'
+                  }
+                ]}
+                pagination={false}
+                size="small"
+                bordered
+              />
+              </>
+            )
+          }
+          
+          // Zookeeper
+          if (inst.type === 'Zookeeper') {
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  {getDbIcon(inst.type)}
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                      {inst.type}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{inst.arch || '标准版'}</div>
+                  </div>
+                </div>
+                <Descriptions column={1} bordered>
+                  <Descriptions.Item label="实例规格">{inst.spec || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="架构类型">{inst.arch || '标准版'}</Descriptions.Item>
+                </Descriptions>
+              </>
+            )
+          }
+          
+          // 默认显示（其他类型）
+          return (
+            <Descriptions column={2} bordered>
+              <Descriptions.Item label="实例规格">{inst.spec || '-'}</Descriptions.Item>
+              <Descriptions.Item label="架构类型">{inst.arch || '-'}</Descriptions.Item>
+            </Descriptions>
+          )
+        })()}
       </Modal>
     </div>
   )

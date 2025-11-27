@@ -127,6 +127,12 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   // 服务详情 Drawer 状态
   const [serviceDrawerVisible, setServiceDrawerVisible] = useState<boolean>(false)
   const [selectedService, setSelectedService] = useState<Pod | null>(null)
+  
+  // 批量选择相关状态
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchActionModalVisible, setBatchActionModalVisible] = useState<boolean>(false)
+  const [batchActionType, setBatchActionType] = useState<string>('')
+  const [newGroupName, setNewGroupName] = useState<string>('')
 
   // ==================== 部署管理相关 ====================
   // 部署分组（用于展示分组列表）
@@ -338,6 +344,34 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
 
   // 服务相关函数
   // (服务相关的函数主要是表格操作，在表格定义中内联)
+
+  // 服务批量操作函数
+  // 处理批量操作
+  const handleBatchAction = (actionType: string) => {
+    if (selectedRowKeys.length === 0) {
+      Modal.warning({
+        title: '提示',
+        content: '请先选择要操作的服务'
+      })
+      return
+    }
+    setBatchActionType(actionType)
+    if (actionType === '新建分组') {
+      setNewGroupName('')
+    }
+    setBatchActionModalVisible(true)
+  }
+
+  // 确认批量操作
+  const confirmBatchAction = () => {
+    console.log('批量操作:', batchActionType, '选中的服务:', selectedRowKeys)
+    if (batchActionType === '新建分组' && newGroupName) {
+      console.log('新建分组:', newGroupName)
+    }
+    setBatchActionModalVisible(false)
+    setSelectedRowKeys([])
+    setNewGroupName('')
+  }
 
   // 部署管理相关函数
   // (部署管理相关的函数在需要时定义)
@@ -666,9 +700,110 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
           </Card>
 
           {/* 服务 Card */}
-          <Card title="服务">
-              <Table columns={podColumns} dataSource={pods} pagination={false} />
+          <Card 
+            title="服务"
+            extra={
+              <Dropdown
+                menu={{
+                  items: [
+                    { key: 'edit', label: '编辑' },
+                    { key: 'start', label: '启动' },
+                    { key: 'restart', label: '重启' },
+                    { key: 'stop', label: '停止' },
+                    { type: 'divider' },
+                    { key: 'joinGroup', label: '加入分组' },
+                    { key: 'newGroup', label: '新建分组' }
+                  ],
+                  onClick: ({ key }) => {
+                    const actionMap: Record<string, string> = {
+                      edit: '编辑',
+                      start: '启动',
+                      restart: '重启',
+                      stop: '停止',
+                      joinGroup: '加入分组',
+                      newGroup: '新建分组'
+                    }
+                    handleBatchAction(actionMap[key])
+                  }
+                }}
+                disabled={selectedRowKeys.length === 0}
+              >
+                <Button>
+                  批量操作 {selectedRowKeys.length > 0 && `(${selectedRowKeys.length})`}
+                </Button>
+              </Dropdown>
+            }
+          >
+              <Table 
+                columns={podColumns} 
+                dataSource={pods} 
+                pagination={false}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: (keys: React.Key[]) => setSelectedRowKeys(keys)
+                }}
+              />
             </Card>
+
+            {/* 批量操作 Modal */}
+            <Modal
+              title={`${batchActionType}`}
+              open={batchActionModalVisible}
+              onCancel={() => {
+                setBatchActionModalVisible(false)
+                setNewGroupName('')
+              }}
+              onOk={confirmBatchAction}
+              okText="确认"
+              cancelText="取消"
+            >
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 8 }}>
+                  已选择 <strong>{selectedRowKeys.length}</strong> 个服务：
+                  <span style={{ marginLeft: 8, color: '#666', fontSize: 14 }}>
+                    {selectedRowKeys.map((key, index) => {
+                      const pod = pods.find(p => p.key === key)
+                      // 从服务名称中提取数字，如 'game1' -> '1'
+                      const serviceNumber = pod?.service.match(/\d+/)?.[0] || key
+                      return (
+                        <span key={key}>
+                          {index > 0 && '、'}
+                          {serviceNumber}
+                        </span>
+                      )
+                    })}
+                  </span>
+                </div>
+              </div>
+              
+              {batchActionType === '新建分组' && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ marginBottom: 8 }}>分组名称：</div>
+                  <Input 
+                    placeholder="请输入分组名称"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                  />
+                </div>
+              )}
+              
+              {batchActionType === '加入分组' && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ marginBottom: 8 }}>选择分组：</div>
+                  <Select 
+                    style={{ width: '100%' }}
+                    placeholder="请选择要加入的分组"
+                    options={deployGroups.map(g => ({ label: g.groupName, value: g.key }))}
+                  />
+                </div>
+              )}
+              
+              {['编辑', '启动', '重启', '停止'].includes(batchActionType) && (
+                <div style={{ marginTop: 16, color: '#666' }}>
+                  确认要对选中的 {selectedRowKeys.length} 个服务执行 <strong>{batchActionType}</strong> 操作吗？
+                </div>
+              )}
+            </Modal>
             </div>
       ) : activeKey === 'deploy' ? (
         <DeploymentRecords

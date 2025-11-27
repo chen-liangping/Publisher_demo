@@ -132,40 +132,13 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const [detectVisible, setDetectVisible] = React.useState<boolean>(false)
   const [detectedFileTypes, setDetectedFileTypes] = React.useState<string[]>([])
   const [detectedSelected, setDetectedSelected] = React.useState<string[]>([])
-  const [ignoredFileTypes, setIgnoredFileTypes] = React.useState<string[]>([])
-  const [ignoredSelected, setIgnoredSelected] = React.useState<string[]>([])
+  // 新增：控制 Toast 是否显示（独立于 detectedFileTypes）
+  const [showDetectedToast, setShowDetectedToast] = React.useState<boolean>(false)
   // 新增：最佳实践弹窗开关
   const [bestPracticeVisible, setBestPracticeVisible] = React.useState<boolean>(false)
-  // 表格列定义（方案B：上下分区，各自支持移动）
+  // 表格列定义：只显示缓存类型，无操作列
   const detectedColumns: TableColumnsType<DetectedFileTypeRow> = [
-    { title: '缓存类型', dataIndex: 'ext', key: 'ext' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 120,
-      render: (_: unknown, record: DetectedFileTypeRow) => (
-        <Space size={8}>
-          {/* 忽略（文字按钮，便于明确含义） */}
-          <Button type="link" onClick={() => moveToIgnored(record.ext)}>忽略</Button>
-        </Space>
-      )
-    }
-  ]
-  const ignoredColumns: TableColumnsType<DetectedFileTypeRow> = [
-    { title: '缓存类型', dataIndex: 'ext', key: 'ext' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 160,
-      render: (_: unknown, record: DetectedFileTypeRow) => (
-        <Space size={8}>
-          {/* 恢复（文字按钮） */}
-          <Button type="link" onClick={() => restoreFromIgnored(record.ext)}>恢复</Button>
-          {/* 删除（文字按钮） */}
-          <Button type="link" danger onClick={() => deleteIgnored(record.ext)}>删除</Button>
-        </Space>
-      )
-    }
+    { title: '缓存类型', dataIndex: 'ext', key: 'ext' }
   ]
   // 交互：添加源站
   const handleAddOrigin = (): void => {
@@ -178,31 +151,20 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     const types: string[] = ['.png', '.gif', '.jpg', '.jpeg', '.webp', '.svg', '.ico']
     setDetectedFileTypes(types)
     setDetectedSelected([])
+    setShowDetectedToast(true) // 显示 Toast
     setDetectVisible(true)
   }
-  // 交互：Toast 忽略 / 查看
+  // 交互：Toast 忽略 - 将检测到的类型添加到 drawer 列表中，但不打开，Toast 消失
   const handleIgnoreDetectedToast = (): void => {
-    // 忽略后清空已检测提示来源
-    setDetectedFileTypes([])
-    setDetectedSelected([])
+    // 隐藏 Toast，但数据保留在 detectedFileTypes 中
+    setShowDetectedToast(false)
+    message.info('已添加到缓存检测列表，可稍后查看')
   }
+  
+  // 交互：查看检测结果 - 直接打开 drawer，Toast 也消失
   const handleViewDetectedToast = (): void => {
+    setShowDetectedToast(false)
     setDetectVisible(true)
-  }
-  // 交互：忽略一个类型（移到“已忽略”）
-  const moveToIgnored = (ext: string): void => {
-    setDetectedFileTypes((prev) => prev.filter((e) => e !== ext))
-    setDetectedSelected((prev) => prev.filter((e) => e !== ext))
-    setIgnoredFileTypes((prev) => (prev.includes(ext) ? prev : [...prev, ext]))
-  }
-  // 交互：从“已忽略”恢复
-  const restoreFromIgnored = (ext: string): void => {
-    setIgnoredFileTypes((prev) => prev.filter((e) => e !== ext))
-    setDetectedFileTypes((prev) => (prev.includes(ext) ? prev : [...prev, ext]))
-  }
-  // 交互：从“已忽略”删除该类型
-  const deleteIgnored = (ext: string): void => {
-    setIgnoredFileTypes((prev) => prev.filter((e) => e !== ext))
   }
   // 交互：根据勾选的类型批量新增缓存配置（示例实现，避免重复 pattern）
   const handleAddCacheForSelected = (): void => {
@@ -240,42 +202,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     setDetectVisible(false)
     setDetectedSelected([])
     message.success(`已添加 ${detectedSelected.length} 条缓存配置（示例）`)
-  }
-
-  // 交互：从“已忽略类型”分区批量新增缓存配置
-  const handleAddCacheFromIgnored = (): void => {
-    if (ignoredSelected.length === 0) {
-      message.warning('请先勾选忽略类型')
-      return
-    }
-    const newRules: CacheRule[] = ignoredSelected.map((ext) => ({
-      // 使用 *.ext 作为匹配模式
-      pattern: `*${ext}`,
-      sourceId: 'Default',
-      accessProto: '仅限HTTPS',
-      httpMethods: 'GET, HEAD, OPTIONS',
-      smartCompress: 'ON',
-      ttlSeconds: 600,
-      passHeadersMode: 'whitelist',
-      passHeadersWhitelist: ['Origin'],
-      passQueryStringsMode: 'none',
-      passCookiesMode: 'none'
-    }))
-    setCacheList((prev) => {
-      const exist = new Set(prev.map((r) => r.pattern))
-      const merged = [...prev]
-      for (const r of newRules) {
-        if (!exist.has(r.pattern)) {
-          merged.push(r)
-          exist.add(r.pattern)
-        }
-      }
-      return merged
-    })
-    // 关闭抽屉并清空勾选
-    setDetectVisible(false)
-    setIgnoredSelected([])
-    message.success(`已添加 ${ignoredSelected.length} 条缓存配置（示例）`)
   }
 
   // 交互：添加缓存配置
@@ -452,7 +378,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       )}
 
       {/* Toast：检测到新的缓存配置（位于 Tabs 与 基础信息之间） */}
-      {detectedFileTypes.length > 0 && (
+      {showDetectedToast && detectedFileTypes.length > 0 && (
         <Alert
           style={{ marginBottom: 16 }}
           type="info"
@@ -561,15 +487,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               selectedRowKeys: detectedSelected,
               onChange: (keys) => setDetectedSelected(keys as string[])
             }}
-            pagination={false}
-          />
-        </Card>
-        <Card size="small" title="已忽略类型">
-          <Table<DetectedFileTypeRow>
-            size="small"
-            columns={ignoredColumns}
-            dataSource={ignoredFileTypes.map((ext) => ({ ext }))}
-            rowKey={(r) => r.ext}
             pagination={false}
           />
         </Card>

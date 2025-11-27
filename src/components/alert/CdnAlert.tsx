@@ -30,49 +30,49 @@ const ERROR_CODE_MAPPING: Record<string, string> = {
 const mockCdnData: CdnRow[] = [
   {
     id: '1',
-    uri: 'https://cdn.example.com/assets/game-v1.2.3.zip',
+    uri: '/2.1.0/assets/game-v1.2.3.json',
     status: '403',
     count: 1121213
   },
   {
     id: '2',
-    uri: 'https://cdn.example.com/configs/server-config.json',
+    uri: '/2.1.0/configs/server-config.json',
     status: '403',
     count: 221212
   },
   {
     id: '3',
-    uri: 'https://cdn.example.com/images/ui-sprites.png',
+    uri: '/2.1.0/images/ui-sprites.png',
     status: '403',
     count: 321
   },
   {
     id: '4',
-    uri: 'https://cdn.example.com/audio/background-music.mp3',
+    uri: '/2.2.0/audio/background-music.json',
     status: '403',
     count: 4231
   },
   {
     id: '5',
-    uri: 'https://cdn.example.com/scripts/game-logic.js',
+    uri: '/2.2.0/scripts/game-logic.js',
     status: '403',
     count: 546
   },
   {
     id: '6',
-    uri: 'https://cdn.example.com/api/health-check',
+    uri: '/2.2.0/api/health-check.json',
     status: '403',
     count: 6434
   },
   {
     id: '7',
-    uri: 'https://cdn.example.com/fonts/game-font.woff2',
+    uri: '/2.2.0/fonts/game-font.json',
     status: '403',
     count: 123
   },
   {
     id: '8',
-    uri: 'https://cdn.example.com/data/user-profiles.json',
+    uri: '/configs/user-profiles.json',
     status: '403',
     count: 50
   }

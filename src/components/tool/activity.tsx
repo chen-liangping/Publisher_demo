@@ -79,7 +79,7 @@ export default function ActivityPage(): React.ReactElement {
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card title={<span style={{ fontSize: 18 }}>活动数据总表</span>} extra={
         <Space>
-          <Button onClick={() => window.alert('原型：更新至Tableau')}>更新至Tableau</Button>
+          <Button onClick={() => window.alert('原型：查看Tableau')}>查看Tableau</Button>
           <Button onClick={() => window.alert('原型：自动化配置')}>自动化配置</Button>
           <Input.Search allowClear placeholder="搜索名称和event_id" style={{ width: 220 }} onSearch={setSearch} />
         </Space>

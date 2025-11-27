@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch } from 'antd'
+import React, { useState, useRef } from 'react'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined } from '@ant-design/icons'
+import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined } from '@ant-design/icons'
 import ClientPage from './ClientPage'
 
 const { Title, Paragraph, Text } = Typography
@@ -29,6 +29,16 @@ interface FileEntry {
   type: 'folder' | 'file'
   sizeKB?: number
   updatedAt: string
+}
+
+// 上传文件信息
+interface UploadFileInfo {
+  name: string
+  size: number
+  progress: number
+  speed: string
+  status: 'uploading' | 'success' | 'error'
+  uploadedSize: number
 }
 
 const versionData: VersionRow[] = [
@@ -65,6 +75,15 @@ export default function ClientVersionPage() {
     })
     return map
   })
+  
+  // 上传相关状态
+  const [uploadDrawerVisible, setUploadDrawerVisible] = useState(false)
+  const [uploadingFiles, setUploadingFiles] = useState<UploadFileInfo[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const zipInputRef = useRef<HTMLInputElement>(null)
+  
+  // S3 加速状态
+  const [s3AccelerationEnabled, setS3AccelerationEnabled] = useState(false)
 
   const openSwitchModal = (record: VersionRow): void => {
     setSelectedVersion(record)
@@ -150,6 +169,77 @@ export default function ClientVersionPage() {
     setCurrentPath(parentPath)
   }
 
+  // 处理文件选择
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, isZip: boolean): void => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    
+    // 转换文件列表为上传信息
+    const newFiles: UploadFileInfo[] = Array.from(files).map(file => ({
+      name: file.name,
+      size: file.size,
+      progress: 0,
+      speed: '0 KB/s',
+      status: 'uploading' as const,
+      uploadedSize: 0
+    }))
+    
+    setUploadingFiles(newFiles)
+    setUploadDrawerVisible(true)
+    
+    // 模拟上传过程
+    simulateUpload(newFiles)
+    
+    // 重置 input
+    e.target.value = ''
+  }
+
+  // 模拟上传进度
+  const simulateUpload = (files: UploadFileInfo[]): void => {
+    files.forEach((file, index) => {
+      let progress = 0
+      const totalSize = file.size
+      const interval = setInterval(() => {
+        progress += Math.random() * 15 + 5 // 每次增加 5-20%
+        if (progress >= 100) {
+          progress = 100
+          clearInterval(interval)
+          // 上传完成
+          setUploadingFiles(prev => 
+            prev.map((f, i) => 
+              i === index 
+                ? { ...f, progress: 100, status: 'success', uploadedSize: totalSize, speed: '0 KB/s' }
+                : f
+            )
+          )
+        } else {
+          // 计算上传速度
+          const uploadedSize = (totalSize * progress) / 100
+          const speed = ((Math.random() * 500 + 200) * 1024).toFixed(0) // 200-700 KB/s
+          const speedText = Number(speed) > 1024 * 1024 
+            ? `${(Number(speed) / (1024 * 1024)).toFixed(2)} MB/s`
+            : `${(Number(speed) / 1024).toFixed(2)} KB/s`
+          
+          setUploadingFiles(prev => 
+            prev.map((f, i) => 
+              i === index 
+                ? { ...f, progress: Math.floor(progress), uploadedSize, speed: speedText }
+                : f
+            )
+          )
+        }
+      }, 300)
+    })
+  }
+
+  // 格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+
   // 模拟：每个版本的文件树
   const mockFilesByVersion: Record<string, FileEntry[]> = {
     'v1.0.1': [
@@ -223,20 +313,70 @@ export default function ClientVersionPage() {
       title: '游戏版本',
       dataIndex: 'version',
       key: 'version',
-      width: 320,
+      width: 200,
       render: (v: string, record) => (
         <Space size={8}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}> {/* 游戏版本 */}
             <Button type="link" onClick={() => handleEnterVersion(record.version)}>
               <Text strong>{v}</Text>
             </Button>
-          {/* 状态标签：当前版本 / 已下线 / 未上线 */}
-          {record.status === 'current' && <Tag color="blue">当前版本</Tag>}
-          {record.status === 'offline' && <Tag color="red">已下线</Tag>}
-          {record.status === 'notOnline' && <Tag color="default">未上线</Tag>}
+          {/* 状态标签：只有当前版本显示 Tag */}
+          {record.status === 'current' && <Tag color="green">当前版本</Tag>}
           </span>
         </Space>
       )
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status: 'current' | 'offline' | 'notOnline' | undefined) => {
+        // 状态文字展示：当前版本、已下线、未上线，前置小圆点增加视觉层次
+        if (status === 'current') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#1890ff',
+                display: 'inline-block'
+              }} />
+              当前版本
+            </span>
+          )
+        }
+        if (status === 'offline') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#ff4d4f',
+                display: 'inline-block'
+              }} />
+              已下线
+            </span>
+          )
+        }
+        if (status === 'notOnline') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#d9d9d9',
+                display: 'inline-block'
+              }} />
+              未上线
+            </span>
+          )
+        }
+        return '-'
+      }
     },
     { 
       title: '发版详情',
@@ -324,6 +464,77 @@ export default function ClientVersionPage() {
         />
       </Card>
 
+      {/* 游戏入口 URL Card */}
+      {activeTab === 'version' && (() => {
+        // 获取当前版本
+        const currentVersion = versions.find(v => v.status === 'current')
+        if (currentVersion) {
+          const gameUrl = `https://gamedemo.stg.g123-cpp.com/${currentVersion.version}/index.html`
+          return (
+            <Card 
+              style={{ marginBottom: 16 }}
+              styles={{ body: { padding: '16px 24px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ flex: 1 }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
+                    游戏入口 URL
+                  </Text>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Text 
+                      strong 
+                      style={{ 
+                        fontSize: 14,
+                        color: '#1890ff',
+                        fontFamily: 'monospace'
+                      }}
+                    >
+                      {gameUrl}
+                    </Text>
+                    <Tooltip title="复制链接">
+                      <Button 
+                        type="text" 
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => {
+                          // 复制链接到剪贴板
+                          navigator.clipboard.writeText(gameUrl).then(() => {
+                            message.success('链接已复制到剪贴板')
+                          }).catch(() => {
+                            message.error('复制失败，请手动复制')
+                          })
+                        }}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+                
+                {/* S3 加速开关 */}
+                <div style={{ marginLeft: 24 }}>
+                  <Button
+                    type={s3AccelerationEnabled ? 'primary' : 'default'}
+                    icon={s3AccelerationEnabled ? <span>⚡</span> : <span>🚀</span>}
+                    onClick={() => {
+                      // 切换 S3 加速状态
+                      const newStatus = !s3AccelerationEnabled
+                      setS3AccelerationEnabled(newStatus)
+                      if (newStatus) {
+                        message.success('S3 加速已开启')
+                      } else {
+                        message.info('S3 加速已关闭')
+                      }
+                    }}
+                  >
+                    {s3AccelerationEnabled ? 'S3 加速已开启' : '开启 S3 加速'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )
+        }
+        return null
+      })()}
+
       {/* 版本区块 / CDN 页面（同页切换） */}
       <Card
         title={
@@ -349,15 +560,36 @@ export default function ClientVersionPage() {
                 <Button onClick={handleBackToParent}>返回上级</Button>
               </Space>
               <Space>
+                {/* 使用带文字的 Button 形式展示操作 */}
+                {/* 隐藏的文件输入框 */}
+                <input 
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileSelect(e, false)}
+                />
+                <input 
+                  ref={zipInputRef}
+                  type="file"
+                  accept=".zip,.tar,.tar.gz,.rar,.7z"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileSelect(e, true)}
+                />
                 <Tooltip title="可拖拽文件进行上传。单个文件大小不得超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启">
-                  <Button type="text" icon={<UploadOutlined />} onClick={() => message.info('上传文件（示例）')} />
+                  <Button icon={<UploadOutlined />} onClick={() => fileInputRef.current?.click()}>
+                    上传文件
+                  </Button>
                 </Tooltip>
-                <Tooltip title="上传压缩包">
-                  <Button type="text" icon={<InboxOutlined />} onClick={() => message.info('上传压缩包（示例）')} />
+                <Tooltip title="支持 zip、tar.gz 等压缩格式">
+                  <Button icon={<InboxOutlined />} onClick={() => zipInputRef.current?.click()}>
+                    上传压缩包
+                  </Button>
                 </Tooltip>
-                <Tooltip title="创建文件夹">
-                  <Button type="text" icon={<FolderAddOutlined />} onClick={() => message.info('创建文件夹（示例）')} />
-                </Tooltip>
+                <Button icon={<FolderAddOutlined />} onClick={() => message.info('创建文件夹（示例）')}>
+                  创建文件夹
+                </Button>
               </Space>
             </div>
             <Table<FileEntry>
@@ -406,6 +638,129 @@ export default function ClientVersionPage() {
           message="请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启"
         />
       </Modal>
+
+      {/* 文件上传 Drawer */}
+      <Drawer
+        title={
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>上传文件预览</div>
+            {uploadingFiles.some(f => f.status === 'success') && (
+              <div style={{ 
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                backgroundColor: '#f6ffed',
+                border: '1px solid #b7eb8f',
+                borderRadius: 4,
+                fontSize: 14
+              }}>
+                <CheckCircleFilled style={{ color: '#52c41a' }} />
+                <span style={{ color: '#52c41a' }}>文件已上传完成</span>
+              </div>
+            )}
+          </div>
+        }
+        placement="right"
+        open={uploadDrawerVisible}
+        onClose={() => setUploadDrawerVisible(false)}
+        width={900}
+        footer={
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'flex-start',
+            padding: '10px 0'
+          }}>
+            <Button onClick={() => setUploadDrawerVisible(false)}>
+              关闭
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">可上传文件总数：{uploadingFiles.length}/1</Text>
+        </div>
+
+        {/* 文件列表表格 */}
+        <Table<UploadFileInfo>
+          columns={[
+            {
+              title: '文件名',
+              dataIndex: 'name',
+              key: 'name',
+              width: 250,
+              render: (name: string) => (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ marginTop: 2 }}>📄</span>
+                  <div style={{ 
+                    wordBreak: 'break-all', 
+                    whiteSpace: 'normal',
+                    lineHeight: '1.5'
+                  }}>
+                    {name}
+                  </div>
+                </div>
+              )
+            },
+            {
+              title: '文件目录',
+              key: 'path',
+              width: 350,
+              render: (_: unknown, record: UploadFileInfo) => (
+                <div 
+                  style={{ 
+                    wordBreak: 'break-all',
+                    whiteSpace: 'normal',
+                    fontSize: 13,
+                    color: '#666',
+                    lineHeight: '1.5'
+                  }}
+                >
+                  S3://testapp.stg.g123-cpp.com/v1.0/{browsingVersion}{currentPath}/{record.name}
+                </div>
+              )
+            },
+            {
+              title: '文件大小',
+              dataIndex: 'size',
+              key: 'size',
+              width: 120,
+              render: (size: number) => (
+                <Text>{formatFileSize(size)}</Text>
+              )
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 180,
+              render: (_: unknown, record: UploadFileInfo, index: number) => (
+                <Space>
+                  {/* 已上传状态显示 */}
+                  {record.status === 'success' ? (
+                    <Button type="text" size="small" style={{ color: '#52c41a' }}>
+                      已上传
+                    </Button>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      上传中...
+                    </Text>
+                  )}
+                </Space>
+              )
+            }
+          ]}
+          dataSource={uploadingFiles}
+          rowKey={(record, index) => `${record.name}-${index}`}
+          pagination={false}
+          size="small"
+        />
+
+        {uploadingFiles.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+            暂无上传文件
+          </div>
+        )}
+      </Drawer>
     </div>
   )
 }
