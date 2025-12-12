@@ -1,4 +1,4 @@
-'use client'
+'use client'//告警消息页面
 
 import React, { useMemo, useState } from 'react'
 import { Card, Space, Table, Tag, Typography, Input, DatePicker } from 'antd'
@@ -9,6 +9,7 @@ import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
 const { RangePicker } = DatePicker
 const { Text } = Typography
 
+// 告警历史记录类型（与 MessageNotification 中的 AlertMessage 对齐）
 interface HistoryRecord {
   id: string
   type: string // 告警类型（告警项）
@@ -94,7 +95,6 @@ export default function AlertHistory(): React.ReactElement {
     })
   }, [keyword, range])
 
-
   return (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card title={<span style={{ fontSize: 18 }}>告警事件</span>} styles={{ body: { paddingTop: 8 } }}>
@@ -125,4 +125,5 @@ export default function AlertHistory(): React.ReactElement {
     </Space>
   )
 }
+
 

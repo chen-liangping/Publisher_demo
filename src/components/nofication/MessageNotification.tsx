@@ -1,4 +1,4 @@
-'use client'
+'use client'//系统公告页面
 
 import React, { useState, useMemo } from 'react'
 import { Card, Space, Table, Tag, Typography, Input, DatePicker, Tabs, Button, Divider } from 'antd'
@@ -13,8 +13,7 @@ import {
   ExclamationCircleOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons'
-import { BUSINESS_DEFAULT_PAGINATION } from './GlobalPagination'
-import AlertPage from '../alert/alert'
+import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
 
 const { RangePicker } = DatePicker
 const { Text, Title } = Typography
@@ -336,16 +335,6 @@ export default function MessageNotification(): React.ReactElement {
           />
         </>
       )
-    },
-    {
-      key: 'config',
-      label: (
-        <Space>
-          <SettingOutlined />
-          <span>通知配置</span>
-        </Space>
-      ),
-      children: <AlertPage />
     }
   ]
 

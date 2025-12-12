@@ -44,11 +44,11 @@ import MessagePush from '../components/message/MessagePush'
 import ActivityPage from '../components/tool/activity'
 import GiftDataPage from '../components/tool/gift'
 import I18nPage from '../components/tool/i18n'
-import AlertPage from '../components/alert/alert'
-import AlertHistory from '../components/alert/alert_history'
+import AlertPage from '../components/nofication/alert'
+import AlertHistory from '../components/nofication/alert_history'
 import LogPage from '../components/log'
-import PeopleManagement from '../components/Common/PeopleManagement'
-import MessageNotification from '../components/Common/MessageNotification'
+import PeopleManagement from '../components/nofication/PeopleManagement'
+import MessageNotification from '../components/nofication/MessageNotification'
 import CdnAlert from '../components/alert/CdnAlert'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
@@ -185,7 +185,7 @@ export default function Home() {
       case 'log':
         return <LogPage />
       case 'people-config':
-        return <PeopleManagement />
+        return <PeopleManagement initialActiveTab={searchParams.get('tab') ?? undefined} />
       case 'message-notification':
         return <MessageNotification />
       case 'cdn-alert':
@@ -396,7 +396,7 @@ export default function Home() {
                   {
                     key: 'alert-system',
                     icon: <BellOutlined />,
-                    label: '服务端告警',
+                    label: '服务端监控',
                     onClick: () => handleMenuClick('alert-system')
                   }
                 ],

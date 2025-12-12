@@ -8,6 +8,40 @@
   50% { transform: scale(1.06); }
   100% { transform: scale(1); }
 }
+
+/* 故障报警列表中“报警频率”单元格交互样式 */
+.alert-frequency-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.alert-frequency-cell-value {
+  flex: 1;
+}
+
+.alert-frequency-switch {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  padding-inline: 4px;
+}
+
+.alert-frequency-cell:hover .alert-frequency-switch {
+  opacity: 1;
+}
+
+/* 人员列表分组下拉：默认隐藏描边，悬浮时再显示 */
+.person-group-cell .ant-select-selector {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  background-color: transparent;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.person-group-cell:hover .ant-select-selector {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

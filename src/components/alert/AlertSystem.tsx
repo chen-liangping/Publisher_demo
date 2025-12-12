@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState, useMemo, useCallback } from 'react'
-import { Card, Collapse, Table, Button, Switch, Space, Typography, Select, Tooltip } from 'antd'
-import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { Card, Collapse, Table, Button, Switch, Space, Typography, Select, Tooltip, Drawer, Dropdown } from 'antd'
+import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
 const { Title, Text } = Typography
@@ -11,60 +12,42 @@ const { Title, Text } = Typography
 interface AlertConfig {
   id: string
   appName: string
-  channel: string
   frequency: string
-  enabled: boolean
+}
+
+// 通知参与者：人员 + 机器人
+interface AlertActor {
+  id: string
+  name: string
+  kind: 'person' | 'webhook'
 }
 
 // 模拟告警配置数据
 const mockAlertConfigs: AlertConfig[] = [
-  {
-    id: '60066',
-    appName: 'open-platform',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  },
-  {
-    id: '60081',
-    appName: 'game',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  },
-  {
-    id: '60086',
-    appName: 'testplat',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  },
-  {
-    id: '60087',
-    appName: 'test',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  },
-  {
-    id: '90051',
-    appName: 'master',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  },
-  {
-    id: '90057',
-    appName: 'test-delete-pods',
-    channel: '钉钉大群消息',
-    frequency: '5 分钟',
-    enabled: true
-  }
+  { id: '60066', appName: 'open-platform', frequency: '5 分钟' },
+  { id: '60081', appName: 'game',          frequency: '5 分钟' },
+  { id: '60086', appName: 'testplat',      frequency: '5 分钟' },
+  { id: '60087', appName: 'test',          frequency: '5 分钟' },
+  { id: '90051', appName: 'master',        frequency: '5 分钟' },
+  { id: '90057', appName: 'test-delete-pods', frequency: '5 分钟' }
 ]
 
 
 export default function AlertSystem(): React.ReactElement {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
+  const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
+  const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
+  // 模拟的告警参与者：人员 + 机器人（参考“消息配置”中的配置）
+  const [actors] = useState<AlertActor[]>([
+    { id: 'person_slime', name: 'slime', kind: 'person' },
+    { id: 'person_xuyin', name: '徐音',  kind: 'person' },
+    { id: 'webhook_kumo', name: '小包', kind: 'webhook' }
+  ])
+  // 每个应用 x 参与者的开关矩阵
+  const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>({})
 
   // 切换告警开关
   const handleToggleAlert = useCallback((id: string, enabled: boolean) => {
@@ -80,95 +63,180 @@ export default function AlertSystem(): React.ReactElement {
     setAlertConfigs(prev => prev.filter(config => config.id !== id))
   }, [])
 
+  // 打开“故障报警配置”抽屉
+  const handleOpenConfigDrawer = useCallback(() => {
+    setEditingConfigs(alertConfigs)
+    setConfigDrawerOpen(true)
+  }, [alertConfigs])
+
+  // 在抽屉中修改应用名称
+  const handleChangeAppName = useCallback((id: string, appName: string) => {
+    setEditingConfigs(prev =>
+      prev.map(config => (config.id === id ? { ...config, appName } : config))
+    )
+  }, [])
+
+  // 在抽屉中修改报警频率
+  const handleChangeFrequency = useCallback((id: string, frequency: string) => {
+    setEditingConfigs(prev =>
+      prev.map(config => (config.id === id ? { ...config, frequency } : config))
+    )
+  }, [])
+
+  // 在列表页直接修改报警频率（同时同步到抽屉配置）
+  const handleChangeFrequencyInline = useCallback((id: string, frequency: string) => {
+    setAlertConfigs(prev =>
+      prev.map(config => (config.id === id ? { ...config, frequency } : config))
+    )
+    setEditingConfigs(prev =>
+      prev.map(config => (config.id === id ? { ...config, frequency } : config))
+    )
+  }, [])
+
+  // 获取某个应用在某个参与者上的开关状态
+  const getActorCheckedForApp = useCallback(
+    (appId: string, actorId: string): boolean => {
+      return actorMatrix[appId]?.[actorId] ?? false
+    },
+    [actorMatrix]
+  )
+
+  // 修改某个应用在某个参与者上的开关
+  const handleToggleActorForApp = useCallback(
+    (appId: string, actorId: string, checked: boolean) => {
+      setActorMatrix(prev => {
+        const next: Record<string, Record<string, boolean>> = { ...prev }
+        const row = { ...(next[appId] ?? {}) }
+        row[actorId] = checked
+        next[appId] = row
+        return next
+      })
+    },
+    []
+  )
+
+  // 跳转到“人员配置”页面的“消息配置”Tab
+  const handleGoToAlertPage = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('menu', 'people-config')
+    params.set('tab', 'message-config')
+    const url = `${pathname}?${params.toString()}`
+    router.push(url)
+  }, [pathname, router, searchParams])
+
+  // 在抽屉中新增一条配置
+  const handleAddConfigRow = useCallback(() => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    setEditingConfigs(prev => [
+      ...prev,
+      {
+        id,
+        appName: '',
+        channel: '钉钉大群消息',
+        frequency: '5 分钟',
+        enabled: true
+      }
+    ])
+  }, [])
+
+  // 抽屉中保存配置
+  const handleSaveConfigs = useCallback(() => {
+    setAlertConfigs(editingConfigs)
+    setConfigDrawerOpen(false)
+  }, [editingConfigs])
+
+  // 抽屉中可选的报警频率
+  const frequencyOptions = useMemo(
+    () => ['5 分钟', '10 分钟', '30 分钟', '1 小时', '2 小时', '4 小时'],
+    []
+  )
+
+  // 抽屉中可选的应用名称（基于当前配置去重）
+  const appNameOptions = useMemo(
+    () =>
+      Array.from(new Set(editingConfigs.map(c => c.appName).filter(Boolean))).map(name => ({
+        label: name,
+        value: name
+      })),
+    [editingConfigs]
+  )
+
   // 故障报警表格列配置
-  const alertColumns: ColumnsType<AlertConfig> = useMemo(() => [
-    {
-      title: '应用名称',
-      dataIndex: 'appName',
-      key: 'appName',
-      width: 400,
-      render: (appName: string) => (
-        <Space size="small">
-          <Button 
-            size="small" 
-            disabled 
-            style={{ 
-              background: 'transparent', 
-              color: 'rgba(0, 0, 0, 0.88)', 
-              cursor: 'default',
-              border: '1px solid #d9d9d9'
-            }}
-            icon={
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" 
-                fill="currentColor" 
-                width="14" 
-                height="14"
-                style={{ color: 'rgba(0,0,0,0.45)' }}
-              >
-                <path d="M4.08 5.227A3 3 0 0 1 6.979 3H17.02a3 3 0 0 1 2.9 2.227l2.113 7.926A5.228 5.228 0 0 0 18.75 12H5.25a5.228 5.228 0 0 0-3.284 1.153L4.08 5.227Z"></path>
-                <path fillRule="evenodd" d="M5.25 13.5a3.75 3.75 0 1 0 0 7.5h13.5a3.75 3.75 0 1 0 0-7.5H5.25Zm10.5 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm3.75-.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" clipRule="evenodd"></path>
-              </svg>
-            }
-          >
-            {appName}
-          </Button>
-        </Space>
-      )
-    },
-    {
-      title: '通知渠道',
-      dataIndex: 'channel',
-      key: 'channel',
-      width: 140
-    },
-    {
-      title: (
-        <Space>
-          <span>报警频率</span>
-          <Tooltip title="设置告警通知的发送频率">
-            <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
-          </Tooltip>
-        </Space>
-      ),
-      dataIndex: 'frequency',
-      key: 'frequency',
-      width: 120,
-      render: (frequency: string) => (
-        <Select
-          size="small"
-          variant="borderless"
-          disabled
-          value={frequency}
-          style={{ width: '100%' }}
+  const alertColumns: ColumnsType<AlertConfig> = useMemo(() => {
+    const base: ColumnsType<AlertConfig> = [
+      {
+        title: '应用名称',
+        dataIndex: 'appName',
+        key: 'appName',
+        width: 260,
+        render: (appName: string) => (
+          <Space size="small">
+            <Button
+              size="small"
+              disabled
+              style={{
+                background: 'transparent',
+                color: 'rgba(0, 0, 0, 0.88)',
+                cursor: 'default',
+                border: '1px solid #d9d9d9'
+              }}
+            >
+              {appName}
+            </Button>
+          </Space>
+        )
+      },
+      {
+        title: (
+          <Space>
+            <span>报警频率</span>
+            <Tooltip title="设置告警通知的发送频率">
+              <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
+            </Tooltip>
+          </Space>
+        ),
+        dataIndex: 'frequency',
+        key: 'frequency',
+        width: 140,
+        render: (frequency: string, record: AlertConfig) => (
+          <div className="alert-frequency-cell">
+            <span className="alert-frequency-cell-value">{frequency}</span>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: frequencyOptions.map(v => ({ key: v, label: v })),
+                onClick: ({ key }) => handleChangeFrequencyInline(record.id, key as string)
+              }}
+            >
+              <Button
+                type="text"
+                size="small"
+                className="alert-frequency-switch"
+                icon={<DownOutlined />}
+              />
+            </Dropdown>
+          </div>
+        )
+      }
+    ]
+
+    // 动态追加“通知渠道参与者”列：每个人/每个 webhook 一列带开关
+    const actorCols: ColumnsType<AlertConfig> = actors.map(actor => ({
+      title: actor.name,
+      key: `actor_${actor.id}`,
+      width: 100,
+      render: (_: unknown, record: AlertConfig) => (
+        <Switch
+          checked={getActorCheckedForApp(record.id, actor.id)}
+          onChange={checked => handleToggleActorForApp(record.id, actor.id, checked)}
+          checkedChildren="on"
+          unCheckedChildren="off"
         />
       )
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 80,
-      render: (_, record: AlertConfig) => (
-        <Space size={24}>
-          <Switch
-            checked={record.enabled}
-            onChange={(checked) => handleToggleAlert(record.id, checked)}
-            checkedChildren="ON"
-            unCheckedChildren="OFF"
-          />
-          <Button
-            type="link"
-            danger
-            onClick={() => handleDeleteAlert(record.id)}
-            style={{ paddingLeft: 8, paddingRight: 8 }}
-          >
-            删除
-          </Button>
-        </Space>
-      )
-    }
-  ], [handleToggleAlert, handleDeleteAlert])
+    }))
+
+    return [...base, ...actorCols]
+  }, [actors, frequencyOptions, handleChangeFrequencyInline, handleDeleteAlert, getActorCheckedForApp, handleToggleActorForApp])
 
   // FAQ 数据
   const faqItems = [
@@ -245,8 +313,8 @@ export default function AlertSystem(): React.ReactElement {
       <Card 
         title="故障报警"
         extra={
-          <Button icon={<SettingOutlined />}>
-            设置
+          <Button type="link" onClick={handleGoToAlertPage}>
+            更多告警配置
           </Button>
         }
       >
@@ -259,6 +327,85 @@ export default function AlertSystem(): React.ReactElement {
           style={{ minWidth: '100%' }}
         />
       </Card>
+
+      {/* 故障报警配置抽屉：配置应用与报警频率 */}
+      <Drawer
+        title="故障报警配置"
+        placement="right"
+        width={720}
+        open={configDrawerOpen}
+        onClose={() => setConfigDrawerOpen(false)}
+        destroyOnClose
+        footer={
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setConfigDrawerOpen(false)}>取消</Button>
+              <Button type="primary" onClick={handleSaveConfigs}>
+                确定
+              </Button>
+            </Space>
+          </div>
+        }
+      >
+        <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+          <div
+            style={{
+              padding: '8px 12px',
+              borderRadius: 4,
+              background: '#f0f5ff',
+              color: '#1d39c4'
+            }}
+          >
+            请选择需要监控故障报警的游戏应用，并设置报警频率。
+          </div>
+
+          {editingConfigs.map(config => (
+            <div
+              key={config.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                columnGap: 12,
+                rowGap: 8
+              }}
+            >
+              {/* 左侧：* 应用 */}
+              <div style={{ width: 80, textAlign: 'right', paddingRight: 8 }}>
+                <span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>
+                <Text strong>应用</Text>
+              </div>
+              <div style={{ flex: 1 }}>
+                <Select
+                  placeholder="请选择应用"
+                  value={config.appName || undefined}
+                  onChange={value => handleChangeAppName(config.id, value)}
+                  options={appNameOptions}
+                  allowClear
+                  showSearch
+                  style={{ width: '100%' }}
+                />
+              </div>
+              {/* 右侧：报警频率 */}
+              <div style={{ width: 80, textAlign: 'right', paddingRight: 8 }}>
+                <Text strong>报警频率</Text>
+              </div>
+              <div style={{ width: 160 }}>
+                <Select
+                  placeholder="请选择频率"
+                  value={config.frequency}
+                  onChange={value => handleChangeFrequency(config.id, value)}
+                  options={frequencyOptions.map(v => ({ label: v, value: v }))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+          ))}
+
+          <Button type="dashed" onClick={handleAddConfigRow}>
+            + 添加配置
+          </Button>
+        </Space>
+      </Drawer>
     </div>
   )
 }

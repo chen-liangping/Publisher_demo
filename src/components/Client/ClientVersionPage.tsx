@@ -85,6 +85,13 @@ export default function ClientVersionPage() {
   // S3 加速状态
   const [s3AccelerationEnabled, setS3AccelerationEnabled] = useState(false)
 
+  // 版本预览链接：仅生成一次，之后只能查看
+  const [previewLinks, setPreviewLinks] = useState<Record<string, string>>({})
+  const [previewModalInfo, setPreviewModalInfo] = useState<{ version: string; url: string } | null>(null)
+
+  const buildPreviewUrl = (version: string): string =>
+    `https://preview.publisher-demo.com/client/${encodeURIComponent(version)}`
+
   const openSwitchModal = (record: VersionRow): void => {
     setSelectedVersion(record)
     setSwitchModalVisible(true)
@@ -167,6 +174,19 @@ export default function ClientVersionPage() {
     }
     const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
     setCurrentPath(parentPath)
+  }
+
+  // 生成/查看预览链接
+  const handleGenerateOrViewPreview = (version: string): void => {
+    const existing = previewLinks[version]
+    if (existing) {
+      setPreviewModalInfo({ version, url: existing })
+      return
+    }
+    const url = buildPreviewUrl(version)
+    setPreviewLinks(prev => ({ ...prev, [version]: url }))
+    setPreviewModalInfo({ version, url })
+    message.success('预览链接已生成，可以分享给测试同学查看')
   }
 
   // 处理文件选择
@@ -414,11 +434,18 @@ export default function ClientVersionPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 260,
+      width: 360,
       render: (_: unknown, record: VersionRow) => (
         <Space size={8}>
           <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
           <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
+          {/* 预览链接：只能生成一次，生成后变为“查看链接” */}
+          <Button
+            type="link"
+            onClick={() => handleGenerateOrViewPreview(record.version)}
+          >
+            {previewLinks[record.version] ? '查看链接' : '生成预览链接'}
+          </Button>
           {/* 新增：同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
           <Button
             type="link"
@@ -443,6 +470,40 @@ export default function ClientVersionPage() {
           <Button type="link" style={{ paddingLeft: 4 }} onClick={() => message.info('打开帮助（示例）')}>了解更多</Button>
         </Paragraph>
       </Card>
+
+      {/* 版本预览链接 Modal */}
+      <Modal
+        title={previewModalInfo ? `版本 ${previewModalInfo.version} 预览链接` : '预览链接'}
+        open={!!previewModalInfo}
+        onCancel={() => setPreviewModalInfo(null)}
+        footer={null}
+      >
+        {previewModalInfo && (
+          <Space direction="vertical" size={12} style={{ display: 'flex' }}>
+            <Text type="secondary">将以下链接复制给测试同学即可在线预览该版本页面。</Text>
+            <Input value={previewModalInfo.url} readOnly />
+            <Button
+              type="primary"
+              icon={<CopyOutlined />}
+              onClick={async () => {
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(previewModalInfo.url)
+                  } else {
+                    // 兼容性降级：选中输入框文本，让用户手动复制
+                    void message.info('请手动复制输入框中的链接')
+                  }
+                  message.success('链接已复制到剪贴板')
+                } catch {
+                  message.error('复制失败，请手动复制')
+                }
+              }}
+            >
+              复制链接
+            </Button>
+          </Space>
+        )}
+      </Modal>
 
       {/* Tabs 本地切换（不跳路由） */}
       <Card style={{ marginBottom: 16 }}>
