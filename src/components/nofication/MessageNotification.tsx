@@ -14,6 +14,7 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons'
 import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
+import AlertPage from './alert'
 
 const { RangePicker } = DatePicker
 const { Text, Title } = Typography
@@ -116,7 +117,26 @@ export default function MessageNotification(): React.ReactElement {
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(mockAnnouncements)
   const [keyword, setKeyword] = useState<string>('')
   const [range, setRange] = useState<[string | null, string | null]>([null, null])
-  
+
+  // 消息配置中用到的机器人列表（与“人员配置”中的 webhook 管理保持示例一致）
+  interface WebhookItem {
+    id: string
+    name: string
+    url: string
+    secret?: string
+  }
+  const [webhooks] = useState<WebhookItem[]>([
+    {
+      id: 'robot-1',
+      name: '发布告警机器人',
+      url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-1'
+    },
+    {
+      id: 'robot-2',
+      name: '运维值班机器人',
+      url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-2'
+    }
+  ])
   const alertMessages = useMemo(() => buildMockAlertMessages(), [])
 
   // 系统公告表格列定义
@@ -334,6 +354,20 @@ export default function MessageNotification(): React.ReactElement {
             pagination={BUSINESS_DEFAULT_PAGINATION}
           />
         </>
+      )
+    },
+    {
+      key: 'message-config',
+      label: (
+        <Space>
+          <SettingOutlined />
+          <span>消息配置</span>
+        </Space>
+      ),
+      children: (
+        <div style={{ marginTop: 8 }}>
+          <AlertPage webhooks={webhooks} />
+        </div>
       )
     }
   ]

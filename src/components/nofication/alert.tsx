@@ -733,17 +733,48 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       }
     ]
 
-    const actorCols: ColumnsType<TreeRow> = actors.map((actor): ColumnType<TreeRow> => ({
-      title: actor.name,
-      key: `actor_${actor.id}`,
-      width: 64,
-      render: (_: unknown, r: TreeRow) => {
-        const tri = getActorTri(r.key, actor.id)
-        return renderChannelCheckbox(tri, (checked) => setActorCascade(r.key, actor.id, checked))
-      }
-    }))
+    // 将参与者按类别分组：站内信 / 人员 / 机器人
+    const personActors = actors.filter(actor => actor.kind === 'person')
+    const robotActors = actors.filter(actor => actor.kind === 'robot')
+    const siteActors = actors.filter(actor => actor.kind === 'site')
 
-    return [...base, ...actorCols]
+    const buildActorCols = (actorList: Actor[]): ColumnsType<TreeRow> =>
+      actorList.map((actor): ColumnType<TreeRow> => ({
+        title: actor.name,
+        key: `actor_${actor.id}`,
+        width: 64,
+        align: 'center',
+        className: 'alert-actor-col-center',
+        render: (_: unknown, r: TreeRow) => {
+          const tri = getActorTri(r.key, actor.id)
+          return renderChannelCheckbox(tri, (checked) => setActorCascade(r.key, actor.id, checked))
+        }
+      }))
+
+    const groupedActorCols: ColumnsType<TreeRow> = []
+
+    // 站内信：只有一个渠道，不做分组表头，直接作为单列表头展示
+    if (siteActors.length > 0) {
+      groupedActorCols.push(...buildActorCols(siteActors))
+    }
+
+    if (personActors.length > 0) {
+      groupedActorCols.push({
+        title: '联系人',
+        children: buildActorCols(personActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+
+    if (robotActors.length > 0) {
+      groupedActorCols.push({
+        title: '群机器人',
+        children: buildActorCols(robotActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+
+    return [...base, ...groupedActorCols]
   }, [actors, actorChannelMatrix])
 
   const clientTreeData: TreeRow[] = useMemo(() => ([

@@ -42,6 +42,12 @@
 .person-group-cell:hover .ant-select-selector {
   border-color: rgba(0, 0, 0, 0.15) !important;
 }
+
+/* 告警参与者列分组：让“人员 / 机器人”分界线略微更明显 */
+.ant-table-thead .alert-actor-group-header {
+  border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
+  background: #fafafa;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

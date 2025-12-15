@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Card, Collapse, Table, Button, Switch, Space, Typography, Select, Tooltip, Drawer, Dropdown } from 'antd'
+import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox } from 'antd'
 import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
@@ -15,11 +15,11 @@ interface AlertConfig {
   frequency: string
 }
 
-// 通知参与者：人员 + 机器人
+// 通知参与者：人员 + 机器人 + 站内信
 interface AlertActor {
   id: string
   name: string
-  kind: 'person' | 'webhook'
+  kind: 'person' | 'webhook' | 'site'
 }
 
 // 模拟告警配置数据
@@ -40,14 +40,21 @@ export default function AlertSystem(): React.ReactElement {
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
   const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
-  // 模拟的告警参与者：人员 + 机器人（参考“消息配置”中的配置）
+  // 模拟的告警参与者：人员 + 机器人 + 站内信（参考“消息配置”中的配置）
   const [actors] = useState<AlertActor[]>([
-    { id: 'person_slime', name: 'slime', kind: 'person' },
-    { id: 'person_xuyin', name: '徐音',  kind: 'person' },
-    { id: 'webhook_kumo', name: '小包', kind: 'webhook' }
+    { id: 'siteMsg',       name: '站内信', kind: 'site' },
+    { id: 'person_slime',  name: 'slime', kind: 'person' },
+    { id: 'person_xuyin',  name: '徐音',  kind: 'person' },
+    { id: 'webhook_kumo',  name: '小包',  kind: 'webhook' }
   ])
-  // 每个应用 x 参与者的开关矩阵
-  const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>({})
+  // 每个应用 x 参与者的开关矩阵（站内信默认开启）
+  const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>(() => {
+    const initial: Record<string, Record<string, boolean>> = {}
+    mockAlertConfigs.forEach(cfg => {
+      initial[cfg.id] = { siteMsg: true }
+    })
+    return initial
+  })
 
   // 切换告警开关
   const handleToggleAlert = useCallback((id: string, enabled: boolean) => {
@@ -61,6 +68,11 @@ export default function AlertSystem(): React.ReactElement {
   // 删除告警配置
   const handleDeleteAlert = useCallback((id: string) => {
     setAlertConfigs(prev => prev.filter(config => config.id !== id))
+    setActorMatrix(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
   }, [])
 
   // 打开“故障报警配置”抽屉
@@ -93,10 +105,13 @@ export default function AlertSystem(): React.ReactElement {
     )
   }, [])
 
-  // 获取某个应用在某个参与者上的开关状态
+  // 获取某个应用在某个参与者上的开关状态（默认视为勾选）
   const getActorCheckedForApp = useCallback(
     (appId: string, actorId: string): boolean => {
-      return actorMatrix[appId]?.[actorId] ?? false
+      const value = actorMatrix[appId]?.[actorId]
+      // 如果尚未配置该参与者的状态，则默认认为是勾选（true）
+      if (value === undefined) return true
+      return value
     },
     [actorMatrix]
   )
@@ -137,6 +152,11 @@ export default function AlertSystem(): React.ReactElement {
         enabled: true
       }
     ])
+    // 新增配置默认开启站内信
+    setActorMatrix(prev => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? {}), siteMsg: true }
+    }))
   }, [])
 
   // 抽屉中保存配置
@@ -220,22 +240,48 @@ export default function AlertSystem(): React.ReactElement {
       }
     ]
 
-    // 动态追加“通知渠道参与者”列：每个人/每个 webhook 一列带开关
-    const actorCols: ColumnsType<AlertConfig> = actors.map(actor => ({
-      title: actor.name,
-      key: `actor_${actor.id}`,
-      width: 100,
-      render: (_: unknown, record: AlertConfig) => (
-        <Switch
-          checked={getActorCheckedForApp(record.id, actor.id)}
-          onChange={checked => handleToggleActorForApp(record.id, actor.id, checked)}
-          checkedChildren="on"
-          unCheckedChildren="off"
-        />
-      )
-    }))
+    // 动态追加“通知渠道参与者”列：按类别分组（站内信 / 人员 / 机器人）
+    const personActors = actors.filter(actor => actor.kind === 'person')
+    const webhookActors = actors.filter(actor => actor.kind === 'webhook')
+    const siteActors = actors.filter(actor => actor.kind === 'site')
 
-    return [...base, ...actorCols]
+    const buildActorCols = (actorList: AlertActor[]): ColumnsType<AlertConfig> =>
+      actorList.map(actor => ({
+        title: actor.name,
+        key: `actor_${actor.id}`,
+        width: 100,
+        align: 'center',
+        className: 'alert-actor-col-center',
+        render: (_: unknown, record: AlertConfig) => (
+          <Checkbox
+            checked={getActorCheckedForApp(record.id, actor.id)}
+            onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
+          />
+        )
+      }))
+
+    const groupedActorCols: ColumnsType<AlertConfig> = []
+
+    // 站内信：只有一个渠道，不再做分组表头，直接作为普通列展示
+    if (siteActors.length > 0) {
+      groupedActorCols.push(...buildActorCols(siteActors))
+    }
+    if (personActors.length > 0) {
+      groupedActorCols.push({
+        title: '联系人',
+        children: buildActorCols(personActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+    if (webhookActors.length > 0) {
+      groupedActorCols.push({
+        title: '群机器人',
+        children: buildActorCols(webhookActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+
+    return [...base, ...groupedActorCols]
   }, [actors, frequencyOptions, handleChangeFrequencyInline, handleDeleteAlert, getActorCheckedForApp, handleToggleActorForApp])
 
   // FAQ 数据

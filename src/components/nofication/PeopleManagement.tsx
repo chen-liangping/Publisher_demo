@@ -561,24 +561,13 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
           </Drawer>
         </Space>
       )
-    },
-    {
-      key: 'message-config',
-      label: (
-        <Space>
-          <BellOutlined />
-          <span>消息配置</span>
-        </Space>
-      ),
-      // 这里复用 AlertPage，并把 webhook 列表传入用于在矩阵中展示机器人列
-      children: <AlertPage webhooks={webhooks} />
     }
   ]
 
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center' }}>
-        <Title level={2} style={{ margin: 0 }}>消息配置</Title>
+        <Title level={2} style={{ margin: 0 }}>人员与机器人配置</Title>
       </div>
       {/* 使用 Tabs 将“人员管理 / 机器人管理”分栏展示 */}
       <Tabs
