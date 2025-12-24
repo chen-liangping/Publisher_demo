@@ -15,11 +15,18 @@ import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
 import Announcement from '../../components/Admin/Announcement'
 import YamlViewer from '../../components/Admin/yaml'
+import GameFaroConfig from '../../components/Admin/GameFaroConfig'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
-type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization' | 'announcement' | 'yaml'
+type AdminMenuKey =
+  | 'game-management'
+  | 'game-faro-config'
+  | 'resource-configuration'
+  | 'test-initialization'
+  | 'announcement'
+  | 'yaml'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -43,6 +50,8 @@ export default function AdminPage() {
     switch (selectedMenu) {
       case 'game-management':
         return <GameManagement />
+      case 'game-faro-config':
+        return <GameFaroConfig />
       case 'resource-configuration':
         return <ResourceConfiguration />
       case 'test-initialization':
@@ -94,6 +103,12 @@ export default function AdminPage() {
                 icon: <AppstoreOutlined />,
                 label: '游戏管理',
                 onClick: () => handleMenuClick('game-management')
+              },
+              {
+                key: 'game-faro-config',
+                icon: <FileTextOutlined />,
+                label: '游戏配置',
+                onClick: () => handleMenuClick('game-faro-config')
               },
               {
                 key: 'resource-configuration',

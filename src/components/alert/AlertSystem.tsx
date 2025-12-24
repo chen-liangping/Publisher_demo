@@ -184,39 +184,39 @@ export default function AlertSystem(): React.ReactElement {
   // 故障报警表格列配置
   const alertColumns: ColumnsType<AlertConfig> = useMemo(() => {
     const base: ColumnsType<AlertConfig> = [
-      {
-        title: '应用名称',
-        dataIndex: 'appName',
-        key: 'appName',
+    {
+      title: '应用名称',
+      dataIndex: 'appName',
+      key: 'appName',
         width: 260,
-        render: (appName: string) => (
-          <Space size="small">
-            <Button
-              size="small"
-              disabled
-              style={{
-                background: 'transparent',
-                color: 'rgba(0, 0, 0, 0.88)',
-                cursor: 'default',
-                border: '1px solid #d9d9d9'
-              }}
-            >
-              {appName}
-            </Button>
-          </Space>
-        )
-      },
-      {
-        title: (
-          <Space>
-            <span>报警频率</span>
-            <Tooltip title="设置告警通知的发送频率">
-              <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
-            </Tooltip>
-          </Space>
-        ),
-        dataIndex: 'frequency',
-        key: 'frequency',
+      render: (appName: string) => (
+        <Space size="small">
+          <Button 
+            size="small" 
+            disabled 
+            style={{ 
+              background: 'transparent', 
+              color: 'rgba(0, 0, 0, 0.88)', 
+              cursor: 'default',
+              border: '1px solid #d9d9d9'
+            }}
+          >
+            {appName}
+          </Button>
+        </Space>
+      )
+    },
+    {
+      title: (
+        <Space>
+          <span>报警频率</span>
+          <Tooltip title="设置告警通知的发送频率">
+            <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
+          </Tooltip>
+        </Space>
+      ),
+      dataIndex: 'frequency',
+      key: 'frequency',
         width: 140,
         render: (frequency: string, record: AlertConfig) => (
           <div className="alert-frequency-cell">
@@ -230,7 +230,7 @@ export default function AlertSystem(): React.ReactElement {
             >
               <Button
                 type="text"
-                size="small"
+          size="small"
                 className="alert-frequency-switch"
                 icon={<DownOutlined />}
               />

@@ -121,6 +121,8 @@ const cacheData: CacheRule[] = [
 
 export default function ClientPage({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
+  // S3 加速状态：控制是否为客户端静态资源开启 S3 上传与回源加速
+  const [s3AccelerationEnabled, setS3AccelerationEnabled] = React.useState<boolean>(false)
   // 新增：缓存规则本地状态，用于支持行内编辑后的刷新
   const [cacheList, setCacheList] = React.useState<CacheRule[]>(cacheData)
   // 新增：编辑弹窗开关与键值（使用 pattern 作为唯一键）
@@ -143,6 +145,18 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   // 交互：添加源站
   const handleAddOrigin = (): void => {
     message.info('点击了添加源站（示例）')
+  }
+
+  // 交互：切换 S3 加速
+  // 打开的场景：跨区域访问、网络不稳定，希望提升静态资源上传与访问的稳定性
+  const handleToggleS3Acceleration = (next: boolean): void => {
+    // 这里不再弹出额外的表单/弹窗，避免与全局拦截产生干扰，仅做状态切换和轻量提示
+    setS3AccelerationEnabled(next)
+    if (next) {
+      message.success('S3 加速已开启')
+    } else {
+      message.info('S3 加速已关闭')
+    }
   }
 
   // 交互：缓存检测（示例）
@@ -419,6 +433,32 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
           <Col xs={24} md={8}>
             <div style={{ color: '#999' }}>CLI</div>
             <Button type="link" onClick={() => message.info('查看 CLI（示例）')}>查看</Button>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* S3 加速设置：入口 Card，放在源站配置上方 */}
+      <Card
+        title="文件上传加速"
+        style={{ marginBottom: 16 }}
+      >
+        <Row align="middle" justify="space-between">
+          <Col xs={24} md={16}>
+            <div style={{ color: '#999', marginBottom: 4 }}>开启 S3 加速</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              网络不稳定或跨区域上传时，建议开启 S3 加速，通过 S3 传输加速链路提升文件上传与访问体验。
+            </Text>
+          </Col>
+          <Col xs={24} md={8}>
+            <Space style={{ justifyContent: 'flex-end', width: '100%', marginTop: 8 }}>
+              <Text type="secondary">
+                {s3AccelerationEnabled ? 'S3 加速已开启' : 'S3 加速已关闭'}
+              </Text>
+              <Switch
+                checked={s3AccelerationEnabled}
+                onChange={(checked) => handleToggleS3Acceleration(checked)}
+              />
+            </Space>
           </Col>
         </Row>
       </Card>

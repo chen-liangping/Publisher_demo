@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload } from 'antd'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined } from '@ant-design/icons'
 import ClientPage from './ClientPage'
@@ -40,6 +40,9 @@ interface UploadFileInfo {
   status: 'uploading' | 'success' | 'error'
   uploadedSize: number
 }
+
+// 监配置入口：固定前缀
+const MONITOR_ENTRY_PREFIX = 'https://h5.stg.g123.jp/game/gamedemo?gameEntry='
 
 const versionData: VersionRow[] = [
   {
@@ -81,16 +84,78 @@ export default function ClientVersionPage() {
   const [uploadingFiles, setUploadingFiles] = useState<UploadFileInfo[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const zipInputRef = useRef<HTMLInputElement>(null)
-  
-  // S3 加速状态
-  const [s3AccelerationEnabled, setS3AccelerationEnabled] = useState(false)
 
-  // 版本预览链接：仅生成一次，之后只能查看
-  const [previewLinks, setPreviewLinks] = useState<Record<string, string>>({})
-  const [previewModalInfo, setPreviewModalInfo] = useState<{ version: string; url: string } | null>(null)
+// “监配置更多入口”相关状态：用于配置多个 H5 外部入口（按版本自动生成 URL）
+  interface ExtraEntryConfig {
+    id: string
+    version: string
+    finalUrl: string
+    remark?: string
+    editing?: boolean
+  }
+  const [entryDrawerVisible, setEntryDrawerVisible] = useState<boolean>(false)
+  const [extraEntries, setExtraEntries] = useState<ExtraEntryConfig[]>([])
 
-  const buildPreviewUrl = (version: string): string =>
-    `https://preview.publisher-demo.com/client/${encodeURIComponent(version)}`
+  // 构建“监配置更多入口”的最终跳转地址：仅按版本自动生成入口路径
+  const buildMonitorEntryUrl = (version: string): string => {
+    if (!version) return ''
+    const localEntry = `/${version}/index.html`
+    return `${MONITOR_ENTRY_PREFIX}${encodeURIComponent(localEntry)}`
+  }
+
+  // 新增一个入口（进入编辑态）
+  const handleAddMonitorEntry = (defaultVersion?: string): void => {
+    const version = defaultVersion ?? versions[0]?.version ?? ''
+    if (!version) {
+      message.warning('暂无可用版本，无法新增入口')
+      return
+    }
+    const id = `${version}-${Date.now()}`
+    setExtraEntries(prev => [
+      ...prev,
+      {
+        id,
+        version,
+        finalUrl: '',
+        remark: '',
+        editing: true
+      }
+    ])
+  }
+
+  const handleChangeEntryField = (id: string, field: 'version' | 'remark', value: string): void => {
+    setExtraEntries(prev =>
+      prev.map(entry =>
+        entry.id === id ? { ...entry, [field]: value } : entry
+      )
+    )
+  }
+
+  const handleSaveMonitorEntry = (id: string): void => {
+    setExtraEntries(prev => {
+      return prev.map(entry =>
+        entry.id === id
+          ? {
+              ...entry,
+              finalUrl: buildMonitorEntryUrl(entry.version),
+              editing: false
+            }
+          : entry
+      )
+    })
+  }
+
+  const handleEditMonitorEntry = (id: string): void => {
+    setExtraEntries(prev =>
+      prev.map(entry =>
+        entry.id === id ? { ...entry, editing: true } : entry
+      )
+    )
+  }
+
+  const handleDeleteMonitorEntry = (id: string): void => {
+    setExtraEntries(prev => prev.filter(entry => entry.id !== id))
+  }
 
   const openSwitchModal = (record: VersionRow): void => {
     setSelectedVersion(record)
@@ -174,19 +239,6 @@ export default function ClientVersionPage() {
     }
     const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
     setCurrentPath(parentPath)
-  }
-
-  // 生成/查看预览链接
-  const handleGenerateOrViewPreview = (version: string): void => {
-    const existing = previewLinks[version]
-    if (existing) {
-      setPreviewModalInfo({ version, url: existing })
-      return
-    }
-    const url = buildPreviewUrl(version)
-    setPreviewLinks(prev => ({ ...prev, [version]: url }))
-    setPreviewModalInfo({ version, url })
-    message.success('预览链接已生成，可以分享给测试同学查看')
   }
 
   // 处理文件选择
@@ -363,7 +415,7 @@ export default function ClientVersionPage() {
                 backgroundColor: '#1890ff',
                 display: 'inline-block'
               }} />
-              当前版本
+              已上线
             </span>
           )
         }
@@ -434,19 +486,12 @@ export default function ClientVersionPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 360,
+      width: 280,
       render: (_: unknown, record: VersionRow) => (
         <Space size={8}>
           <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
           <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
-          {/* 预览链接：只能生成一次，生成后变为“查看链接” */}
-          <Button
-            type="link"
-            onClick={() => handleGenerateOrViewPreview(record.version)}
-          >
-            {previewLinks[record.version] ? '查看链接' : '生成预览链接'}
-          </Button>
-          {/* 新增：同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
+          {/* 同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
           <Button
             type="link"
             onClick={() => handleSyncTranslation(record.version)}
@@ -470,40 +515,6 @@ export default function ClientVersionPage() {
           <Button type="link" style={{ paddingLeft: 4 }} onClick={() => message.info('打开帮助（示例）')}>了解更多</Button>
         </Paragraph>
       </Card>
-
-      {/* 版本预览链接 Modal */}
-      <Modal
-        title={previewModalInfo ? `版本 ${previewModalInfo.version} 预览链接` : '预览链接'}
-        open={!!previewModalInfo}
-        onCancel={() => setPreviewModalInfo(null)}
-        footer={null}
-      >
-        {previewModalInfo && (
-          <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-            <Text type="secondary">将以下链接复制给测试同学即可在线预览该版本页面。</Text>
-            <Input value={previewModalInfo.url} readOnly />
-            <Button
-              type="primary"
-              icon={<CopyOutlined />}
-              onClick={async () => {
-                try {
-                  if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(previewModalInfo.url)
-                  } else {
-                    // 兼容性降级：选中输入框文本，让用户手动复制
-                    void message.info('请手动复制输入框中的链接')
-                  }
-                  message.success('链接已复制到剪贴板')
-                } catch {
-                  message.error('复制失败，请手动复制')
-                }
-              }}
-            >
-              复制链接
-            </Button>
-          </Space>
-        )}
-      </Modal>
 
       {/* Tabs 本地切换（不跳路由） */}
       <Card style={{ marginBottom: 16 }}>
@@ -536,6 +547,7 @@ export default function ClientVersionPage() {
               style={{ marginBottom: 16 }}
               styles={{ body: { padding: '16px 24px' } }}
             >
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ flex: 1 }}>
                   <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
@@ -567,29 +579,62 @@ export default function ClientVersionPage() {
                         }}
                       />
                     </Tooltip>
+                    </div>
                   </div>
                 </div>
                 
-                {/* S3 加速开关 */}
-                <div style={{ marginLeft: 24 }}>
+                {/* 监配置更多入口：为运营同学提供额外的 H5 跳转入口配置 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                   <Button
-                    type={s3AccelerationEnabled ? 'primary' : 'default'}
-                    icon={s3AccelerationEnabled ? <span>⚡</span> : <span>🚀</span>}
+                    size="small"
+                    type="link"
                     onClick={() => {
-                      // 切换 S3 加速状态
-                      const newStatus = !s3AccelerationEnabled
-                      setS3AccelerationEnabled(newStatus)
-                      if (newStatus) {
-                        message.success('S3 加速已开启')
-                      } else {
-                        message.info('S3 加速已关闭')
+                      // 打开入口管理抽屉，默认使用当前版本；若无入口则先创建一条
+                      if (extraEntries.length === 0) {
+                        handleAddMonitorEntry(currentVersion.version)
                       }
+                      setEntryDrawerVisible(true)
                     }}
                   >
-                    {s3AccelerationEnabled ? 'S3 加速已开启' : '开启 S3 加速'}
+                    配置更多入口
                   </Button>
                 </div>
+
+                {extraEntries.length > 0 && (
+                  <div style={{ marginTop: 4 }}>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                      已配置入口（示例）：
+                    </Text>
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                      {extraEntries.map(entry => {
+                        const fullUrl = entry.finalUrl || buildMonitorEntryUrl(entry.version)
+                        return (
+                          <Space key={entry.id} size={8} style={{ fontSize: 12 }}>
+                            <Tag bordered={false} color="blue">{entry.version}</Tag>
+                            <Text code>{fullUrl}</Text>
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={async () => {
+                                try {
+                                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    await navigator.clipboard.writeText(fullUrl)
+                                  }
+                                  message.success('入口链接已复制')
+                                } catch {
+                                  message.error('复制失败，请手动复制')
+                                }
+                              }}
+                            >
+                              复制入口链接
+                            </Button>
+                          </Space>
+                        )
+                      })}
+                    </Space>
               </div>
+                )}
+              </Space>
             </Card>
           )
         }
@@ -699,6 +744,146 @@ export default function ClientVersionPage() {
           message="请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启"
         />
       </Modal>
+
+      {/* 监配置更多入口 - 管理抽屉：多入口编辑 / 复制 */}
+      <Drawer
+        title="监配置入口管理"
+        placement="right"
+        width={1020}
+        open={entryDrawerVisible}
+        onClose={() => setEntryDrawerVisible(false)}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={(
+              <span>
+                前缀 <Text code>{MONITOR_ENTRY_PREFIX}</Text> 固定不变，只需选择版本，系统会自动生成
+                <Text strong> 完整入口 URL</Text>，用于监配置跳转。
+              </span>
+            )}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text strong>入口列表</Text>
+            <Button type="primary" size="small" onClick={() => handleAddMonitorEntry()}>
+              新增入口
+            </Button>
+          </div>
+
+          {extraEntries.length === 0 && (
+            <Text type="secondary">暂无入口配置，点击右上角「新增入口」开始配置。</Text>
+          )}
+
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {extraEntries.map(entry => {
+              const previewUrl = buildMonitorEntryUrl(entry.version)
+              return (
+                <Card key={entry.id} size="small" bordered style={{ borderRadius: 8 }}>
+                  {entry.editing ? (
+                    // 编辑态：选择版本 + 填写备注，自动生成入口 URL
+                    <div style={{ width: '100%' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '40px 200px 40px minmax(260px, 1fr) 140px',
+                          alignItems: 'center',
+                          columnGap: 12,
+                          marginBottom: 8
+                        }}
+                      >
+                        <Text type="secondary" style={{ textAlign: 'left' }}>
+                          版本
+                        </Text>
+                        <Select
+                          style={{ width: 200 }}
+                          value={entry.version}
+                          onChange={v => handleChangeEntryField(entry.id, 'version', v)}
+                          options={versions.map(v => ({ label: v.version, value: v.version }))}
+                        />
+                        <Text type="secondary" style={{ textAlign: 'left' }}>
+                          备注
+                        </Text>
+                        <Input
+                          placeholder="例如：7月FB广告、官网首页投放"
+                          value={entry.remark}
+                          onChange={e => handleChangeEntryField(entry.id, 'remark', e.target.value)}
+                        />
+                        <Space size={8} style={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => handleSaveMonitorEntry(entry.id)}
+                          >
+                            确定
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => handleDeleteMonitorEntry(entry.id)}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      </div>
+                    </div>
+                  ) : (
+                  // 展示态：完整 URL + 复制 / 编辑 / 删除
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Text type="secondary" style={{ marginRight: 8 }}>
+                        入口：
+                      </Text>
+                      <Tooltip title={entry.finalUrl}>
+                        <Text code ellipsis style={{ maxWidth: 520, display: 'inline-block' }}>
+                          {entry.finalUrl}
+                        </Text>
+                      </Tooltip>
+                      {entry.remark && (
+                        <Text type="secondary" style={{ marginLeft: 12 }}>
+                          备注：{entry.remark}
+                        </Text>
+                      )}
+                    </div>
+                    <Space size={8}>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(entry.finalUrl)
+                            message.success('入口链接已复制')
+                          } catch {
+                            message.error('复制失败，请手动复制')
+                          }
+                        }}
+                      >
+                        复制
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => handleEditMonitorEntry(entry.id)}
+                      >
+                        编辑
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        danger
+                        onClick={() => handleDeleteMonitorEntry(entry.id)}
+                      >
+                        删除
+                      </Button>
+                    </Space>
+                  </div>
+                )}
+                </Card>
+              )
+            })}
+          </Space>
+        </Space>
+      </Drawer>
 
       {/* 文件上传 Drawer */}
       <Drawer
