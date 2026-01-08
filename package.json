@@ -13,7 +13,7 @@
     "@ant-design/plots": "^2.6.5",
     "@antv/g2plot": "^2.4.35",
     "antd": "^5.26.7",
-    "next": "15.4.6",
+    "next": "15.4.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -24,7 +24,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "eslint": "^9",
-    "eslint-config-next": "15.4.6",
+    "eslint-config-next": "15.4.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

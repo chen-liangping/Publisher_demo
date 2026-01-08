@@ -39,7 +39,21 @@ export default function ActivityPage(): React.ReactElement {
     { title: 'category', dataIndex: 'category', key: 'category', width: 180 },
     { title: 'event_type', dataIndex: 'event_type', key: 'event_type', width: 180 },
     { title: 'event_id', dataIndex: 'event_id', key: 'event_id', width: 120, sorter: (a, b) => a.event_id - b.event_id },
-    { title: 'notes', dataIndex: 'notes', key: 'notes', width: 240 }
+    { title: 'notes', dataIndex: 'notes', key: 'notes', width: 240 },
+    { 
+      title: '操作', 
+      key: 'actions', 
+      width: 120, 
+      render: (_, record) => (
+        <Button 
+          type="link" 
+          danger 
+          onClick={() => setEvents(prev => prev.filter(item => item.key !== record.key))}
+        >
+          删除
+        </Button>
+      ) 
+    }
   ]), [])
 
   const [csvList, setCsvList] = useState<CsvRow[]>([
@@ -65,7 +79,7 @@ export default function ActivityPage(): React.ReactElement {
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card title={<span style={{ fontSize: 18 }}>活动数据总表</span>} extra={
         <Space>
-          <Button onClick={() => window.alert('原型：更新至Tableau')}>更新至Tableau</Button>
+          <Button onClick={() => window.alert('原型：查看Tableau')}>查看Tableau</Button>
           <Button onClick={() => window.alert('原型：自动化配置')}>自动化配置</Button>
           <Input.Search allowClear placeholder="搜索名称和event_id" style={{ width: 220 }} onSearch={setSearch} />
         </Space>

@@ -254,7 +254,7 @@ show_help() {
 
 # 主函数
 main() {
-    local port=3000
+    local port=3001
     local force_clean=false
     
     # 解析命令行参数

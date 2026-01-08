@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Button, Form, Input, Select, Modal, message, Card, Table, Space, Checkbox } from 'antd'
+import { Button, Form, Input, Select, Modal, message, Card, Table, Space, Checkbox, Descriptions, Badge, Timeline } from 'antd'
+import { HistoryOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
 
@@ -9,18 +10,51 @@ interface AnnouncementItem {
   content: string
   method: string
   type: string
+  status: '已发布' | '未发布'
   publishAt?: string
   gameScope: string[]  // 新增：发送范围（游戏列表）
   publishHistory?: string[]  // 新增：发布历史记录
 }
 
+// 历史版本详细记录
+interface HistoryVersion {
+  publishTime: string      // 发布时间
+  content: string          // 发布内容
+  appIds: string[]         // 发送的appid（游戏范围）
+  receiverCount: number    // 接收人数量
+  readCount: number        // 已读数量
+  unreadCount: number      // 未读数量
+}
+
 // 这段代码实现了：公告列表 + 新建公告表单 + Markdown 预览与发布，全部为前端本地演示
 export default function Announcement() {
   const [items, setItems] = useState<AnnouncementItem[]>([
-    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: 'system',  gameScope: ['全部游戏'] },
-    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: 'system', publishAt: '2024/09/01 10:00:00', gameScope: ['gamedemo', 'kumo'], publishHistory: ['2024/09/01 10:00:00'] },
-    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: 'system', gameScope: ['slime'] }
+    { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: '系统消息', status: '未发布', publishAt: '2024/09/01 10:00:00', gameScope: ['全部游戏'] },
+    { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: '系统消息', status: '已发布', publishAt: '2024/09/01 10:00:00', publishHistory: ['2024/09/01 10:00:00'], gameScope: ['gamedemo', 'kumo'] },
+    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: '系统消息', status: '未发布', publishAt: '2024/09/01 10:00:00', gameScope: ['slime'] }
   ])
+  
+  // 模拟历史版本数据（实际应从后端获取）
+  const [historyVersions] = useState<Record<string, HistoryVersion[]>>({
+    '2': [ // 对应公告ID
+      {
+        publishTime: '2024/09/01 10:00:00',
+        content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。',
+        appIds: ['gamedemo', 'kumo'],
+        receiverCount: 15000,
+        readCount: 12500,
+        unreadCount: 2500
+      },
+      {
+        publishTime: '2024/08/25 14:30:00',
+        content: '# 新活动预告\n\n即将上线全新活动，敬请期待！',
+        appIds: ['gamedemo'],
+        receiverCount: 8000,
+        readCount: 7800,
+        unreadCount: 200
+      }
+    ]
+  })
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)  // 新增：记录正在编辑的公告ID
   const [form] = Form.useForm()
@@ -31,6 +65,9 @@ export default function Announcement() {
   const [previewOnConfirm, setPreviewOnConfirm] = useState<(() => void) | null>(null)
   // 新增：是否同时发布到钉钉群（仅在发布弹窗中使用）
   const [publishToDingTalk, setPublishToDingTalk] = useState<boolean>(false)
+  // 历史版本弹窗
+  const [historyVisible, setHistoryVisible] = useState(false)
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null)
 
   // 游戏选项列表
   const gameOptions = [
@@ -123,22 +160,14 @@ export default function Announcement() {
           method: values.method, 
           type: values.type, 
           gameScope: values.gameScope || ['全部游戏'],
-        }, ...prev])
+          status: '未发布',
+        } as AnnouncementItem, ...prev])
         message.success('保存成功（示例）')
       }
       setCreating(false)
       setEditingId(null)
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
-
-  // 格式化当前时间
-  const formatNow = (): string => {
-    const now = new Date()
-    return `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
-  }
-
   // 通过预览弹窗进行发布：支持多次发布
   const openPublishPreviewForRow = (row: AnnouncementItem) => {
     setPreviewTitle(row.title)
@@ -147,7 +176,7 @@ export default function Announcement() {
     // 打开发布弹窗时，重置钉钉选择为“否”
     setPublishToDingTalk(false)
     setPreviewOnConfirm(() => () => {
-      const now = formatNow()
+      const now = new Date().toISOString()
       setItems(prev => prev.map(it => it.id === row.id ? { 
         ...it, 
         publishAt: now,
@@ -172,7 +201,7 @@ export default function Announcement() {
       // 打开发布弹窗时，重置钉钉选择为“否”
       setPublishToDingTalk(false)
       setPreviewOnConfirm(() => () => {
-        const now = formatNow()
+        const now = new Date().toISOString()
         
         if (editingId) {
           // 编辑中的公告发布
@@ -201,7 +230,8 @@ export default function Announcement() {
             type: values.type, 
             gameScope: values.gameScope || ['全部游戏'],
             publishAt: now,
-            publishHistory: [now]
+            publishHistory: [now],
+            status: '未发布',
           }, ...prev])
         }
         
@@ -223,20 +253,27 @@ export default function Announcement() {
 
   const columns = [
     { title: '标题', dataIndex: 'title', key: 'title' },
-    { title: '通知方式', dataIndex: 'method', key: 'method', width: 120 },
-    { title: '通知类型', dataIndex: 'type', key: 'type', width: 120 },
     { 
-      title: '发送范围', 
+      title: '公告范围', 
       dataIndex: 'gameScope', 
       key: 'gameScope', 
       width: 150,
       render: (gameScope: string[]) => gameScope?.join(', ') || '-'
     },
+    { 
+      title: '内容', 
+      dataIndex: 'content', 
+      key: 'content', 
+      width: 150,
+      render: (content: string) => content || '-'
+    },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
+    { title: '通知类型', dataIndex: 'type', key: 'type', width: 120 },
     { title: '最近发布时间', dataIndex: 'publishAt', key: 'publishAt', width: 180 },
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 280,
       render: (_: unknown, record: AnnouncementItem) => (
         <Space>
           <Button type="link" onClick={() => {
@@ -249,6 +286,19 @@ export default function Announcement() {
           }}>预览</Button>
           <Button type="link" onClick={() => openEdit(record)}>编辑</Button>
           <Button type="link" onClick={() => openPublishPreviewForRow(record)}>发布</Button>
+          {/* 历史版本按钮：只有已发布过的公告才显示 */}
+          {record.publishHistory && record.publishHistory.length > 0 && (
+            <Button 
+              type="link" 
+              icon={<HistoryOutlined />}
+              onClick={() => {
+                setCurrentHistoryId(record.id)
+                setHistoryVisible(true)
+              }}
+            >
+              历史
+            </Button>
+          )}
         </Space>
       )
     }
@@ -318,7 +368,7 @@ export default function Announcement() {
           )}
           {/* 使用简单的 Markdown -> HTML 转换器进行渲染（原型用，非完全兼容） */}
           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
-          {/* 勾选框放在内容最下方，类似“我已知晓风险”的呈现风格 */}
+          {/* 勾选框放在内容最下方，类似"我已知晓风险"的呈现风格 */}
           {previewOnConfirm && (
             <div style={{ marginTop: 16, padding: 12, backgroundColor: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
               {/* 交互：勾选后会在发布时同步到钉钉群（仅示例提示） */}
@@ -331,6 +381,107 @@ export default function Announcement() {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* 历史版本弹窗 */}
+      <Modal
+        title="发布历史版本"
+        open={historyVisible}
+        onCancel={() => {
+          setHistoryVisible(false)
+          setCurrentHistoryId(null)
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setHistoryVisible(false)
+            setCurrentHistoryId(null)
+          }}>
+            关闭
+          </Button>
+        ]}
+        width={900}
+      >
+        {currentHistoryId && historyVersions[currentHistoryId] && historyVersions[currentHistoryId].length > 0 ? (
+          <Timeline
+            style={{ marginTop: 20 }}
+            items={historyVersions[currentHistoryId].map((version, index) => ({
+              color: index === 0 ? 'green' : 'gray',
+              children: (
+                <Card 
+                  size="small" 
+                  style={{ marginBottom: 16 }}
+                  styles={{ body: { padding: 16 } }}
+                >
+                  <Descriptions 
+                    column={2} 
+                    bordered
+                    size="small"
+                    labelStyle={{ fontWeight: 600, width: 120 }}
+                  >
+                    <Descriptions.Item label="发布时间" span={2}>
+                      {version.publishTime}
+                      {index === 0 && (
+                        <Badge 
+                          count="最新" 
+                          style={{ marginLeft: 12, backgroundColor: '#52c41a' }} 
+                        />
+                      )}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="发送范围">
+                      {version.appIds.join(', ')}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="接收人数">
+                      <span style={{ fontSize: 16, fontWeight: 600, color: '#1890ff' }}>
+                        {version.receiverCount.toLocaleString()}
+                      </span>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="已读">
+                      <span style={{ color: '#52c41a', fontWeight: 600 }}>
+                        {version.readCount.toLocaleString()}
+                      </span>
+                      <span style={{ marginLeft: 8, color: '#999' }}>
+                        ({((version.readCount / version.receiverCount) * 100).toFixed(1)}%)
+                      </span>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="未读">
+                      <span style={{ color: '#ff4d4f', fontWeight: 600 }}>
+                        {version.unreadCount.toLocaleString()}
+                      </span>
+                      <span style={{ marginLeft: 8, color: '#999' }}>
+                        ({((version.unreadCount / version.receiverCount) * 100).toFixed(1)}%)
+                      </span>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="发布内容" span={2}>
+                      <div 
+                        style={{ 
+                          marginTop: 8,
+                          padding: 12,
+                          backgroundColor: '#fafafa',
+                          borderRadius: 4,
+                          maxHeight: 200,
+                          overflow: 'auto'
+                        }}
+                      >
+                        {/* 缩小标题字号，使内容更紧凑 */}
+                        <div 
+                          dangerouslySetInnerHTML={{ __html: renderMarkdownCompact(version.content) }}
+                          style={{
+                            fontSize: '13px',
+                            lineHeight: '1.6'
+                          }}
+                        />
+                      </div>
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              )
+            }))}
+          />
+        ) : (
+          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+            暂无发布历史
+          </div>
+        )}
       </Modal>
     </Card>
   )
@@ -364,6 +515,45 @@ function renderMarkdown(md: string): string {
     if (hMatch) {
       const level = hMatch[1].length
       out.push(`<h${level}>${formatInline(esc(hMatch[2]))}</h${level}>`)
+      continue
+    }
+    out.push(`<div>${formatInline(esc(line))}</div>`)
+  }
+  if (inList) out.push('</ul>')
+  return out.join('\n')
+}
+
+// 紧凑版 Markdown 渲染器：用于历史版本内容，标题字号更小
+function renderMarkdownCompact(md: string): string {
+  if (!md) return ''
+  // 转义 HTML
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const lines = md.split(/\r?\n/)
+  let inList = false
+  const out: string[] = []
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (line === '') {
+      if (inList) { out.push('</ul>'); inList = false }
+      out.push('<p></p>')
+      continue
+    }
+    // list
+    if (/^[-*]\s+/.test(line)) {
+      if (!inList) { out.push('<ul>'); inList = true }
+      const item = line.replace(/^[-*]\s+/, '')
+      out.push(`<li>${formatInline(esc(item))}</li>`)
+      continue
+    }
+    if (inList) { out.push('</ul>'); inList = false }
+    // headings - 使用更小的字号
+    const hMatch = line.match(/^(#{1,6})\s+(.*)$/)
+    if (hMatch) {
+      const level = hMatch[1].length
+      // 为历史内容的标题添加内联样式，缩小字号
+      const fontSize = level === 1 ? '16px' : level === 2 ? '15px' : '14px'
+      const margin = '6px 0 4px 0'
+      out.push(`<h${level} style="font-size: ${fontSize}; margin: ${margin}; font-weight: 600;">${formatInline(esc(hMatch[2]))}</h${level}>`)
       continue
     }
     out.push(`<div>${formatInline(esc(line))}</div>`)

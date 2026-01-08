@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch } from 'antd'
+import React, { useState, useRef } from 'react'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select, Popover } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined } from '@ant-design/icons'
+import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined, ExportOutlined, KeyOutlined } from '@ant-design/icons'
 import ClientPage from './ClientPage'
 
 const { Title, Paragraph, Text } = Typography
@@ -30,6 +30,25 @@ interface FileEntry {
   sizeKB?: number
   updatedAt: string
 }
+
+// 上传文件信息
+interface UploadFileInfo {
+  name: string
+  size: number
+  progress: number
+  speed: string
+  status: 'uploading' | 'success' | 'error'
+  uploadedSize: number
+}
+
+// 监配置入口：固定前缀
+const MONITOR_ENTRY_PREFIX = 'https://h5.stg.g123.jp/game/gamedemo?gameEntry='
+// 游戏版本预览入口：固定前缀
+const GAME_ENTRY_PREFIX = 'https://gamedemo.stg.g123-cpp.com/'
+// G123 STG 测试环境固定入口
+const G123_STG_ENTRY_URL = 'https://h5.stg.g123.jp/game/gametest'
+const G123_STG_USERNAME = 'testuser'
+const G123_STG_PASSWORD = 'ctwstggame1!'
 
 const versionData: VersionRow[] = [
   {
@@ -65,6 +84,91 @@ export default function ClientVersionPage() {
     })
     return map
   })
+  
+  // 上传相关状态
+  const [uploadDrawerVisible, setUploadDrawerVisible] = useState(false)
+  const [uploadingFiles, setUploadingFiles] = useState<UploadFileInfo[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const zipInputRef = useRef<HTMLInputElement>(null)
+  const [previewingVersion, setPreviewingVersion] = useState<string | null>(null)
+
+// “监配置更多入口”相关状态：用于配置多个 H5 外部入口（按版本自动生成 URL）
+  interface ExtraEntryConfig {
+    id: string
+    version: string
+    finalUrl: string
+    remark?: string
+    editing?: boolean
+  }
+  const [entryDrawerVisible, setEntryDrawerVisible] = useState<boolean>(false)
+  const [extraEntries, setExtraEntries] = useState<ExtraEntryConfig[]>([])
+
+  // 构建“监配置更多入口”的最终跳转地址：仅按版本自动生成入口路径
+  const buildMonitorEntryUrl = (version: string): string => {
+    if (!version) return ''
+    const localEntry = `/${version}/index.html`
+    return `${MONITOR_ENTRY_PREFIX}${encodeURIComponent(localEntry)}`
+  }
+
+  // 构建某个版本的游戏预览入口 URL
+  const buildGameEntryUrl = (version: string): string => {
+    if (!version) return ''
+    return `${GAME_ENTRY_PREFIX}${version}/index.html`
+  }
+
+  // 新增一个入口（进入编辑态）
+  const handleAddMonitorEntry = (defaultVersion?: string): void => {
+    const version = defaultVersion ?? versions[0]?.version ?? ''
+    if (!version) {
+      message.warning('暂无可用版本，无法新增入口')
+      return
+    }
+    const id = `${version}-${Date.now()}`
+    setExtraEntries(prev => [
+      ...prev,
+      {
+        id,
+        version,
+        finalUrl: '',
+        remark: '',
+        editing: true
+      }
+    ])
+  }
+
+  const handleChangeEntryField = (id: string, field: 'version' | 'remark', value: string): void => {
+    setExtraEntries(prev =>
+      prev.map(entry =>
+        entry.id === id ? { ...entry, [field]: value } : entry
+      )
+    )
+  }
+
+  const handleSaveMonitorEntry = (id: string): void => {
+    setExtraEntries(prev => {
+      return prev.map(entry =>
+        entry.id === id
+          ? {
+              ...entry,
+              finalUrl: buildMonitorEntryUrl(entry.version),
+              editing: false
+            }
+          : entry
+      )
+    })
+  }
+
+  const handleEditMonitorEntry = (id: string): void => {
+    setExtraEntries(prev =>
+      prev.map(entry =>
+        entry.id === id ? { ...entry, editing: true } : entry
+      )
+    )
+  }
+
+  const handleDeleteMonitorEntry = (id: string): void => {
+    setExtraEntries(prev => prev.filter(entry => entry.id !== id))
+  }
 
   const openSwitchModal = (record: VersionRow): void => {
     setSelectedVersion(record)
@@ -138,6 +242,49 @@ export default function ClientVersionPage() {
     message.info(`进入版本 ${version}（示例）`)
   }
 
+  // 构建版本预览链接的展示内容（用于 Popover）
+  const renderPreviewContent = (version: string) => {
+    const previewUrl = buildGameEntryUrl(version)
+    if (!previewUrl) {
+      return <Text type="secondary">该版本暂无可用预览链接</Text>
+    }
+    return (
+      <Space direction="vertical" size={8}>
+        <Text type="secondary">使用以下链接可直接访问该版本页面：</Text>
+        <Space size={8}>
+          <Text code style={{ wordBreak: 'break-all' }}>{previewUrl}</Text>
+          {/* 图标按钮：复制链接 */}
+          <Tooltip title="复制链接">
+            <Button
+              size="small"
+              type="text"
+              icon={<CopyOutlined />}
+              onClick={async () => {
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(previewUrl)
+                  }
+                  message.success('预览链接已复制')
+                } catch {
+                  message.error('复制失败，请手动选择链接复制')
+                }
+              }}
+            />
+          </Tooltip>
+          {/* 图标按钮：在新标签页打开 */}
+          <Tooltip title="在新标签页打开">
+            <Button
+              size="small"
+              type="text"
+              icon={<ExportOutlined />}
+              onClick={() => window.open(previewUrl, '_blank')}
+            />
+          </Tooltip>
+        </Space>
+      </Space>
+    )
+  }
+
   const handleBackToParent = (): void => {
     // 返回上级目录或返回到版本列表
     if (!browsingVersion) return
@@ -148,6 +295,77 @@ export default function ClientVersionPage() {
     }
     const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
     setCurrentPath(parentPath)
+  }
+
+  // 处理文件选择
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, isZip: boolean): void => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    
+    // 转换文件列表为上传信息
+    const newFiles: UploadFileInfo[] = Array.from(files).map(file => ({
+      name: file.name,
+      size: file.size,
+      progress: 0,
+      speed: '0 KB/s',
+      status: 'uploading' as const,
+      uploadedSize: 0
+    }))
+    
+    setUploadingFiles(newFiles)
+    setUploadDrawerVisible(true)
+    
+    // 模拟上传过程
+    simulateUpload(newFiles)
+    
+    // 重置 input
+    e.target.value = ''
+  }
+
+  // 模拟上传进度
+  const simulateUpload = (files: UploadFileInfo[]): void => {
+    files.forEach((file, index) => {
+      let progress = 0
+      const totalSize = file.size
+      const interval = setInterval(() => {
+        progress += Math.random() * 15 + 5 // 每次增加 5-20%
+        if (progress >= 100) {
+          progress = 100
+          clearInterval(interval)
+          // 上传完成
+          setUploadingFiles(prev => 
+            prev.map((f, i) => 
+              i === index 
+                ? { ...f, progress: 100, status: 'success', uploadedSize: totalSize, speed: '0 KB/s' }
+                : f
+            )
+          )
+        } else {
+          // 计算上传速度
+          const uploadedSize = (totalSize * progress) / 100
+          const speed = ((Math.random() * 500 + 200) * 1024).toFixed(0) // 200-700 KB/s
+          const speedText = Number(speed) > 1024 * 1024 
+            ? `${(Number(speed) / (1024 * 1024)).toFixed(2)} MB/s`
+            : `${(Number(speed) / 1024).toFixed(2)} KB/s`
+          
+          setUploadingFiles(prev => 
+            prev.map((f, i) => 
+              i === index 
+                ? { ...f, progress: Math.floor(progress), uploadedSize, speed: speedText }
+                : f
+            )
+          )
+        }
+      }, 300)
+    })
+  }
+
+  // 格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
   // 模拟：每个版本的文件树
@@ -223,20 +441,70 @@ export default function ClientVersionPage() {
       title: '游戏版本',
       dataIndex: 'version',
       key: 'version',
-      width: 320,
+      width: 200,
       render: (v: string, record) => (
         <Space size={8}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}> {/* 游戏版本 */}
             <Button type="link" onClick={() => handleEnterVersion(record.version)}>
               <Text strong>{v}</Text>
             </Button>
-          {/* 状态标签：当前版本 / 已下线 / 未上线 */}
-          {record.status === 'current' && <Tag color="blue">当前版本</Tag>}
-          {record.status === 'offline' && <Tag color="red">已下线</Tag>}
-          {record.status === 'notOnline' && <Tag color="default">未上线</Tag>}
+          {/* 状态标签：只有当前版本显示 Tag */}
+          {record.status === 'current' && <Tag color="green">当前版本</Tag>}
           </span>
         </Space>
       )
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status: 'current' | 'offline' | 'notOnline' | undefined) => {
+        // 状态文字展示：当前版本、已下线、未上线，前置小圆点增加视觉层次
+        if (status === 'current') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#1890ff',
+                display: 'inline-block'
+              }} />
+              已上线
+            </span>
+          )
+        }
+        if (status === 'offline') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#ff4d4f',
+                display: 'inline-block'
+              }} />
+              已下线
+            </span>
+          )
+        }
+        if (status === 'notOnline') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                backgroundColor: '#d9d9d9',
+                display: 'inline-block'
+              }} />
+              未上线
+            </span>
+          )
+        }
+        return '-'
+      }
     },
     { 
       title: '发版详情',
@@ -274,12 +542,20 @@ export default function ClientVersionPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 260,
+      width: 360,
       render: (_: unknown, record: VersionRow) => (
         <Space size={8}>
+          <Popover
+            content={renderPreviewContent(record.version)}
+            trigger="click"
+            open={previewingVersion === record.version}
+            onOpenChange={(open) => setPreviewingVersion(open ? record.version : null)}
+          >
+            <Button type="link">预览</Button>
+          </Popover>
           <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
           <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
-          {/* 新增：同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
+          {/* 同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
           <Button
             type="link"
             onClick={() => handleSyncTranslation(record.version)}
@@ -294,9 +570,10 @@ export default function ClientVersionPage() {
   ]
 
   return (
-    <div>
+    // 本页卡片不需要 hover 动效，使用 no-card-motion 包裹；同时与虚机等页面统一左右内边距
+    <div className="no-card-motion" style={{ padding: '24px' }}>
       {/* 顶部说明 */}
-      <Card styles={{ body: { padding: 16 } }} style={{ marginBottom: 16 }}>
+      <Card className="card" styles={{ body: { padding: 16 } }} style={{ marginBottom: 16 }}>
         <Title level={3} style={{ margin: 0 }}>客户端</Title>
         <Paragraph style={{ color: '#666', marginTop: 8, marginBottom: 0 }}>
           客户端用于存储不同游戏版本的图片以及文本等静态资源进行配置信息，您可以在此页面进行版本管理。
@@ -305,7 +582,7 @@ export default function ClientVersionPage() {
       </Card>
 
       {/* Tabs 本地切换（不跳路由） */}
-      <Card style={{ marginBottom: 16 }}>
+      <Card className="card" style={{ marginBottom: 16 }}>
         <Tabs
           activeKey={activeTab}
           onChange={(key) => {
@@ -324,8 +601,136 @@ export default function ClientVersionPage() {
         />
       </Card>
 
+      {/* 游戏入口 & 固定 G123 测试入口 */}
+      {activeTab === 'version' && (() => {
+        const currentVersion = versions.find(v => v.status === 'current')
+        if (!currentVersion) return null
+        const gameUrl = buildGameEntryUrl(currentVersion.version)
+        return (
+          <Card
+            className="card"
+            style={{ marginBottom: 16 }}
+            styles={{ body: { padding: '16px 24px' } }}
+          >
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {/* 顶部标题 + 配置按钮 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text strong style={{ fontSize: 16 }}>游戏入口</Text>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => setEntryDrawerVisible(true)}
+                >
+                  配置更多g123入口
+                </Button>
+              </div>
+
+              {/* 当前版本入口 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ minWidth: 96 }}>当前版本入口：</Text>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontFamily: 'Menlo, Consolas, "Courier New", monospace', fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {gameUrl}
+                  </span>
+                  <Tooltip title="复制链接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      style={{ padding: 0 }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(gameUrl).then(() => {
+                          message.success('链接已复制到剪贴板')
+                        }).catch(() => {
+                          message.error('复制失败，请手动复制')
+                        })
+                      }}
+                    />
+                  </Tooltip>
+                </div>
+              </div>
+
+              {/* G123 测试环境入口 + 账号密码弹层 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ minWidth: 96 }}>G123测试入口：</Text>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontFamily: 'Menlo, Consolas, "Courier New", monospace', fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {G123_STG_ENTRY_URL}
+                  </span>
+                  <Tooltip title="复制链接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      style={{ padding: 0 }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(G123_STG_ENTRY_URL).then(() => {
+                          message.success('链接已复制到剪贴板')
+                        }).catch(() => {
+                          message.error('复制失败，请手动复制')
+                        })
+                      }}
+                    />
+                  </Tooltip>
+                  <Popover
+                    placement="topRight"
+                    content={
+                      <Space direction="vertical" size={8}>
+                        <Text strong>STG登陆账号&密码</Text>
+                        <Space align="center" size={8}>
+                          <Text type="secondary">UserName:</Text>
+                          <Text code>{G123_STG_USERNAME}</Text>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CopyOutlined />}
+                            onClick={() => {
+                              navigator.clipboard.writeText(G123_STG_USERNAME).then(() => {
+                                message.success('账号已复制')
+                              }).catch(() => {
+                                message.error('复制失败，请重试')
+                              })
+                            }}
+                          />
+                        </Space>
+                        <Space align="center" size={8}>
+                          <Text type="secondary">Password:</Text>
+                          <Text code>{G123_STG_PASSWORD}</Text>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CopyOutlined />}
+                            onClick={() => {
+                              navigator.clipboard.writeText(G123_STG_PASSWORD).then(() => {
+                                message.success('密码已复制')
+                              }).catch(() => {
+                                message.error('复制失败，请重试')
+                              })
+                            }}
+                          />
+                        </Space>
+                      </Space>
+                    }
+                  >
+                    
+                    <Tooltip title="查看测试账号">
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<KeyOutlined />}
+                      />
+                    </Tooltip>
+                  </Popover>
+                </div>
+              </div>
+            </Space>
+          </Card>
+        )
+      })()}
+
       {/* 版本区块 / CDN 页面（同页切换） */}
       <Card
+        className="card"
         title={
           <Row align="middle" justify="space-between" style={{ width: '100%' }}>
             <Col>{activeTab === 'cdn' ? 'CDN' : (browsingVersion ? `版本 ${browsingVersion} / 文件` : '版本')}</Col>
@@ -349,15 +754,36 @@ export default function ClientVersionPage() {
                 <Button onClick={handleBackToParent}>返回上级</Button>
               </Space>
               <Space>
+                {/* 使用带文字的 Button 形式展示操作 */}
+                {/* 隐藏的文件输入框 */}
+                <input 
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileSelect(e, false)}
+                />
+                <input 
+                  ref={zipInputRef}
+                  type="file"
+                  accept=".zip,.tar,.tar.gz,.rar,.7z"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileSelect(e, true)}
+                />
                 <Tooltip title="可拖拽文件进行上传。单个文件大小不得超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启">
-                  <Button type="text" icon={<UploadOutlined />} onClick={() => message.info('上传文件（示例）')} />
+                  <Button icon={<UploadOutlined />} onClick={() => fileInputRef.current?.click()}>
+                    上传文件
+                  </Button>
                 </Tooltip>
-                <Tooltip title="上传压缩包">
-                  <Button type="text" icon={<InboxOutlined />} onClick={() => message.info('上传压缩包（示例）')} />
+                <Tooltip title="支持 zip、tar.gz 等压缩格式">
+                  <Button icon={<InboxOutlined />} onClick={() => zipInputRef.current?.click()}>
+                    上传压缩包
+                  </Button>
                 </Tooltip>
-                <Tooltip title="创建文件夹">
-                  <Button type="text" icon={<FolderAddOutlined />} onClick={() => message.info('创建文件夹（示例）')} />
-                </Tooltip>
+                <Button icon={<FolderAddOutlined />} onClick={() => message.info('创建文件夹（示例）')}>
+                  创建文件夹
+                </Button>
               </Space>
             </div>
             <Table<FileEntry>
@@ -406,6 +832,269 @@ export default function ClientVersionPage() {
           message="请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启"
         />
       </Modal>
+
+      {/* 监配置更多入口 - 管理抽屉：多入口编辑 / 复制 */}
+      <Drawer
+        title="G123测试环境入口管理"
+        placement="right"
+        width={1020}
+        open={entryDrawerVisible}
+        onClose={() => setEntryDrawerVisible(false)}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={(
+              <span>
+                前缀 <Text code>{MONITOR_ENTRY_PREFIX}</Text> 固定不变，只需选择版本，系统会自动生成
+                <Text strong> 完整G123 游戏入口 URL</Text>，可用于版本测试、监修等。
+              </span>
+            )}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text strong>入口列表</Text>
+            <Button type="primary" size="small" onClick={() => handleAddMonitorEntry()}>
+              新增入口
+            </Button>
+          </div>
+
+          {extraEntries.length === 0 && (
+            <Text type="secondary">暂无入口配置，点击右上角「新增入口」开始配置。</Text>
+          )}
+
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {extraEntries.map(entry => {
+              const previewUrl = buildMonitorEntryUrl(entry.version)
+              return (
+                <Card key={entry.id} size="small" bordered style={{ borderRadius: 8 }}>
+                  {entry.editing ? (
+                    // 编辑态：选择版本 + 填写备注，自动生成入口 URL
+                    <div style={{ width: '100%' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '40px 200px 40px minmax(260px, 1fr) 140px',
+                          alignItems: 'center',
+                          columnGap: 12,
+                          marginBottom: 8
+                        }}
+                      >
+                        <Text type="secondary" style={{ textAlign: 'left' }}>
+                          版本
+                        </Text>
+                        <Select
+                          style={{ width: 200 }}
+                          value={entry.version}
+                          onChange={v => handleChangeEntryField(entry.id, 'version', v)}
+                          options={versions.map(v => ({ label: v.version, value: v.version }))}
+                        />
+                        <Text type="secondary" style={{ textAlign: 'left' }}>
+                          备注
+                        </Text>
+                        <Input
+                          placeholder="例如：7月FB广告、官网首页投放"
+                          value={entry.remark}
+                          onChange={e => handleChangeEntryField(entry.id, 'remark', e.target.value)}
+                        />
+                        <Space size={8} style={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => handleSaveMonitorEntry(entry.id)}
+                          >
+                            确定
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => handleDeleteMonitorEntry(entry.id)}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      </div>
+                    </div>
+                  ) : (
+                  // 展示态：完整 URL + 复制 / 编辑 / 删除
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Text type="secondary" style={{ marginRight: 8 }}>
+                        入口：
+                      </Text>
+                      <Tooltip title={entry.finalUrl}>
+                        <Text code ellipsis style={{ maxWidth: 520, display: 'inline-block' }}>
+                          {entry.finalUrl}
+                        </Text>
+                      </Tooltip>
+                      {entry.remark && (
+                        <Text type="secondary" style={{ marginLeft: 12 }}>
+                          备注：{entry.remark}
+                        </Text>
+                      )}
+                    </div>
+                    <Space size={8}>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(entry.finalUrl)
+                            message.success('入口链接已复制')
+                          } catch {
+                            message.error('复制失败，请手动复制')
+                          }
+                        }}
+                      >
+                        复制
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => handleEditMonitorEntry(entry.id)}
+                      >
+                        编辑
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        danger
+                        onClick={() => handleDeleteMonitorEntry(entry.id)}
+                      >
+                        删除
+                      </Button>
+                    </Space>
+                  </div>
+                )}
+                </Card>
+              )
+            })}
+          </Space>
+        </Space>
+      </Drawer>
+
+      {/* 文件上传 Drawer */}
+      <Drawer
+        title={
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>上传文件预览</div>
+            {uploadingFiles.some(f => f.status === 'success') && (
+              <div style={{ 
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                backgroundColor: '#f6ffed',
+                border: '1px solid #b7eb8f',
+                borderRadius: 4,
+                fontSize: 14
+              }}>
+                <CheckCircleFilled style={{ color: '#52c41a' }} />
+                <span style={{ color: '#52c41a' }}>文件已上传完成</span>
+              </div>
+            )}
+          </div>
+        }
+        placement="right"
+        open={uploadDrawerVisible}
+        onClose={() => setUploadDrawerVisible(false)}
+        width={900}
+        footer={
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'flex-start',
+            padding: '10px 0'
+          }}>
+            <Button onClick={() => setUploadDrawerVisible(false)}>
+              关闭
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">可上传文件总数：{uploadingFiles.length}/1</Text>
+        </div>
+
+        {/* 文件列表表格 */}
+        <Table<UploadFileInfo>
+          columns={[
+            {
+              title: '文件名',
+              dataIndex: 'name',
+              key: 'name',
+              width: 250,
+              render: (name: string) => (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ marginTop: 2 }}>📄</span>
+                  <div style={{ 
+                    wordBreak: 'break-all', 
+                    whiteSpace: 'normal',
+                    lineHeight: '1.5'
+                  }}>
+                    {name}
+                  </div>
+                </div>
+              )
+            },
+            {
+              title: '文件目录',
+              key: 'path',
+              width: 350,
+              render: (_: unknown, record: UploadFileInfo) => (
+                <div 
+                  style={{ 
+                    wordBreak: 'break-all',
+                    whiteSpace: 'normal',
+                    fontSize: 13,
+                    color: '#666',
+                    lineHeight: '1.5'
+                  }}
+                >
+                  S3://testapp.stg.g123-cpp.com/v1.0/{browsingVersion}{currentPath}/{record.name}
+                </div>
+              )
+            },
+            {
+              title: '文件大小',
+              dataIndex: 'size',
+              key: 'size',
+              width: 120,
+              render: (size: number) => (
+                <Text>{formatFileSize(size)}</Text>
+              )
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 180,
+              render: (_: unknown, record: UploadFileInfo, index: number) => (
+                <Space>
+                  {/* 已上传状态显示 */}
+                  {record.status === 'success' ? (
+                    <Button type="text" size="small" style={{ color: '#52c41a' }}>
+                      已上传
+                    </Button>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      上传中...
+                    </Text>
+                  )}
+                </Space>
+              )
+            }
+          ]}
+          dataSource={uploadingFiles}
+          rowKey={(record, index) => `${record.name}-${index}`}
+          pagination={false}
+          size="small"
+        />
+
+        {uploadingFiles.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+            暂无上传文件
+          </div>
+        )}
+      </Drawer>
     </div>
   )
 }

@@ -15,11 +15,18 @@ import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
 import Announcement from '../../components/Admin/Announcement'
 import YamlViewer from '../../components/Admin/yaml'
+import GameFaroConfig from '../../components/Admin/GameFaroConfig'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
-type AdminMenuKey = 'game-management' | 'resource-configuration' | 'test-initialization' | 'announcement' | 'yaml'
+type AdminMenuKey =
+  | 'game-management'
+  | 'game-faro-config'
+  | 'resource-configuration'
+  | 'test-initialization'
+  | 'announcement'
+  | 'yaml'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -43,6 +50,8 @@ export default function AdminPage() {
     switch (selectedMenu) {
       case 'game-management':
         return <GameManagement />
+      case 'game-faro-config':
+        return <GameFaroConfig />
       case 'resource-configuration':
         return <ResourceConfiguration />
       case 'test-initialization':
@@ -60,16 +69,18 @@ export default function AdminPage() {
 
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* 顶部导航 */}
-      <Header style={{ 
-        background: '#fff', 
-        padding: '0 24px', 
-        borderBottom: '1px solid #f0f0f0',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      {/* 顶部导航：背景与整体主题保持一致，具体配色在 globals.css 中统一控制 */}
+      <Header
+        style={{
+          background: 'transparent',
+          padding: '0 24px',
+          borderBottom: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
         <Title level={3} style={{ margin: 0, lineHeight: '64px' }}>
           管理台
         </Title>
@@ -81,9 +92,9 @@ export default function AdminPage() {
         </Button>
       </Header>
 
-      <Layout>
-        {/* 左侧导航栏 */}
-        <Sider width={200} style={{ background: '#fff' }}>
+      <Layout style={{ background: 'transparent' }}>
+        {/* 左侧导航栏：背景与主题保持一致，具体配色在 globals.css 中控制 */}
+        <Sider width={200} style={{ background: 'transparent' }}>
           <Menu
             mode="inline"
             selectedKeys={[selectedMenu]}
@@ -94,6 +105,12 @@ export default function AdminPage() {
                 icon: <AppstoreOutlined />,
                 label: '游戏管理',
                 onClick: () => handleMenuClick('game-management')
+              },
+              {
+                key: 'game-faro-config',
+                icon: <FileTextOutlined />,
+                label: '游戏配置',
+                onClick: () => handleMenuClick('game-faro-config')
               },
               {
                 key: 'resource-configuration',
@@ -124,14 +141,14 @@ export default function AdminPage() {
         </Sider>
 
         {/* 右侧内容区 */}
-        <Layout style={{ padding: '24px', background: '#f0f2f5' }}>
+        <Layout style={{ padding: '24px', background: 'transparent' }}>
           <Content
             style={{
-              background: '#fff',
-              padding: 24,
+              background: 'transparent',
+              padding: 0,
               margin: 0,
               minHeight: 280,
-              borderRadius: 8
+              borderRadius: 0
             }}
           >
             {renderContent()}

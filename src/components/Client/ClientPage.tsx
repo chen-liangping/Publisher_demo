@@ -121,6 +121,8 @@ const cacheData: CacheRule[] = [
 
 export default function ClientPage({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
+  // S3 加速状态：控制是否为客户端静态资源开启 S3 上传与回源加速
+  const [s3AccelerationEnabled, setS3AccelerationEnabled] = React.useState<boolean>(false)
   // 新增：缓存规则本地状态，用于支持行内编辑后的刷新
   const [cacheList, setCacheList] = React.useState<CacheRule[]>(cacheData)
   // 新增：编辑弹窗开关与键值（使用 pattern 作为唯一键）
@@ -132,44 +134,29 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const [detectVisible, setDetectVisible] = React.useState<boolean>(false)
   const [detectedFileTypes, setDetectedFileTypes] = React.useState<string[]>([])
   const [detectedSelected, setDetectedSelected] = React.useState<string[]>([])
-  const [ignoredFileTypes, setIgnoredFileTypes] = React.useState<string[]>([])
-  const [ignoredSelected, setIgnoredSelected] = React.useState<string[]>([])
+  // 新增：控制 Toast 是否显示（独立于 detectedFileTypes）
+  const [showDetectedToast, setShowDetectedToast] = React.useState<boolean>(false)
   // 新增：最佳实践弹窗开关
   const [bestPracticeVisible, setBestPracticeVisible] = React.useState<boolean>(false)
-  // 表格列定义（方案B：上下分区，各自支持移动）
+  // 表格列定义：只显示缓存类型，无操作列
   const detectedColumns: TableColumnsType<DetectedFileTypeRow> = [
-    { title: '缓存类型', dataIndex: 'ext', key: 'ext' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 120,
-      render: (_: unknown, record: DetectedFileTypeRow) => (
-        <Space size={8}>
-          {/* 忽略（文字按钮，便于明确含义） */}
-          <Button type="link" onClick={() => moveToIgnored(record.ext)}>忽略</Button>
-        </Space>
-      )
-    }
-  ]
-  const ignoredColumns: TableColumnsType<DetectedFileTypeRow> = [
-    { title: '缓存类型', dataIndex: 'ext', key: 'ext' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 160,
-      render: (_: unknown, record: DetectedFileTypeRow) => (
-        <Space size={8}>
-          {/* 恢复（文字按钮） */}
-          <Button type="link" onClick={() => restoreFromIgnored(record.ext)}>恢复</Button>
-          {/* 删除（文字按钮） */}
-          <Button type="link" danger onClick={() => deleteIgnored(record.ext)}>删除</Button>
-        </Space>
-      )
-    }
+    { title: '缓存类型', dataIndex: 'ext', key: 'ext' }
   ]
   // 交互：添加源站
   const handleAddOrigin = (): void => {
     message.info('点击了添加源站（示例）')
+  }
+
+  // 交互：切换 S3 加速
+  // 打开的场景：跨区域访问、网络不稳定，希望提升静态资源上传与访问的稳定性
+  const handleToggleS3Acceleration = (next: boolean): void => {
+    // 这里不再弹出额外的表单/弹窗，避免与全局拦截产生干扰，仅做状态切换和轻量提示
+    setS3AccelerationEnabled(next)
+    if (next) {
+      message.success('S3 加速已开启')
+    } else {
+      message.info('S3 加速已关闭')
+    }
   }
 
   // 交互：缓存检测（示例）
@@ -178,31 +165,20 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     const types: string[] = ['.png', '.gif', '.jpg', '.jpeg', '.webp', '.svg', '.ico']
     setDetectedFileTypes(types)
     setDetectedSelected([])
+    setShowDetectedToast(true) // 显示 Toast
     setDetectVisible(true)
   }
-  // 交互：Toast 忽略 / 查看
+  // 交互：Toast 忽略 - 将检测到的类型添加到 drawer 列表中，但不打开，Toast 消失
   const handleIgnoreDetectedToast = (): void => {
-    // 忽略后清空已检测提示来源
-    setDetectedFileTypes([])
-    setDetectedSelected([])
+    // 隐藏 Toast，但数据保留在 detectedFileTypes 中
+    setShowDetectedToast(false)
+    message.info('已添加到缓存检测列表，可稍后查看')
   }
+  
+  // 交互：查看检测结果 - 直接打开 drawer，Toast 也消失
   const handleViewDetectedToast = (): void => {
+    setShowDetectedToast(false)
     setDetectVisible(true)
-  }
-  // 交互：忽略一个类型（移到“已忽略”）
-  const moveToIgnored = (ext: string): void => {
-    setDetectedFileTypes((prev) => prev.filter((e) => e !== ext))
-    setDetectedSelected((prev) => prev.filter((e) => e !== ext))
-    setIgnoredFileTypes((prev) => (prev.includes(ext) ? prev : [...prev, ext]))
-  }
-  // 交互：从“已忽略”恢复
-  const restoreFromIgnored = (ext: string): void => {
-    setIgnoredFileTypes((prev) => prev.filter((e) => e !== ext))
-    setDetectedFileTypes((prev) => (prev.includes(ext) ? prev : [...prev, ext]))
-  }
-  // 交互：从“已忽略”删除该类型
-  const deleteIgnored = (ext: string): void => {
-    setIgnoredFileTypes((prev) => prev.filter((e) => e !== ext))
   }
   // 交互：根据勾选的类型批量新增缓存配置（示例实现，避免重复 pattern）
   const handleAddCacheForSelected = (): void => {
@@ -240,42 +216,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     setDetectVisible(false)
     setDetectedSelected([])
     message.success(`已添加 ${detectedSelected.length} 条缓存配置（示例）`)
-  }
-
-  // 交互：从“已忽略类型”分区批量新增缓存配置
-  const handleAddCacheFromIgnored = (): void => {
-    if (ignoredSelected.length === 0) {
-      message.warning('请先勾选忽略类型')
-      return
-    }
-    const newRules: CacheRule[] = ignoredSelected.map((ext) => ({
-      // 使用 *.ext 作为匹配模式
-      pattern: `*${ext}`,
-      sourceId: 'Default',
-      accessProto: '仅限HTTPS',
-      httpMethods: 'GET, HEAD, OPTIONS',
-      smartCompress: 'ON',
-      ttlSeconds: 600,
-      passHeadersMode: 'whitelist',
-      passHeadersWhitelist: ['Origin'],
-      passQueryStringsMode: 'none',
-      passCookiesMode: 'none'
-    }))
-    setCacheList((prev) => {
-      const exist = new Set(prev.map((r) => r.pattern))
-      const merged = [...prev]
-      for (const r of newRules) {
-        if (!exist.has(r.pattern)) {
-          merged.push(r)
-          exist.add(r.pattern)
-        }
-      }
-      return merged
-    })
-    // 关闭抽屉并清空勾选
-    setDetectVisible(false)
-    setIgnoredSelected([])
-    message.success(`已添加 ${ignoredSelected.length} 条缓存配置（示例）`)
   }
 
   // 交互：添加缓存配置
@@ -417,7 +357,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   ]
 
   return (
-    <div>
+    <div style={{ padding: '24px' }}>
       {/* 顶部信息与导航（嵌入模式下隐藏） */}
       {!embedded && (
         <>
@@ -452,7 +392,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       )}
 
       {/* Toast：检测到新的缓存配置（位于 Tabs 与 基础信息之间） */}
-      {detectedFileTypes.length > 0 && (
+      {showDetectedToast && detectedFileTypes.length > 0 && (
         <Alert
           style={{ marginBottom: 16 }}
           type="info"
@@ -493,6 +433,32 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
           <Col xs={24} md={8}>
             <div style={{ color: '#999' }}>CLI</div>
             <Button type="link" onClick={() => message.info('查看 CLI（示例）')}>查看</Button>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* S3 加速设置：入口 Card，放在源站配置上方 */}
+      <Card
+        title="文件上传加速"
+        style={{ marginBottom: 16 }}
+      >
+        <Row align="middle" justify="space-between">
+          <Col xs={24} md={16}>
+            <div style={{ color: '#999', marginBottom: 4 }}>开启 S3 加速</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              网络不稳定或跨区域上传时，建议开启 S3 加速，通过 S3 传输加速链路提升文件上传与访问体验。
+            </Text>
+          </Col>
+          <Col xs={24} md={8}>
+            <Space style={{ justifyContent: 'flex-end', width: '100%', marginTop: 8 }}>
+              <Text type="secondary">
+                {s3AccelerationEnabled ? 'S3 加速已开启' : 'S3 加速已关闭'}
+              </Text>
+              <Switch
+                checked={s3AccelerationEnabled}
+                onChange={(checked) => handleToggleS3Acceleration(checked)}
+              />
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -564,15 +530,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
             pagination={false}
           />
         </Card>
-        <Card size="small" title="已忽略类型">
-          <Table<DetectedFileTypeRow>
-            size="small"
-            columns={ignoredColumns}
-            dataSource={ignoredFileTypes.map((ext) => ({ ext }))}
-            rowKey={(r) => r.ext}
-            pagination={false}
-          />
-        </Card>
       </Drawer>  
       {/* 编辑缓存规则抽屉 */}
       <Drawer
@@ -580,11 +537,13 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
         open={editVisible}
         onClose={handleCancelEdit}
         width={520}
-        extra={
-          <Space>
-            <Button onClick={handleCancelEdit}>取消</Button>
-            <Button type="primary" onClick={handleSaveCache}>保存</Button>
-          </Space>
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Space>
+              <Button onClick={handleCancelEdit}>取消</Button>
+              <Button type="primary" onClick={handleSaveCache}>保存</Button>
+            </Space>
+          </div>
         }
         destroyOnClose
       >

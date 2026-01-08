@@ -24,6 +24,7 @@ import {
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
 import VirtualMachineDetails from './VirtualMachineDetails'
+import AutoServerModule from '../../Common/AutoServerModule'
 
 const { Title, Link } = Typography
 
@@ -32,13 +33,13 @@ interface VirtualMachineListProps {
   onViewDetails?: (vm: VirtualMachine) => void
   vmList?: VirtualMachine[]
   setVmList?: (list: VirtualMachine[]) => void
+  onNavigateToLoadBalancer?: () => void
 }
 
 // 虚拟机数据类型定义
 export interface VirtualMachine {
   id: string
   name: string
-  alias: string
   status: 'running' | 'stopped' | 'starting' | 'stopping'
   spec: string
   systemImage: string
@@ -58,14 +59,13 @@ const mockVMData: VirtualMachine[] = [
   {
     id: 'i-bp1234567890abcdef',
     name: 'web-server-01',
-    alias: 'Web服务器1',
     status: 'running',
     spec: '4c.8G',
     systemImage: 'CentOS 7.9 64位',
     privateIp: '172.16.0.10',
     publicIp: '47.96.123.45',
     createTime: '2024-01-15 10:30:00',
-    domain: 'g123-web01.com',
+    domain: 'g123-web01',
     systemDiskSize: 40,
     dataDiskSize: 100,
     loginUser: 'appid',
@@ -75,13 +75,12 @@ const mockVMData: VirtualMachine[] = [
   {
     id: 'i-bp0987654321fedcba',
     name: 'db-server-01',
-    alias: '数据库服务器',
     status: 'stopped',
     spec: '8c.16G',
     systemImage: 'Ubuntu 18.04 64位',
     privateIp: '172.16.0.11',
     createTime: '2024-01-14 15:20:00',
-    domain: 'g123-db01.com',
+    domain: 'g123-db01',
     systemDiskSize: 60,
     loginUser: 'appid',
     securityGroups: ['sg-002'],
@@ -95,7 +94,7 @@ const mockSecurityGroups = [
   { id: 'sg-002', name: 'database-group' }
 ]
 
-export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList }: VirtualMachineListProps = {}) {
+export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList, onNavigateToLoadBalancer }: VirtualMachineListProps = {}) {
   const [internalVmList, internalSetVmList] = useState<VirtualMachine[]>(mockVMData)
   const vmList = propVmList ?? internalVmList
   const setVmList = propSetVmList ?? internalSetVmList
@@ -153,7 +152,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
   const handleDelete = (vm: VirtualMachine): void => {
     Modal.confirm({
       title: '确认删除虚拟机',
-      content: `确定要删除虚拟机 "${vm.alias}" 吗？此操作不可恢复。`,
+      content: `确定要删除虚拟机 "${vm.name}" 吗？此操作不可恢复。`,
       okText: '确认删除',
       okType: 'danger',
       cancelText: '取消',
@@ -212,11 +211,9 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
               onClick={() => openDetails(vm)}
               style={{ color: '#1677ff' }}
             >
-              {vm.alias}
+              {vm.name}
             </Link>
           </div>
-          <div style={{ color: '#666', fontSize: '12px' }}>{vm.name}</div>
-          <div style={{ color: '#999', fontSize: '11px' }}>ID: {vm.id}</div>
         </div>
       )
     },
@@ -245,57 +242,51 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       title: '操作',
       key: 'actions',
       render: (_: unknown, vm: VirtualMachine) => (
-        <Space>
+        <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
           {vm.status === 'stopped' ? (
-            <Button
-              type="primary"
-              size="small"
-              icon={<PlayCircleOutlined />}
+            <Link
               onClick={() => handleVMOperation(vm.id, 'start')}
-              title="启动"
-            />
+              style={{ color: '#1677ff' }}
+            >
+              启动
+            </Link>
           ) : (
-            <Button
-              size="small"
-              icon={<PoweroffOutlined />}
+            <Link
               onClick={() => handleVMOperation(vm.id, 'stop')}
-              title="关机"
-            />
+              style={{ color: '#1677ff' }}
+            >
+              关机
+            </Link>
           )}
           
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            onClick={() => handleVMOperation(vm.id, 'restart')}
-            disabled={vm.status === 'stopped'}
-            title="重启"
-          />
-          
-          <Button
-            size="small"
-            icon={<DesktopOutlined />}
-            onClick={() => handleRemoteConnect(vm)}
-            disabled={vm.status !== 'running'}
-            title={vm.status !== 'running' ? '虚机需要处于运行状态才能远程连接' : '远程连接'}
-          />
-            
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(vm)}
-            title="删除"
-          />
-          <Button
-            size="small"
-            icon={<LinkOutlined />}
+          {/* 连接操作：仅运行中状态可用 */}
+          <Link
             onClick={() => {
-              setBindTargetVm(vm)
-              setSelectedGroupIds(vm.securityGroups || [])
-              setShowBindModal(true)
+              if (vm.status === 'running') {
+                handleConnect(vm)
+              }
             }}
-            title="绑定安全组"
-          />
+            style={{ 
+              color: vm.status === 'running' ? '#1677ff' : '#d9d9d9', 
+              cursor: vm.status === 'running' ? 'pointer' : 'not-allowed' 
+            }}
+          >
+            连接
+          </Link>
+          
+          <Link
+            onClick={() => handleVMOperation(vm.id, 'restart')}
+            style={{ color: vm.status === 'stopped' ? '#d9d9d9' : '#1677ff', cursor: vm.status === 'stopped' ? 'not-allowed' : 'pointer' }}
+          >
+            重启
+          </Link>
+          
+          <Link
+            onClick={() => handleDelete(vm)}
+            style={{ color: '#ff4d4f' }}
+          >
+            删除
+          </Link>
         </Space>
       )
     }
@@ -312,10 +303,10 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
     setShowCreateForm(false)
   }
 
-  // 处理远程连接
-  const handleRemoteConnect = (vm: VirtualMachine) => {
+  // 处理连接操作
+  const handleConnect = (vm: VirtualMachine) => {
     if (vm.status !== 'running') {
-      message.warning('虚机需要处于运行状态才能远程连接')
+      message.warning('虚机需要处于运行状态才能连接')
       return
     }
     
@@ -324,7 +315,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       title: '远程连接',
       content: (
         <div>
-          <p><strong>虚机名称：</strong>{vm.alias}</p>
+          <p><strong>虚机名称：</strong>{vm.name}</p>
           <p><strong>IP地址：</strong>{vm.publicIp}</p>
           <p><strong>连接方式：</strong>RDP (Windows) / SSH (Linux)</p>
           <p><strong>用户名：</strong>{vm.loginUser}</p>
@@ -355,6 +346,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         vm={selectedVm}
         onBack={() => setSelectedVm(null)}
         onOperation={handleOperationFromDetails}
+        onNavigateToLoadBalancer={onNavigateToLoadBalancer}
       />
     )
   }
@@ -381,19 +373,31 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
 
 
   return (
-    <Card>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          虚拟机列表
-        </Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={() => setShowCreateForm(true)}
-        >
-          创建虚拟机
-        </Button>
-      </div>
+    <div style={{ padding: '24px' }}>
+      {/* 虚拟机介绍卡片 */}
+      <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 16 }}}>
+        <Title level={4} style={{ margin: 0 }}>虚拟机</Title>
+        <div style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
+          <strong>描述：</strong> 提供可弹性伸缩的计算服务，支持多种规格配置，满足不同业务场景需求。通过虚拟机可以快速部署应用、搭建开发环境，实现业务的灵活扩展。
+        </div>
+      </Card>
+
+      {/* 自动开服模块 */}
+      <AutoServerModule />
+
+      <Card>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            虚拟机列表
+          </Title>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => setShowCreateForm(true)}
+          >
+            创建虚拟机
+          </Button>
+        </div>
       
       <Table
         columns={columns}
@@ -414,7 +418,7 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         onOk={handleConfirmBind}
       >
         <div style={{ marginBottom: 12 }}>
-          <div style={{ marginBottom: 8 }}>目标虚机：{bindTargetVm?.alias}</div>
+          <div style={{ marginBottom: 8 }}>目标虚机：{bindTargetVm?.name}</div>
           <Select
             mode="tags"
             style={{ width: '100%' }}
@@ -425,5 +429,6 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         </div>
       </Modal>
     </Card>
+    </div>
   )
 }

@@ -33,19 +33,18 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
   const [loading, setLoading] = useState(false)
 
   const instanceTypes = [
-    { value: '4c.16G.10Mbps', label: 'ecs.g6.xlarge' },
-    { value: '8c.16G.200Mbps', label: 'ecs.c6.2xlarge' },
-    { value: '2c.8G.5Mbps', label: 'ecs.g7.large' },
-    { value: '2c.4G.200Mbps', label: 'ecs.c6.large' },
-    { value: '2c.4G.10Mbp', label: 'ecs.c7.large' }
+    { value: 'ecs.c6.2xlarge', label: '8 核（vCPU）16 GiB' },
+    { value: 'ecs.g6.xlarge', label: '4 核（vCPU）16 GiB' },
+    { value: 'ecs.c8a.xlarge', label: '4 核（vCPU）8 GiB' },
+    { value: 'ecs.g7.large', label: '2 核（vCPU）8 GiB' },
+    { value: 'ecs.c6.large', label: '2 核（vCPU）4 GiB' }
   ]
 
   const systemImages = [
     { value: 'centos7.9', label: 'CentOS 7.9 64位' },
     { value: 'ubuntu18.04', label: 'Ubuntu 18.04 64位' },
     { value: 'ubuntu20.04', label: 'Ubuntu 20.04 64位' },
-    { value: 'Linux', label: 'Linux SP5 64位' },
-    { value: 'windows2019', label: 'Windows Server 2019' }
+    { value: 'Linux', label: 'Linux SP5 64位' }
   ]
 
   const handleSubmit = async () => {
@@ -57,15 +56,14 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
       setTimeout(() => {
         const newVM = {
           id: `i-bp${Date.now()}`,
-          name: `vm-${Date.now()}`,
-          alias: values.alias,
+          name: values.name,
           status: 'starting' as const,
           spec: values.instanceType,
           systemImage: systemImages.find(img => img.value === values.systemImage)?.label || '',
           privateIp: `172.16.0.${Math.floor(Math.random() * 200) + 10}`,
           publicIp: `47.96.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
           createTime: new Date().toLocaleString('zh-CN'),
-          domain: `${values.alias.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}.com`
+          domain: `${values.name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}.com`
         }
         
         onCreate(newVM)
@@ -106,7 +104,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             storage: 50,
             needDataDisk: 'no',
             loginMethod: 'password',
-            username: 'appid'
+            username: 'root'
           }}
         >
           <Row gutter={24}>
@@ -117,7 +115,7 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             
             <Col span={24}>
               <Form.Item
-                name="alias"
+                name="name"
                 label="虚拟机名称"
                 rules={[{ required: true, message: '请输入虚拟机名称' }]}
               >
@@ -149,9 +147,16 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
               <Form.Item
                 name="storage"
                 label="系统盘大小(GB)"
+                rules={[
+                  { required: true, message: '请输入系统盘大小' },
+                  { type: 'number', min: 50, max: 100, message: '系统盘大小必须在50-100GB之间' }
+                ]}
+                initialValue={50}
               >
                 <InputNumber 
-                  disabled
+                  min={50}
+                  max={100}
+                  placeholder="50-100"
                   style={{ width: '100%' }}
                   addonAfter="GB"
                 />
@@ -174,20 +179,35 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
                 
                 if (needDataDisk === 'yes') {
                   return (
-                    <Col span={12}>
-                      <Form.Item
-                        name="dataDiskSize"
-                        label="数据盘大小(GB)"
-                        rules={[{ required: true, message: '请设置数据盘大小' }]}
-                      >
-                        <InputNumber 
-                          min={20} 
-                          max={500} 
-                          style={{ width: '100%' }}
-                          placeholder="数据盘大小 (20-500GB)"
-                        />
-                      </Form.Item>
-                    </Col>
+                    <>
+                      <Col span={12}>
+                        <Form.Item
+                          name="dataDiskMountPath"
+                          label="数据盘挂载路径"
+                          rules={[{ required: true, message: '请输入挂载路径' }]}
+                          initialValue="gamedemo/date01"
+                        >
+                          <Input 
+                            style={{ width: '100%' }}
+                            placeholder="请输入挂载路径"
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="dataDiskSize"
+                          label="数据盘大小(GB)"
+                          rules={[{ required: true, message: '请设置数据盘大小' }]}
+                        >
+                          <InputNumber 
+                            min={20} 
+                            max={1000} 
+                            style={{ width: '100%' }}
+                            placeholder="数据盘大小 (GB)"
+                          />
+                        </Form.Item>
+                      </Col>
+                    </>
                   )
                 }
                 return null
@@ -198,16 +218,6 @@ export default function CreateVirtualMachine({ onBack, onCreate }: CreateVirtual
             <Col span={24}>
               <Title level={4} style={{ marginTop: 24 }}>登录配置</Title>
             </Col>
-            
-            <Col span={12}>
-              <Form.Item
-                name="loginMethod"
-                label="登录方式"
-              >
-                <Select disabled options={[{ value: 'password', label: '账号密码' }]} />
-              </Form.Item>
-            </Col>
-
             <Col span={12}>
               <Form.Item
                 name="username"

@@ -1,5 +1,21 @@
 @reference 'tailwindcss';
-/* 配置按钮缺少机器人时的轻微呼吸动效 */
+
+/* =========================================================
+ * 全局主题说明（后续改色时优先看这里）
+ *
+ * 1）页面整体背景（最底层渐变）       → 修改 body 的 background
+ * 2）页面内容卡片 / 表格外层底色       → .card / .ant-card / .ant-table-wrapper
+ * 3）顶部导航 / 左侧菜单背景与高亮色   → .ant-layout-header / .ant-layout-sider / .ant-menu*
+ * 4）弹窗 / 抽屉通用底色              → .ant-modal-* / .ant-drawer-*
+ * 5）输入框、下拉框等表单底色与边框   → .ant-input / .ant-select-selector / .ant-picker 等
+ *
+ * 如果只是想整体换一套配色：
+ *  - 背景基调：body background
+ *  - 主品牌色（高亮）: rgba(129, 140, 248, …) / #4338ca 这几行
+ *  - 卡片面板色：#f7f9fc / #f6f8fd / #f9fbff 这几行
+ * =======================================================*/
+
+/* 配置按钮缺少机器人时的轻微呼吸动效（告警页面局部使用） */
 .alert-config-pulse {
   animation: alertPulse 1.2s ease-in-out infinite;
 }
@@ -8,24 +24,315 @@
   50% { transform: scale(1.06); }
   100% { transform: scale(1); }
 }
+
+/* 故障报警列表中“报警频率”单元格交互样式（hover 时才显示右侧开关） */
+.alert-frequency-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.alert-frequency-cell-value {
+  flex: 1;
+}
+
+.alert-frequency-switch {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  padding-inline: 4px;
+}
+
+.alert-frequency-cell:hover .alert-frequency-switch {
+  opacity: 1;
+}
+
+/* 人员列表分组下拉：默认隐藏描边，悬浮时再显示（勿全局复用，仅影响 PeopleManagement） */
+.person-group-cell .ant-select-selector {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  background-color: transparent;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.person-group-cell:hover .ant-select-selector {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 告警参与者列分组：让“人员 / 机器人”分界线略微更明显，仅影响告警表头 */
+.ant-table-thead .alert-actor-group-header {
+  border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
+  background: #fafafa;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 引入 Ant Design 样式 */
+/* 引入 Ant Design 样式（必须在自定义样式之前） */
 @import 'antd/dist/reset.css';
 
-/* 全局样式 */
+/* ===== 页面背景：所有页面共用的最底层渐变底色 ===== */
 body {
-  @apply bg-slate-50;
+  min-height: 100vh;
+  margin: 0;
+  /* 低饱和双主色渐变背景，整体更接近白色，只保留非常轻的色温变化 */
+  background: radial-gradient(circle at top left, #fafbff 0%, #f7fbff 35%, #fbf8ff 70%, #ffffff 100%);
+  /* 细腻的过渡，保证页面切换/滚动时的平滑感 */
+  transition: background 0.4s ease-in-out;
 }
 
-/* 自定义工具类 */
+/* ===== 自定义工具类：可以在 JSX 中通过 className 使用 ===== */
 @layer components {
   .page-container {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
   }
+  /* 统一卡片基础样式：柔和阴影 + 轻微动效（默认，具体页面可关闭）
+   * 使用场景：ClientVersionPage / ClientPage / 部分 Admin 页面
+   * 想整体调卡片颜色 → 改这里的 background-color / box-shadow
+   */
   .card {
-    @apply bg-white rounded-lg shadow-sm p-6;
+    @apply rounded-xl p-6;
+    /* 与页面背景相近的柔和面板色，只比背景略微更实一点；不再使用边缘渐变 */
+    background-color: #f7f9fc;
+    /* 柔和阴影与更细的描边，避免“重描边”；描边再细一档 */
+    box-shadow:
+      0 16px 40px rgba(15, 23, 42, 0.045),
+      0 0 0 0.35px rgba(148, 163, 184, 0.14);
+    border-radius: 16px;
+    transition:
+      box-shadow 0.22s ease,
+      transform 0.18s ease,
+      background-color 0.22s ease;
   }
+
+  /* 卡片 hover：轻微上浮 + 提升阴影，增强“生命力” */
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 20px 55px rgba(15, 23, 42, 0.07),
+      0 0 0 0.35px rgba(129, 140, 248, 0.38);
+    background-color: #f6f8fd;
+  }
+
+  /* 轻微光晕边框效果：可复用在需要强调状态的容器上
+   * 典型结构：
+   *   <div className="soft-glow-border">
+   *     <div className="soft-glow-border-inner">内容</div>
+   *   </div>
+   */
+  .soft-glow-border {
+    position: relative;
+    border-radius: 999px;
+    background: radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.55), rgba(34, 211, 238, 0.4));
+    padding: 1px;
+  }
+
+  .soft-glow-border-inner {
+    border-radius: inherit;
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow:
+      0 0 0 1px rgba(148, 163, 184, 0.3),
+      0 18px 45px rgba(15, 23, 42, 0.65);
+    transition:
+      box-shadow 0.3s ease,
+      transform 0.25s ease,
+      background-color 0.3s ease;
+  }
+
+  .soft-glow-border-inner:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 0 0 1px rgba(191, 219, 254, 0.8),
+      0 26px 70px rgba(15, 23, 42, 0.88);
+  }
+
+  /* 通用交互：按钮/可点击区域 hover 轻微动效
+   * 给任意可点击容器加 className="interactive-soft" 即可
+   */
+  .interactive-soft {
+    transition:
+      background-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.16s ease;
+  }
+
+  .interactive-soft:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  }
+}
+
+/* ===== Layout & Menu 统一导航配色 =====
+ * 顶部导航 & 左侧菜单的所有背景、高亮色都在这一段集中控制
+ * - 想调“导航条底色” → 改 .ant-layout-header background
+ * - 想调“左侧菜单底色” → 改 .ant-layout-sider background
+ * - 想调“选中菜单的主色” → 改 .ant-menu-item-selected / .ant-menu-item-selected .anticon 里的颜色
+ */
+.ant-layout-header {
+  background: rgba(247, 249, 252, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.ant-layout-sider {
+  background: #f7f9fc !important;
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* 左侧/顶部菜单：与导航背景融合，使用柔和高亮 */
+.ant-menu {
+  background: transparent !important;
+}
+
+.ant-menu-item,
+.ant-menu-submenu-title {
+  border-radius: 999px !important;
+  margin-inline: 8px !important;
+}
+
+.ant-menu-item a,
+.ant-menu-submenu-title span {
+  color: #1f2937;
+}
+
+.ant-menu-item-selected a,
+.ant-menu-item-selected .anticon,
+.ant-menu-item-selected span {
+  color: #4338ca !important;
+}
+
+.ant-menu-item:hover,
+.ant-menu-submenu-title:hover {
+  background-color: rgba(129, 140, 248, 0.08) !important;
+}
+
+.ant-menu-item-selected {
+  background-color: rgba(129, 140, 248, 0.16) !important;
+}
+
+.ant-menu-item .anticon,
+.ant-menu-submenu-title .anticon {
+  color: #64748b;
+}
+
+.ant-menu-item-selected .anticon {
+  color: #4338ca !important;
+}
+
+/* Ant Design 通用卡片 & 表格底色：
+ * - 所有 antd Card 外层视觉在这里统一调整
+ * - 所有 Table 外层面板（不是单元格）在这里调整
+ * 想整体调“面板层级”的颜色 → 优先改 #f7f9fc / #f6f8fd 这几个色值
+ */
+.ant-card {
+  background-color: #f7f9fc !important;
+  border-radius: 14px;
+  box-shadow:
+    0 14px 32px rgba(15, 23, 42, 0.04),
+    0 0 0 0.35px rgba(148, 163, 184, 0.14);
+}
+
+.ant-card-body {
+  /* Card 内容区域跟随外层颜色，避免出现“外层一色、里层纯白” */
+  background-color: #f7f9fc !important;
+}
+
+.ant-card-bordered {
+  border-color: rgba(148, 163, 184, 0.13) !important;
+}
+
+.ant-table-wrapper {
+  background-color: #f7f9fc !important;
+  border-radius: 14px;
+  box-shadow:
+    0 14px 32px rgba(15, 23, 42, 0.03),
+    0 0 0 0.35px rgba(148, 163, 184, 0.12);
+}
+
+.ant-table {
+  background: transparent;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #f6f8fd !important;
+}
+
+/* 客户端版本页面：关闭卡片动效，使用静态卡片样式 */
+.no-card-motion .card {
+  transition: none;
+}
+
+.no-card-motion .card:hover {
+  transform: none;
+  box-shadow:
+    0 16px 40px rgba(15, 23, 42, 0.045),
+    0 0 0 0.35px rgba(148, 163, 184, 0.14);
+  background-color: #f7f9fc;
+}
+
+/* ====== 全局基础组件底色统一为软卡片色，而不是纯白 (#fff) ======
+ * 这一段控制“通用组件”的默认底色：
+ * - 表格单元格、表格空白区域（包括最后一行下面的留白）
+ * - 弹窗、抽屉
+ * - 输入框 / 选择框 / 日期选择器等表单组件
+ * 想让“所有地方的白色区域”整体偏冷/偏暖 → 在这里统一改颜色
+ */
+
+/* 表格：让 wrapper + content + tbody + 单元格全部使用与 Card 相同的底色，避免上下两种白色 */
+.ant-table-wrapper,
+.ant-table,
+.ant-table-container,
+.ant-table-content,
+.ant-table-body,
+.ant-table-tbody,
+.ant-table-tbody > tr > td {
+  background-color: #f7f9fc !important;
+}
+
+/* Modal 弹窗：内容区、头部、底部统一使用软卡片底色 */
+.ant-modal-content,
+.ant-modal-header,
+.ant-modal-body,
+.ant-modal-footer {
+  background-color: #f7f9fc !important;
+}
+
+/* Drawer 抽屉：与卡片同一色系，避免左/右侧大片纯白 */
+.ant-drawer-content,
+.ant-drawer-wrapper-body,
+.ant-drawer-header,
+.ant-drawer-body {
+  background-color: #f7f9fc !important;
+}
+
+/* 输入类组件：Input / Select / Number / Picker 等，默认使用略带色温的浅底而不是纯白 */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-input-number-input,
+.ant-select-selector,
+.ant-picker,
+.ant-mentions,
+.ant-input-textarea {
+  background-color: #f9fbff !important;
+  border-color: rgba(148, 163, 184, 0.32);
+}
+
+.ant-input:hover,
+.ant-input-affix-wrapper:hover,
+.ant-input-number:hover,
+.ant-select-selector:hover,
+.ant-picker:hover,
+.ant-input-textarea:hover {
+  border-color: rgba(129, 140, 248, 0.55);
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper-focused,
+.ant-input-number-focused,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused,
+.ant-input-textarea:focus {
+  border-color: rgba(129, 140, 248, 0.75);
+  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.18);
 }

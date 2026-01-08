@@ -1,6 +1,10 @@
+// 完整迁移自原来的 components/alert/alert.tsx，逻辑保持不变，仅文件路径调整到 Common 目录
+// 消息配置页面
+// 消息配置页面
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
 import { 
   Card,
   Tabs,
@@ -40,7 +44,9 @@ import {
   SettingOutlined,
   SearchOutlined,
   ReloadOutlined,
-  UndoOutlined
+  UndoOutlined,
+  FileSearchOutlined,
+  BarChartOutlined
 } from '@ant-design/icons'
 
 const { Title, Text } = Typography
@@ -73,65 +79,111 @@ interface NoticeItem {
   name: string
 }
 
-// 合并后的告警行类型（客户端/服务端合并展示）
+// 合并后的告警行类型（按“告警 / 通知”归类）
 interface CombinedNotice {
   key: string
   name: string
-  group: '客户端' | '服务端'
+  category: '告警' | '通知'
 }
 
-// 客户端告警类提醒（开关表）
-const alarmNoticeList: NoticeItem[] = [
-  { key: 'clientNewVersion', name: '客户端创建新版本' },
-  { key: 'clientVersionSwitch', name: '客户端版本切换' },
-  { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败' },
-  { key: 's3UnzipSuccess', name: 'S3 zip解压成功' },
-  { key: 's3UnzipFail', name: 'S3 zip解压失败' },
-  { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞' },
-  { key: 'ossConfigChange', name: 'oss配置文件变更' }
-]
-
-// 服务端告警类（矩阵: 通知项 x 人员）
-const reminderNoticeList: NoticeItem[] = [
+// 告警类 - 自动开服
+const alertAutoOpenNoticeList: NoticeItem[] = [
   { key: 'autoOpenServerSuccess', name: '自动开服成功' },
   { key: 'autoOpenServerFail', name: '自动开服失败' },
   { key: 'notifyCPFail', name: '通知CP新预备服失败' },
   { key: 'prepareDeployFail', name: '预备服部署失败' },
-  { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败' },
-  { key: 'autoOpenPolicyChange', name: '自动开服策略变更' },
+  { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败' }
+]
+
+// 告警类 - 静态资源与 CDN
+const alertStaticCdnNoticeList: NoticeItem[] = [
+  { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败' },
+  { key: 's3UnzipFail', name: 'S3 zip解压失败' },
+  { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞' },
+  { key: 'CDNDeployFail', name: 'CDN部署失败' },
+  { key: 'CDNDeploySuccess', name: 'CDN部署成功' }
+]
+
+// 告警类 - 运行时健康
+const alertRuntimeHealthNoticeList: NoticeItem[] = [
+  { key: 'podHealthCheckFail', name: 'pod健康检查失败' },
+  { key: 'podFailure', name: 'Pod故障' },
+  { key: 'podUpdateAbnormal', name: 'Pod更新异常' }
+]
+
+// 通知类 - 客户端版本
+const notificationClientVersionNoticeList: NoticeItem[] = [
+  { key: 'clientNewVersion', name: '客户端创建新版本' },
+  { key: 'clientVersionSwitch', name: '客户端版本切换' },
+  { key: 's3UnzipSuccess', name: 'S3 zip解压成功' }
+]
+
+// 通知类 - 配置变更
+const notificationConfigChangeNoticeList: NoticeItem[] = [
+  { key: 'ossConfigChange', name: 'oss配置文件变更' },
+  { key: 'autoOpenPolicyChange', name: '自动开服策略变更' }
+]
+
+// 通知类 - 发布过程
+const notificationReleaseProcessNoticeList: NoticeItem[] = [
   { key: 'serverDeployFail', name: '服务端部署失败' },
   { key: 'serverDeploySuccess', name: '服务端部署成功' },
   { key: 'grayRollback', name: '灰度回滚' },
   { key: 'grayRollbackDone', name: '灰度回滚完成' },
   { key: 'grayAppend', name: '追加灰度' },
   { key: 'grayAppendDone', name: '灰度追加完成' },
-  { key: 'grayFullDeploy', name: '灰度全量部署' },
-  { key: 'podHealthCheckFail', name: 'pod健康检查失败' },
-  { key: 'podFailure', name: 'Pod故障' },
-  { key: 'podUpdateAbnormal', name: 'Pod更新异常' }
-]
-const CDNNoticeList: NoticeItem[] = [
-  { key: 'CDNDeploySuccess', name: 'CDN部署成功' },
-  { key: 'CDNDeployFail', name: 'CDN部署失败' }
+  { key: 'grayFullDeploy', name: '灰度全量部署' }
 ]
 
-export default function AlertPage(): React.ReactElement {
-  // Webhook：支持多个（默认包含一名机器人 kumo_cp）
-  const [webhooks, setWebhooks] = useState<WebhookItem[]>([
+// 所有“告警类”与“通知类”列表
+const alertNoticeList: NoticeItem[] = [
+  ...alertAutoOpenNoticeList,
+  ...alertStaticCdnNoticeList,
+  ...alertRuntimeHealthNoticeList
+]
+
+const notificationNoticeList: NoticeItem[] = [
+  ...notificationClientVersionNoticeList,
+  ...notificationConfigChangeNoticeList,
+  ...notificationReleaseProcessNoticeList
+]
+
+// 兼容原有结构：客户端 / 服务端列表（用于原有矩阵逻辑）
+// 客户端相关（含静态资源 & CDN）
+const alarmNoticeList: NoticeItem[] = [
+  ...alertStaticCdnNoticeList,
+  ...notificationClientVersionNoticeList,
+  // 配置变更中客户端相关：ossConfigChange
+  notificationConfigChangeNoticeList[0]
+]
+
+// 服务端相关
+const reminderNoticeList: NoticeItem[] = [
+  ...alertAutoOpenNoticeList,
+  ...alertRuntimeHealthNoticeList,
+  // 配置变更中服务端相关：autoOpenPolicyChange
+  notificationConfigChangeNoticeList[1],
+  ...notificationReleaseProcessNoticeList
+]
+
+interface AlertPageProps {
+  /** 来自“webhook管理”页面的机器人列表；如果不传则使用内置示例数据 */
+  webhooks?: WebhookItem[]
+}
+
+export default function AlertPage(props: AlertPageProps): React.ReactElement {
+  // Webhook：来自父组件（人员配置 -> webhook 管理）；未传时使用一个默认示例
+  const webhooks: WebhookItem[] = props.webhooks ?? [
     { id: 'kumo_cp', name: 'kumo_webhook', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
-  ])
-  const [addWebhookOpen, setAddWebhookOpen] = useState<boolean>(false)
-  const [editWebhookOpen, setEditWebhookOpen] = useState<boolean>(false)
-  const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null)
-  const [webhookForm] = Form.useForm<Webhook>()
-  const [webhookEditForm] = Form.useForm<Webhook>()
+  ]
 
   // 人员配置（默认包含一名联系人 slime）
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: '史迪仔', dingId: 'dingtalk:slime' },
+    { id: 'slime', name: 'slime', dingId: 'dingtalk:slime' },
     { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin' }
   ])
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
   const [personForm] = Form.useForm<Person>()
 
   // 客户端提醒矩阵：noticeKey -> { personId: boolean }，默认开启
@@ -161,10 +213,13 @@ export default function AlertPage(): React.ReactElement {
 
   // 合并表：数据与工具方法
   const alarmKeySet = useMemo(() => new Set(alarmNoticeList.map(n => n.key)), [])
-  const allNotices: CombinedNotice[] = useMemo(() => [
-    ...alarmNoticeList.map(n => ({ ...n, group: '客户端' as const })),
-    ...reminderNoticeList.map(n => ({ ...n, group: '服务端' as const }))
-  ], [])
+  const allNotices: CombinedNotice[] = useMemo(
+    () => [
+      ...alertNoticeList.map(n => ({ ...n, category: '告警' as const })),
+      ...notificationNoticeList.map(n => ({ ...n, category: '通知' as const }))
+    ],
+    []
+  )
 
   const [configNoticeKey, setConfigNoticeKey] = useState<string | null>(null)
 
@@ -216,51 +271,6 @@ export default function AlertPage(): React.ReactElement {
     setNoticeWebhook(configNoticeKey, picked)
     setWebhookModalOpen(false)
     message.success('Webhook 配置已更新')
-  }
-
-  // 添加 Webhook（打开抽屉）
-  const handleAddWebhook = (): void => {
-    setAddWebhookOpen(true)
-  }
-
-  // 提交新增 Webhook
-  const onSubmitAddWebhook = async (): Promise<void> => {
-    try {
-      const values = await webhookForm.validateFields()
-      const item: WebhookItem = { id: Date.now().toString(), ...values }
-      setWebhooks(prev => [item, ...prev])
-      setAddWebhookOpen(false)
-      message.success('Webhook 添加成功')
-      webhookForm.resetFields()
-    } catch {
-      // 校验失败不做处理
-    }
-  }
-
-  // 打开编辑 Webhook
-  const handleEditWebhook = (item: WebhookItem): void => {
-    setEditingWebhookId(item.id)
-    // 预填充编辑表单
-    webhookEditForm.setFieldsValue(item)
-    setEditWebhookOpen(true)
-  }
-
-  // 提交编辑 Webhook
-  const onSubmitEditWebhook = async (): Promise<void> => {
-    try {
-      const values = await webhookEditForm.validateFields()
-      setWebhooks(prev => prev.map(w => (w.id === editingWebhookId ? { ...w, ...values } : w)))
-      setEditWebhookOpen(false)
-      message.success('Webhook 已更新')
-    } catch {
-      // 校验失败不做处理
-    }
-  }
-
-  // 发送测试消息（仅模拟）
-  const handleTestWebhook = (): void => {
-    // 这里只做 UI 反馈，不实际发请求
-    message.success('测试消息已发送')
   }
 
   // 添加人员
@@ -317,148 +327,6 @@ export default function AlertPage(): React.ReactElement {
     }))
   }
 
-  // Webhook 区域
-  const WebhookSection = (
-    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-      <Card
-        title={
-          <Space>
-            <RobotOutlined />
-            <span style={{ fontSize: 18 }}>机器人管理</span>
-          </Space>
-        }
-        extra={
-          <Tooltip title="新增机器人">
-            {/* 图标按钮：打开新增抽屉 */}
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddWebhook} />
-          </Tooltip>
-        }
-        styles={{ body: { paddingTop: 8 } }}
-      >
-        <div style={{ marginBottom: 12 }}>
-          <Text type="secondary">支持配置多个自建群机器人，用于将告警/提醒发送到不同群。</Text>
-        </div>
-
-        {webhooks.length === 0 ? (
-          <Empty description="尚未添加机器人" />
-        ) : (
-          <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-            {webhooks.map(item => (
-              <Card key={item.id} size="small" styles={{ body: { paddingTop: 8 } }}>
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label={<strong>机器人名称</strong>}>{item.name}</Descriptions.Item>
-                  <Descriptions.Item label={<strong>Webhook 地址</strong>}>
-                    <Text ellipsis style={{ maxWidth: 620 }}>{item.url}</Text>
-                  </Descriptions.Item>
-                  {item.secret ? (
-                    <Descriptions.Item label={<strong>加签密钥</strong>}>
-                      <Text>{item.secret}</Text>
-                    </Descriptions.Item>
-                  ) : null}
-                </Descriptions>
-
-                <div style={{ marginTop: 8 }}>
-                  <Space>
-                    {/* 测试：模拟发送测试消息 */}
-                    <Tooltip title="发送测试消息">
-                      <Button icon={<SendOutlined />} onClick={handleTestWebhook} />
-                    </Tooltip>
-                    {/* 编辑：打开编辑抽屉（针对该条目） */}
-                    <Tooltip title="编辑机器人">
-                      <Button icon={<EditOutlined />} onClick={() => handleEditWebhook(item)} />
-                    </Tooltip>
-                  </Space>
-                </div>
-              </Card>
-            ))}
-          </Space>
-        )}
-      </Card>
-
-      {/* 新增 Webhook 抽屉 */}
-      <Drawer
-        title="新增机器人"
-        open={addWebhookOpen}
-        width={520}
-        onClose={() => setAddWebhookOpen(false)}
-        destroyOnClose
-      >
-        <Form<Webhook> form={webhookForm} layout="vertical">
-          <Form.Item
-            label="机器人名称"
-            name="name"
-            rules={[
-              { required: true, message: '请输入机器人名称' },
-              { min: 2, max: 12, message: '长度为 2-12 个字符' },
-              { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
-            ]}
-          >
-            <Input placeholder="例如：发布告警机器人" />
-          </Form.Item>
-          <Form.Item
-            label="Webhook 地址"
-            name="url"
-            rules={[
-              { required: true, message: '请输入钉钉 Webhook 地址' },
-              { max: 256, message: '最长不超过 256 个字符' },
-              { pattern: /^https:\/\/oapi\.dingtalk\.com\/robot\/send\?access_token=.+$/, message: '请输入合法的钉钉 Webhook 地址' }
-            ]}
-          >
-            <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
-          </Form.Item>
-          <Form.Item label="加签密钥（可选）" name="secret">
-            <Input.Password placeholder="用于钉钉安全设置（可选）" />
-          </Form.Item>
-          <Space>
-            <Button type="primary" onClick={onSubmitAddWebhook}>保存</Button>
-            <Button onClick={() => setAddWebhookOpen(false)}>取消</Button>
-          </Space>
-        </Form>
-      </Drawer>
-
-      {/* 编辑 Webhook 抽屉 */}
-      <Drawer
-        title="编辑机器人"
-        open={editWebhookOpen}
-        width={520}
-        onClose={() => setEditWebhookOpen(false)}
-        destroyOnClose
-      >
-        <Form<Webhook> form={webhookEditForm} layout="vertical">
-          <Form.Item
-            label="机器人名称"
-            name="name"
-            rules={[
-              { required: true, message: '请输入机器人名称' },
-              { min: 2, max: 12, message: '长度为 2-12 个字符' },
-              { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
-            ]}
-          >
-            <Input placeholder="例如：发布告警机器人" />
-          </Form.Item>
-          <Form.Item
-            label="Webhook 地址"
-            name="url"
-            rules={[
-              { required: true, message: '请输入钉钉 Webhook 地址' },
-              { max: 256, message: '最长不超过 256 个字符' },
-              { pattern: /^https:\/\/oapi\.dingtalk\.com\/robot\/send\?access_token=.+$/, message: '请输入合法的钉钉 Webhook 地址' }
-            ]}
-          >
-            <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
-          </Form.Item>
-          <Form.Item label="加签密钥（可选）" name="secret">
-            <Input.Password placeholder="用于钉钉安全设置（可选）" />
-          </Form.Item>
-          <Space>
-            <Button type="primary" onClick={onSubmitEditWebhook}>保存</Button>
-            <Button onClick={() => setEditWebhookOpen(false)}>取消</Button>
-          </Space>
-        </Form>
-      </Drawer>
-    </Space>
-  )
-
   // 人员配置
   const peopleColumns: ColumnsType<Person> = useMemo(() => ([
     { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
@@ -513,6 +381,14 @@ export default function AlertPage(): React.ReactElement {
           width={480}
           onClose={() => setAddPersonOpen(false)}
           destroyOnClose
+          footer={
+            <div style={{ textAlign: 'left' }}>
+              <Space>
+                <Button onClick={() => setAddPersonOpen(false)}>取消</Button>
+                <Button type="primary" onClick={onSubmitAddPerson}>保存</Button>
+              </Space>
+            </div>
+          }
         >
           <Form<Person> form={personForm} layout="vertical">
             <Form.Item
@@ -529,10 +405,6 @@ export default function AlertPage(): React.ReactElement {
             >
               <Input placeholder="例如：dingtalk:123456" />
             </Form.Item>
-            <Space>
-              <Button type="primary" onClick={onSubmitAddPerson}>保存</Button>
-              <Button onClick={() => setAddPersonOpen(false)}>取消</Button>
-            </Space>
           </Form>
         </Drawer>
       </Card>
@@ -543,25 +415,27 @@ export default function AlertPage(): React.ReactElement {
 
   const alarmRows: MatrixRow[] = useMemo(() => {
     const rows: MatrixRow[] = [{ kind: 'webhook' as const, id: '__webhook__', label: 'Webhook' }]
-    if (people.length === 0) {
+    if (people.length === 0 && webhooks.length === 0) {
       rows.push({ kind: 'empty' as const, id: '__empty__', label: '' })
     } else {
       rows.push(...people.map(p => ({ kind: 'person' as const, id: p.id, label: p.name })))
+      rows.push(...webhooks.map(w => ({ kind: 'person' as const, id: `robot:${w.id}`, label: w.name })))
     }
     return rows
-  }, [people])
+  }, [people, webhooks])
 
   // 旧的服务端告警矩阵已合并为统一表格
 
   const reminderRows: MatrixRow[] = useMemo(() => {
     const rows: MatrixRow[] = [{ kind: 'webhook' as const, id: '__webhook__', label: 'Webhook' }]
-    if (people.length === 0) {
+    if (people.length === 0 && webhooks.length === 0) {
       rows.push({ kind: 'empty' as const, id: '__empty__', label: '' })
     } else {
       rows.push(...people.map(p => ({ kind: 'person' as const, id: p.id, label: p.name })))
+      rows.push(...webhooks.map(w => ({ kind: 'person' as const, id: `robot:${w.id}`, label: w.name })))
     }
     return rows
-  }, [people])
+  }, [people, webhooks])
 
   // 模拟“Element 风格”的树形表格（机器人 + 人员列）
   type TriState = boolean | 'indeterminate'
@@ -581,13 +455,9 @@ export default function AlertPage(): React.ReactElement {
     />
   )
 
-  // 每个“消息类型 x 人员”的开关状态矩阵（仅 UI）
-  const [personChannelMatrix, setPersonChannelMatrix] = useState<Record<string, Record<string, boolean>>>({})
-  // 机器人勾选状态（消息类型 -> 是否启用机器人渠道）
-  const [robotMatrix, setRobotMatrix] = useState<Record<string, boolean>>({})
-  // 小包开关状态（消息类型 -> 是否启用小包）
-  const [packageMatrix, setPackageMatrix] = useState<Record<string, boolean>>({})
-  // 行级 webhook 选择（key -> webhookId 数组，支持多选；空数组=不触发）
+  // 每个“消息类型 x 参与者（人员/机器人）”的开关状态矩阵（仅 UI）
+  const [actorChannelMatrix, setActorChannelMatrix] = useState<Record<string, Record<string, boolean>>>({})
+  // 保留行级 webhook 选择结构（仅供弹窗展示使用，简化为 key -> webhookId 数组）
   const [rowWebhookByKey, setRowWebhookByKey] = useState<Record<string, string[]>>({})
   
   // 告警规则：每个节点可配置多条（服务端部署等）
@@ -625,78 +495,110 @@ export default function AlertPage(): React.ReactElement {
   // 当前配置中的节点 key
   const [configKey, setConfigKey] = useState<string | null>(null)
 
-  // 客户端与服务端树数据（按文档层级）
-  const clientTreeDataA: TreeRow[] = useMemo(() => ([
-    {
-      key: 'client-root', name: '客户端告警', level: 1, robot: false,
-      children: [
-        {
-          key: 'client-version', name: '客户端版本', level: 2, robot: false,
-          children: [
-            { key: 'clientNewVersion', name: '客户端创建新版本', level: 3, robot: false },
-            { key: 'clientVersionSwitch', name: '客户端版本切换', level: 3, robot: false },
-            { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'client-s3', name: 'S3 解压', level: 2, robot: false,
-          children: [
-            { key: 's3UnzipSuccess', name: 'S3 zip解压成功', level: 3, robot: false },
-            { key: 's3UnzipFail', name: 'S3 zip解压失败', level: 3, robot: false }
-          ]
-        },
-        { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', level: 2, robot: false },
-        { key: 'ossConfigChange', name: 'oss配置文件变更', level: 2, robot: false }
-      ]
-    }
-  ]), [])
+  // 客户端与服务端树数据（按“告警类 / 通知类”分组）
+  // 告警 / 通知树数据（Level1：告警 / 通知；Level2：业务场景；Level3：具体告警项）
+  const clientTreeDataA: TreeRow[] = useMemo(
+    () => [
+      {
+        key: 'alert-root',
+        name: '告警',
+        level: 1,
+        robot: false,
+        children: [
+          {
+            key: 'alert-auto-open',
+            name: '自动开服',
+            level: 2,
+            robot: false,
+            children: alertAutoOpenNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          },
+          {
+            key: 'alert-static-cdn',
+            name: '静态资源与 CDN',
+            level: 2,
+            robot: false,
+            children: alertStaticCdnNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          },
+          {
+            key: 'alert-runtime',
+            name: '运行时健康',
+            level: 2,
+            robot: false,
+            children: alertRuntimeHealthNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          }
+        ]
+      }
+    ],
+    []
+  )
 
-  const serverTreeDataA: TreeRow[] = useMemo(() => ([
-    {
-      key: 'server-root', name: '服务端告警', level: 1, robot: false,
-      children: [
-        {
-          key: 'server-auto-open', name: '自动开服', level: 2, robot: false,
-          children: [
-            { key: 'autoOpenServerSuccess', name: '自动开服成功', level: 3, robot: false },
-            { key: 'autoOpenServerFail', name: '自动开服失败', level: 3, robot: false },
-            { key: 'notifyCPFail', name: '通知CP新预备服失败', level: 3, robot: false },
-            { key: 'prepareDeployFail', name: '预备服部署失败', level: 3, robot: false },
-            { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败', level: 3, robot: false },
-            { key: 'autoOpenPolicyChange', name: '自动开服策略变更', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-deploy', name: '服务端', level: 2, robot: false,
-          children: [
-            { key: 'serverDeployFail', name: '服务端部署失败', level: 3, robot: false },
-            { key: 'serverDeploySuccess', name: '服务端部署成功', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-gray', name: '灰度发布', level: 2, robot: false,
-          children: [
-            { key: 'grayRollback', name: '灰度回滚', level: 3, robot: false },
-            { key: 'grayRollbackDone', name: '灰度回滚完成', level: 3, robot: false },
-            { key: 'grayAppend', name: '追加灰度', level: 3, robot: false },
-            { key: 'grayAppendDone', name: '灰度追加完成', level: 3, robot: false },
-            { key: 'grayFullDeploy', name: '灰度全量部署', level: 3, robot: false }
-          ]
-        },
-        {
-          key: 'server-pod', name: 'pod 状态', level: 2, robot: false,
-          children: [
-            { key: 'podHealthCheckFail', name: 'pod健康检查失败', level: 3, robot: false },
-            { key: 'podFailure', name: 'Pod故障', level: 3, robot: false },
-            { key: 'podUpdateAbnormal', name: 'Pod更新异常', level: 3, robot: false }
-          ]
-        }
-      ]
-    }
-  ]), [])
+  const serverTreeDataA: TreeRow[] = useMemo(
+    () => [
+      {
+        key: 'notification-root',
+        name: '通知',
+        level: 1,
+        robot: false,
+        children: [
+          {
+            key: 'notification-client-version',
+            name: '客户端版本',
+            level: 2,
+            robot: false,
+            children: notificationClientVersionNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          },
+          {
+            key: 'notification-config',
+            name: '配置变更',
+            level: 2,
+            robot: false,
+            children: notificationConfigChangeNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          },
+          {
+            key: 'notification-release',
+            name: '发布过程',
+            level: 2,
+            robot: false,
+            children: notificationReleaseProcessNoticeList.map((n: NoticeItem): TreeRow => ({
+              key: n.key,
+              name: n.name,
+              level: 3,
+              robot: false
+            }))
+          }
+        ]
+      }
+    ],
+    []
+  )
 
   // CDN 与客户端、服务端同级（Level1）
-  const cdnTreeDataA: TreeRow[] = useMemo(() => ([
+  /*const cdnTreeDataA: TreeRow[] = useMemo(() => ([
     {
       key: 'cdn-root', name: 'CDN 部署告警', level: 1, robot: false,
       children: [
@@ -704,9 +606,7 @@ export default function AlertPage(): React.ReactElement {
         { key: 'CDNDeployFail', name: 'CDN部署失败', level: 2, robot: false }
       ]
     }
-  ]), [])
-
-  
+  ]), [])*/
 
   // 辅助：构建 key -> node、父子关系，用于级联与三态计算
   type NodeMaps = {
@@ -731,10 +631,10 @@ export default function AlertPage(): React.ReactElement {
         }
       })
     }
-    const allRoots: TreeRow[] = [...clientTreeDataA, ...serverTreeDataA, ...cdnTreeDataA]
+    const allRoots: TreeRow[] = [...clientTreeDataA, ...serverTreeDataA] /*...cdnTreeDataA*/
     walk(allRoots, null)
     return { nodeByKey, childrenByKey, parentByKey, allKeys: Object.keys(nodeByKey) }
-  }, [clientTreeDataA, serverTreeDataA, cdnTreeDataA])
+  }, [clientTreeDataA, serverTreeDataA]) /*cdnTreeDataA*/
 
   const getDescendants = (key: string): string[] => {
     const out: string[] = []
@@ -760,97 +660,45 @@ export default function AlertPage(): React.ReactElement {
     return out
   }
 
-  // 机器人三态：从叶子汇总
-  const getRobotTri = (key: string): TriState => {
+  // 参与者：人员 + 机器人 + 站内信，在矩阵中每个参与者对应一列
+  interface Actor {
+    id: string
+    name: string
+    kind: 'person' | 'robot' | 'site'
+  }
+
+  const actors: Actor[] = useMemo(
+    () => [
+      { id: 'siteMsg', name: '站内信', kind: 'site' as const },
+      ...webhooks.map(w => ({ id: `robot:${w.id}`, name: w.name, kind: 'robot' as const })),
+      ...people.map(p => ({ id: p.id, name: p.name, kind: 'person' as const }))
+        ],
+    [people, webhooks]
+  )
+
+  // 三态：某个节点及其所有子节点，对同一参与者的整体状态
+  const getActorTri = (key: string, actorId: string): TriState => {
     const keys = [key, ...getDescendants(key)]
     let hasTrue = false
     let hasFalse = false
     for (const k of keys) {
-      const base = robotMatrix[k] ?? (maps.nodeByKey[k]?.robot === true)
-      if (base) hasTrue = true; else hasFalse = true
+      const base = actorChannelMatrix[k]?.[actorId] ?? false
+      if (base) hasTrue = true
+      else hasFalse = true
       if (hasTrue && hasFalse) return 'indeterminate'
     }
+    // 如果从未配置过，默认视为关闭
     return hasTrue ? true : false
   }
 
-  // 小包三态：从叶子汇总
-  const getPackageTri = (key: string): TriState => {
+  // 级联设置：父级任意开关影响全部子级（包括多级）
+  const setActorCascade = (key: string, actorId: string, checked: boolean): void => {
     const keys = [key, ...getDescendants(key)]
-    let hasTrue = false
-    let hasFalse = false
-    for (const k of keys) {
-      const base = packageMatrix[k] ?? false
-      if (base) hasTrue = true; else hasFalse = true
-      if (hasTrue && hasFalse) return 'indeterminate'
-    }
-    return hasTrue ? true : false
-  }
-
-  // 人员三态：从叶子汇总（不考虑机器人，仅计算开关状态）
-  const getPersonTri = (key: string, personId: string): TriState => {
-    const keys = [key, ...getDescendants(key)]
-    let hasTrue = false
-    let hasFalse = false
-    for (const k of keys) {
-      const base = (personChannelMatrix[k]?.[personId] ?? true)
-      if (base) hasTrue = true; else hasFalse = true
-      if (hasTrue && hasFalse) return 'indeterminate'
-    }
-    return hasTrue ? true : false
-  }
-
-  const setRobotCascade = (key: string, value: boolean): void => {
-    const keys = [key, ...getDescendants(key)]
-    setRobotMatrix(prev => {
-      const next = { ...prev }
-      keys.forEach(k => { next[k] = value })
-      return next
-    })
-    if (!value) {
-      // 机器人关闭时，所有人员关闭
-      setPersonChannelMatrix(prev => {
-        const next = { ...prev }
-        keys.forEach(k => {
-          const row = { ...(next[k] ?? {}) }
-          people.forEach(p => { row[p.id] = false })
-          next[k] = row
-        })
-        return next
-      })
-    }
-  }
-
-  const setPackageCascade = (key: string, value: boolean): void => {
-    const keys = [key, ...getDescendants(key)]
-    setPackageMatrix(prev => {
-      const next = { ...prev }
-      keys.forEach(k => { next[k] = value })
-      return next
-    })
-    if (!value) {
-      // 当小包也关闭，且机器人同样关闭时，人员默认关闭
-      const robotOffEverywhere = (k: string) => (robotMatrix[k] ?? false) === false
-      setPersonChannelMatrix(prev => {
-        const next = { ...prev }
-        keys.forEach(k => {
-          if (robotOffEverywhere(k)) {
-            const row = { ...(next[k] ?? {}) }
-            people.forEach(p => { row[p.id] = false })
-            next[k] = row
-          }
-        })
-        return next
-      })
-    }
-  }
-
-  const setPersonCascade = (key: string, personId: string, value: boolean): void => {
-    const keys = [key, ...getDescendants(key)]
-    setPersonChannelMatrix(prev => {
-      const next = { ...prev }
+    setActorChannelMatrix(prev => {
+      const next: Record<string, Record<string, boolean>> = { ...prev }
       keys.forEach(k => {
         const row = { ...(next[k] ?? {}) }
-        row[personId] = value
+        row[actorId] = checked
         next[k] = row
       })
       return next
@@ -860,94 +708,74 @@ export default function AlertPage(): React.ReactElement {
   const treeColumns: ColumnsType<TreeRow> = useMemo(() => {
     const base: ColumnsType<TreeRow> = [
       {
-        title: '消息类型', dataIndex: 'name', key: 'name', width: 40, fixed: 'left',
+        title: '消息类型', dataIndex: 'name', key: 'name', width: 80, fixed: 'left',
         render: (_: unknown, r: TreeRow) => (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ paddingLeft: r.level === 1 ? 0 : r.level === 2 ? 16 : 24, flex: '0 1 auto' }}>{r.name}</div>
             {r.key === 'server-deploy' && (
-              <Tooltip title="编辑告警规则">
+              <Tooltip title="配置应用">
                 <Button
                   size="small"
-                  type="text"
-                  icon={<EditOutlined />}
+                  type="link"
+                  color="primary"
                   onClick={() => {
                     setRulesEditingKey(r.key)
                     setTempRules((alertRulesByKey[r.key] && alertRulesByKey[r.key].length > 0) ? alertRulesByKey[r.key] : makeDefaultRules())
                     setRulesModalOpen(true)
                   }}
-                />
+                >
+                  配置应用
+                </Button>
               </Tooltip>
             )}
           </div>
         )
-      },
-      { title: '小包', key: 'smallpkg', width: 40, render: (_: unknown, r: TreeRow) => {
-        const tri = getPackageTri(r.key)
-        const enabled = tri === true
-        return (
-          <Switch
-            checkedChildren="on"
-            unCheckedChildren="off"
-            checked={enabled}
-            onChange={(checked) => setPackageCascade(r.key, checked)}
-          />
-        )
-      } },
-      { title: '自建群机器人', key: 'robot', width: 40, render: (_: unknown, r: TreeRow) => {
-        const tri = getRobotTri(r.key)
-        const enabled = tri === true
-        const configuredIds = rowWebhookByKey[r.key] ?? []
-        const needConfig = enabled && configuredIds.length === 0
-        return (
-          <Space>
-            <Checkbox
-              indeterminate={tri === 'indeterminate'}
-              checked={enabled}
-              onChange={(e) => setRobotCascade(r.key, e.target.checked)}
-            />
-            <Tooltip title={enabled ? (needConfig ? '请配置机器人' : '配置机器人') : '请先开启自建群机器人'}>
-              <Button
-                size="small"
-                type="text"
-                icon={<SettingOutlined />}
-                danger={needConfig}
-                className={needConfig ? 'alert-config-pulse' : undefined}
-                disabled={!enabled}
-                onClick={() => {
-                  setConfigKey(r.key)
-                  const preset = rowWebhookByKey[r.key] ?? []
-                  setTempWebhookIds(preset)
-                  setWebhookModalOpen(true)
-                }}
-              />
-            </Tooltip>
-          </Space>
-        )
-      } }
-    ]
-    const personCols: ColumnsType<TreeRow> = people.map((p: Person): ColumnType<TreeRow> => ({
-      title: p.name,
-      key: `person_${p.id}`,
-      width: 40,
-      render: (_: unknown, r: TreeRow) => {
-        const robotEnabled = getRobotTri(r.key) === true
-        const packageEnabled = getPackageTri(r.key) === true
-        const channelEnabled = robotEnabled || packageEnabled
-        const personTri = getPersonTri(r.key, p.id)
-        const personChecked = personTri === true
-        return (
-          <Switch
-            checkedChildren="on"
-            unCheckedChildren="off"
-            checked={channelEnabled && personChecked}
-            disabled={!channelEnabled}
-            onChange={(checked) => setPersonCascade(r.key, p.id, checked)}
-          />
-        )
       }
-    }))
-    return [...base, ...personCols]
-  }, [people, personChannelMatrix, robotMatrix, packageMatrix, rowWebhookByKey])
+    ]
+
+    // 将参与者按类别分组：站内信 / 人员 / 机器人
+    const personActors = actors.filter(actor => actor.kind === 'person')
+    const robotActors = actors.filter(actor => actor.kind === 'robot')
+    const siteActors = actors.filter(actor => actor.kind === 'site')
+
+    const buildActorCols = (actorList: Actor[]): ColumnsType<TreeRow> =>
+      actorList.map((actor): ColumnType<TreeRow> => ({
+        title: actor.name,
+        key: `actor_${actor.id}`,
+        width: 64,
+        align: 'center',
+        className: 'alert-actor-col-center',
+        render: (_: unknown, r: TreeRow) => {
+          const tri = getActorTri(r.key, actor.id)
+          return renderChannelCheckbox(tri, (checked) => setActorCascade(r.key, actor.id, checked))
+        }
+      }))
+
+    const groupedActorCols: ColumnsType<TreeRow> = []
+
+    // 站内信：只有一个渠道，不做分组表头，直接作为单列表头展示
+    if (siteActors.length > 0) {
+      groupedActorCols.push(...buildActorCols(siteActors))
+    }
+
+    if (personActors.length > 0) {
+      groupedActorCols.push({
+        title: '联系人',
+        children: buildActorCols(personActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+
+    if (robotActors.length > 0) {
+      groupedActorCols.push({
+        title: '群机器人',
+        children: buildActorCols(robotActors),
+        className: 'alert-actor-group-header'
+      })
+    }
+
+    return [...base, ...groupedActorCols]
+  }, [actors, actorChannelMatrix])
 
   const clientTreeData: TreeRow[] = useMemo(() => ([
     {
@@ -958,7 +786,8 @@ export default function AlertPage(): React.ReactElement {
           children: [
             { key: 'clientNewVersion', name: '客户端创建新版本', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
             { key: 'clientVersionSwitch', name: '客户端版本切换', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
-            { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' }
+            { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
+            { key: 'CDNDeployFail', name: 'CDN部署失败', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' }
           ]
         },
         {
@@ -969,7 +798,8 @@ export default function AlertPage(): React.ReactElement {
           ]
         },
         { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', level: 2, siteMsg: true, sms: true, email: true, robot: false },
-        { key: 'ossConfigChange', name: 'oss配置文件变更', level: 2, siteMsg: true, sms: true, email: true, robot: false }
+        { key: 'ossConfigChange', name: 'oss配置文件变更', level: 2, siteMsg: true, sms: true, email: true, robot: false },
+        { key: 'CDNDeploySuccess', name: 'CDN部署成功', level: 2, siteMsg: true, sms: true, email: true, robot: false }
       ]
     }
   ]), [])
@@ -990,7 +820,7 @@ export default function AlertPage(): React.ReactElement {
           ]
         },
         {
-          key: 'server-deploy', name: '服务端', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
+          key: 'server-deploy', name: '应用故障告警', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
           children: [
             { key: 'serverDeployStart', name: '服务端部署', level: 3, siteMsg: true, sms: true, email: true, robot: false },
             { key: 'serverDeployDone', name: '服务端部署完成', level: 3, siteMsg: true, sms: true, email: true, robot: false }
@@ -1026,49 +856,31 @@ export default function AlertPage(): React.ReactElement {
   ]), [])
 
   const NoticeSection = (
-    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-      <Card
-        title={
-          <Space>
-            <BellOutlined />
-            <span style={{ fontSize: 18 }}>告警管理</span>
-          </Space>
-        }
-        styles={{ body: { paddingTop: 8 } }}
-      >
-        <>
-          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-            <Space>
-              <Input placeholder="请输入消息类型" style={{ width: 240 }} suffix={<SearchOutlined />} />
-            </Space>
-          </div>
-          <Table
-            rowKey="key"
-            columns={treeColumns}
-            dataSource={[...clientTreeDataA, ...serverTreeDataA, ...cdnTreeDataA]}
-            pagination={false}
-            scroll={{ x: 1190, y: 420 }}
-            expandable={{ defaultExpandAllRows: false }}
-          />
-        </>
-      </Card>
-    </Space>
+    <>
+      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+        <Space>
+          <Input placeholder="请输入消息类型" style={{ width: 240 }} suffix={<SearchOutlined />} />
+        </Space>
+      </div>
+      <Table
+        rowKey="key"
+        columns={treeColumns}
+        dataSource={[...clientTreeDataA, ...serverTreeDataA]} /*...cdnTreeDataA*/
+        pagination={false}
+        scroll={{ x: 1190, y: 420 }}
+        expandable={{ defaultExpandedRowKeys: ['alert-root', 'notification-root'] }}
+      />
+    </>
   )
 
-  const items: TabsProps['items'] = [
-    { key: 'notice', label: '告警管理', children: NoticeSection },
-    { key: 'people', label: '人员配置', children: PeopleSection },
-    { key: 'webhook', label: '自建群机器人', children: WebhookSection }
-  ]
-
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>告警配置</Title>
-      </div>
+    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+      {/* 告警矩阵主体：消息类型的配置 */}
+      <Card
 
-      <Card>
-        <Tabs items={items} />
+        
+      >
+        {NoticeSection}
       </Card>
 
       {/* Webhook 配置 Modal：应用于被点击的节点（整行） */}
@@ -1081,8 +893,8 @@ export default function AlertPage(): React.ReactElement {
           if (key) {
             const picked = [...tempWebhookIds]
             const keysToApply = [key, ...getDescendants(key)]
-            setRowWebhookByKey(prev => {
-              const next = { ...prev }
+            setRowWebhookByKey((prev: Record<string, string[]>) => {
+              const next: Record<string, string[]> = { ...prev }
               keysToApply.forEach(k => { next[k] = picked })
               return next
             })
@@ -1190,7 +1002,21 @@ export default function AlertPage(): React.ReactElement {
           >新增规则</Button>
         </Space>
       </Modal>
-    </div>
+
+      {/* 数据看板 Drawer */}
+      <Drawer
+        title={<span>埋点数据仪表盘</span>}
+        placement="left"
+        width={'100%'}
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
+        destroyOnClose
+      >
+        <PlausibleLikeDashboard />
+      </Drawer>
+    </Space>
   )
 }
+
+
 
