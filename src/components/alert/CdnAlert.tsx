@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react'
 import { Card, Space, Table, Tag, Typography, message, Tooltip, Button, Tabs, Drawer, Empty, Descriptions, Switch, Steps, Alert } from 'antd'
-import { CopyOutlined, UnorderedListOutlined, DeleteOutlined, CloseCircleOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { CopyOutlined, UnorderedListOutlined, DeleteOutlined, CloseCircleOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExportOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { TabsProps } from 'antd'
 import { CDN_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
@@ -14,15 +14,6 @@ interface CdnRow {
   uri: string
   status: string  // HTTP状态码：403、404、200等
   count: number
-}
-
-// Faro配置信息接口
-interface FaroConfig {
-  appName: string
-  environment: string
-  endpoint: string
-  apiKey: string
-  grafanaDashboardUrl: string
 }
 
 // HTTP状态码错误映射
@@ -88,30 +79,16 @@ const mockCdnData: CdnRow[] = [
   }
 ]
 
-// 模拟Faro配置 - null表示未配置，有值表示已配置
-const mockFaroConfig: FaroConfig | null = {
-  appName: 'publisher-frontend',
-  environment: 'production',
-  endpoint: 'https://faro-collector.grafana.net/collect',
-  apiKey: 'faro_****************************',
-  grafanaDashboardUrl: 'https://publisher.grafana.net/d/f82bc22f-1c8e-4775-8258-kumo/kumo-resource?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=d3ebb5b5-d547-4b94-8504-87fcc7384610&var-cluster=cpp-pro-k8s&var-Metrics=edqlmrqwim41sc&var-Logs=cdqli0zszvxtsb&var-workload=adminserver'
-}
-
 export default function CdnAlert(): React.ReactElement {
   const [messageApi, contextHolder] = message.useMessage()
   const [scanTime, setScanTime] = useState<string>('')
+  const [faroConfigOpen, setFaroConfigOpen] = useState<boolean>(false)
   
   // 忽略列表抽屉状态
   const [ignoreDrawerOpen, setIgnoreDrawerOpen] = useState<boolean>(false)
   
   // 忽略的URI列表
   const [ignoredUris, setIgnoredUris] = useState<CdnRow[]>([])
-  
-  // 配置指导展开状态
-  const [showGuideDetail, setShowGuideDetail] = useState<boolean>(false)
-  
-  // 监控面板显示状态（点击联系小包后显示）
-  const [showMonitoringPanel, setShowMonitoringPanel] = useState<boolean>(false)
   
   // 当前活跃的CDN数据（排除已忽略的）
   const activeCdnData = useMemo(() => {
@@ -152,6 +129,25 @@ export default function CdnAlert(): React.ReactElement {
       hour12: false
     }))
   }, [])
+
+  // Faro 初始化代码示例字符串（仅用于展示与复制）
+  const faroInitCode = `import { getWebInstrumentations, initializeFaro } from '@grafana/faro-web-sdk';
+import { TracingInstrumentation } from '@grafana/faro-web-tracing';
+
+initializeFaro({
+  url: 'https://faro-collector-prod-ap-southeast-0.grafana.net/collect/g123743be98abaec9cc8a3bb074ae188',
+  app: {
+    name: 'gametest',
+    version: '1.0.0',
+    environment: 'staging', // 可手动更改至正式或测试环境
+  },
+  instrumentations: [
+    // Mandatory, omits default instrumentations otherwise.
+    ...getWebInstrumentations(),
+    // Tracing package to get end-to-end visibility for HTTP requests.
+    new TracingInstrumentation(),
+  ],
+});`
 
   // CDN告警表格列定义
   const cdnColumns: ColumnsType<CdnRow> = useMemo(() => [
@@ -294,316 +290,48 @@ export default function CdnAlert(): React.ReactElement {
   ], [])
 
   // CDN告警Tab内容
-  const CdnAlertContent = (
-    <Card 
-      title={<span style={{ fontSize: 16 }}>告警资源列表</span>} 
-      styles={{ body: { paddingTop: 8 } }}
-      extra={
-        <Space>
-          <Button 
-            icon={<UnorderedListOutlined />}
-            onClick={() => setIgnoreDrawerOpen(true)}
-          >
-            忽略列表 ({ignoredUris.length})
-          </Button>
-        </Space>
-      }
-    >
-      {/* 扫描时间显示 */}
-      <div style={{ 
-        marginBottom: 16,
-        padding: '8px 16px', 
-        backgroundColor: '#f5f5f5', 
-        borderRadius: '6px',
-        fontSize: '14px',
-        color: '#666'
-      }}>
-        <span>最后扫描时间：</span>
-        <span style={{ fontFamily: 'Monaco, monospace', color: '#333' }}>
-          {scanTime || '--'}
-        </span>
-      </div>
-      
-      <Table<CdnRow>
-        rowKey="id"
-        columns={cdnColumns}
-        dataSource={activeCdnData}
-        pagination={CDN_DEFAULT_PAGINATION}
-      />
-    </Card>
-  )
-
-  // 前端监控内容
-  const FaroAlertContent = (
-    <Card 
-      title={<span style={{ fontSize: 16 }}>集成 Grafana Faro SDK</span>} 
-      styles={{ body: { paddingTop: 8 } }}
-    >
-      <div style={{ marginBottom: 20 }}>
-        <Text type="secondary">
-          Faro 是 Grafana 的前端应用可观测性工具，可以实时监控前端性能、错误和用户行为。
-        </Text>
-      </div>
-
-      {/* 监控面板链接或联系提示 */}
-      {showMonitoringPanel ? (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ marginBottom: 12 }}>
-            <Text strong style={{ fontSize: 15 }}>监控面板地址：</Text>
-          </div>
-          <div style={{
-            padding: '16px 20px',
-            backgroundColor: '#f0f5ff',
-            border: '2px solid #91caff',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
-            <Typography.Link 
-              href={mockFaroConfig?.grafanaDashboardUrl}
-              target="_blank"
-              style={{ 
-                fontSize: 14,
-                flex: 1,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                marginRight: 12
-              }}
-            >
-              {mockFaroConfig?.grafanaDashboardUrl}
-            </Typography.Link>
-            <Button 
-              type="primary"
-              onClick={() => window.open(mockFaroConfig?.grafanaDashboardUrl, '_blank')}
-            >
-              打开面板
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 28 }}>
-          <Text>
-            暂未开启监控服务，请
-            <Typography.Link 
-              onClick={() => {
-                // 点击后显示监控面板
-                setShowMonitoringPanel(true)
-                messageApi.success('配置请求已发送，监控面板已就绪')
-              }}
-              style={{ margin: '0 4px' }}
-            >
-              联系小包
-            </Typography.Link>
-          </Text>
-        </div>
-      )}
-
-      {/* 配置指导（可展开） */}
-      <div style={{ 
-        marginTop: 24,
-        padding: '16px 20px',
-        backgroundColor: '#fafafa',
-        border: '1px solid #d9d9d9',
-        borderRadius: 8
-      }}>
-        <div 
-          style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            cursor: 'pointer'
-          }}
-          onClick={() => setShowGuideDetail(!showGuideDetail)}
-        >
-          <Text strong style={{ fontSize: 15 }}>
-            📖 配置指导
-          </Text>
-          <Button type="link" size="small">
-            {showGuideDetail ? '收起' : '点击展示'}
-          </Button>
-        </div>
-
-        {showGuideDetail && (
-          <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #e8e8e8' }}>
-            <Space direction="vertical" size={24} style={{ width: '100%' }}>
-              {/* 安装依赖 */}
-              <div>
-                <div style={{ 
-                  fontSize: 15, 
-                  fontWeight: 600, 
-                  marginBottom: 12,
-                  color: '#1890ff'
-                }}>
-                  步骤 1: 安装依赖包
-                </div>
-                <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                  <div>
-                    <Text type="secondary" style={{ fontSize: 13, marginBottom: 8, display: 'block' }}>
-                      安装 Faro Web SDK 核心包
-                    </Text>
-                    <div style={{ 
-                      backgroundColor: '#fff', 
-                      padding: '12px 16px', 
-                      borderRadius: 6,
-                      border: '1px solid #e8e8e8',
-                      fontFamily: 'Monaco, Consolas, monospace',
-                      fontSize: 13,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <code>npm install @grafana/faro-web-sdk</code>
-                      <Button 
-                        size="small" 
-                        icon={<CopyOutlined />}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          navigator.clipboard.writeText('npm install @grafana/faro-web-sdk')
-                          messageApi.success('命令已复制')
-                        }}
-                      >
-                        复制
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Text type="secondary" style={{ fontSize: 13, marginBottom: 8, display: 'block' }}>
-                      安装 Faro 链路追踪包
-                    </Text>
-                    <div style={{ 
-                      backgroundColor: '#fff', 
-                      padding: '12px 16px', 
-                      borderRadius: 6,
-                      border: '1px solid #e8e8e8',
-                      fontFamily: 'Monaco, Consolas, monospace',
-                      fontSize: 13,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <code>npm install @grafana/faro-web-tracing</code>
-                      <Button 
-                        size="small" 
-                        icon={<CopyOutlined />}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          navigator.clipboard.writeText('npm install @grafana/faro-web-tracing')
-                          messageApi.success('命令已复制')
-                        }}
-                      >
-                        复制
-                      </Button>
-                    </div>
-                  </div>
-                </Space>
-              </div>
-
-              {/* 初始化代码 */}
-              <div>
-                <div style={{ 
-                  fontSize: 15, 
-                  fontWeight: 600, 
-                  marginBottom: 12,
-                  color: '#1890ff'
-                }}>
-                  步骤 2: 在项目中初始化 Faro
-                </div>
-                <Text type="secondary" style={{ fontSize: 13, marginBottom: 12, display: 'block' }}>
-                  在你的应用入口文件（如 app.tsx 或 main.tsx）中添加以下代码
-                </Text>
-                <div style={{ 
-                  backgroundColor: '#fff', 
-                  padding: '16px', 
-                  borderRadius: 6,
-                  border: '1px solid #e8e8e8',
-                  fontFamily: 'Monaco, Consolas, monospace',
-                  fontSize: 13,
-                  position: 'relative',
-                  overflow: 'auto'
-                }}>
-                  <Button 
-                    size="small" 
-                    icon={<CopyOutlined />}
-                    style={{ position: 'absolute', top: 12, right: 12 }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const code = `import { getWebInstrumentations, initializeFaro } from '@grafana/faro-web-sdk';
-import { TracingInstrumentation } from '@grafana/faro-web-tracing';
-
-initializeFaro({
-  url: 'https://faro-collector-prod-ap-southeast-0.grafana.net/collect/1547743be98abaec9cc8a3bb074ae188',
-  app: {
-    name: 'tenken',
-    version: '1.0.0',
-    environment: 'staging'
-  },
-  instrumentations: [
-    // Mandatory, omits default instrumentations otherwise.
-    ...getWebInstrumentations(),
-    // Tracing package to get end-to-end visibility for HTTP requests.
-    new TracingInstrumentation(),
-  ],
-});`
-                      navigator.clipboard.writeText(code)
-                      messageApi.success('代码已复制')
-                    }}
-                  >
-                    复制
-                  </Button>
-                  <pre style={{ margin: 0, paddingRight: 80 }}>
-{`import { getWebInstrumentations, initializeFaro } from '@grafana/faro-web-sdk';
-import { TracingInstrumentation } from '@grafana/faro-web-tracing';
-
-initializeFaro({
-  url: 'https://faro-collector-prod-ap-southeast-0.grafana.net/collect/1547743be98abaec9cc8a3bb074ae188',
-  app: {
-    name: 'tenken',
-    version: '1.0.0',
-    environment: 'staging'
-  },
-  instrumentations: [
-    // Mandatory, omits default instrumentations otherwise.
-    ...getWebInstrumentations(),
-    // Tracing package to get end-to-end visibility for HTTP requests.
-    new TracingInstrumentation(),
-  ],
-});`}
-                  </pre>
-                </div>
-              </div>
-
-              <div style={{ 
-                padding: '12px 16px',
-                backgroundColor: '#e6f4ff',
-                border: '1px solid #91caff',
-                borderRadius: 6
-              }}>
-                <Text style={{ color: '#0958d9' }}>
-                  💡 提示：完成配置后，请发布新版本，Faro 将自动开始收集监控数据
-                </Text>
-              </div>
-            </Space>
-          </div>
-        )}
-      </div>
-    </Card>
-  )
-
-
-  // Tab配置
   const tabItems: TabsProps['items'] = [
     {
       key: 'cdn',
       label: 'CDN 告警',
-      children: CdnAlertContent
-    },
-    {
-      key: 'faro',
-      label: '前端监控',
-      children: FaroAlertContent
+      children: (
+        <Card 
+          title={<span style={{ fontSize: 16 }}>告警资源列表</span>} 
+          styles={{ body: { paddingTop: 8 } }}
+          extra={
+            <Space>
+              <Button 
+                icon={<UnorderedListOutlined />}
+                onClick={() => setIgnoreDrawerOpen(true)}
+              >
+                忽略列表 ({ignoredUris.length})
+              </Button>
+            </Space>
+          }
+        >
+          {/* 扫描时间显示 */}
+          <div style={{ 
+            marginBottom: 16,
+            padding: '8px 16px', 
+            backgroundColor: '#f5f5f5', 
+            borderRadius: '6px',
+            fontSize: '14px',
+            color: '#666'
+          }}>
+            <span>最后扫描时间：</span>
+            <span style={{ fontFamily: 'Monaco, monospace', color: '#333' }}>
+              {scanTime || '--'}
+            </span>
+          </div>
+          
+          <Table<CdnRow>
+            rowKey="id"
+            columns={cdnColumns}
+            dataSource={activeCdnData}
+            pagination={CDN_DEFAULT_PAGINATION}
+          />
+        </Card>
+      )
     }
   ]
 
@@ -611,16 +339,61 @@ initializeFaro({
     <div style={{ padding: '24px' }}>
       {contextHolder}
       
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0, marginBottom: 8 }}>客户端告警</Title>
-        <div style={{ 
-          fontSize: '14px', 
-          color: '#666', 
-          lineHeight: '1.5'
-        }}>
-          客户端告警用于实时监控CDN异常及前端应用性能，支持快速定位问题，提升响应与修复效率。
+      {/* 顶部说明卡片 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ paddingLeft: 24, paddingRight: 24, paddingTop: 2, paddingBottom: 2 }}>
+        <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+        客户端告警
+          </Title>
+          <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.5 }}>
+            客户端告警用于实时监控CDN异常，支持快速定位问题，提升响应与修复效率。
+          </Text>
         </div>
-      </div>
+      </Card>
+
+      {/* Faro Dashboard 前端可观测卡片 */}
+      <Card
+        style={{ marginBottom: 24, borderRadius: 12, padding: 0, overflow: 'hidden' }}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div
+          style={{
+            backgroundImage: 'url(/assets/faro-dashboard.png)',
+            backgroundSize: 'cover',
+            backgroundRepeat: 'no-repeat',
+            position: 'relative'
+          }}
+        >
+          <div
+            style={{
+              background: 'linear-gradient(0deg, white 35%, rgba(255, 255, 255, 0.3) 100%)',
+              padding: '200px 24px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}
+          >
+            <Text strong style={{ fontSize: 16 }}>
+              Faro Dashboard 前端可观测
+            </Text>
+            <Text type="secondary" style={{ maxWidth: 520 }}>
+              Faro 是 Grafana 的前端可观测性工具，配置完成后可在 Grafana Dashboard 查看并实时监控游戏内的前端性能、错误及用户行为。
+            </Text>
+            <Space size={16} style={{ marginTop: 8 }}>
+              <Button
+                icon={<ExportOutlined />}
+                type="default"
+                onClick={() => window.open('https://publisher.grafana.net/', '_blank')}
+              >
+                前往面板
+              </Button>
+              <Button type="text" onClick={() => setFaroConfigOpen(true)}>
+                查看配置
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </Card>
       
       {/* Tabs展示CDN告警和前端监控 */}
       <Tabs 
@@ -661,6 +434,187 @@ initializeFaro({
             />
           </>
         )}
+      </Drawer>
+
+      {/* Faro 配置说明 Drawer */}
+      <Drawer
+        title="配置Faro Dashboard"
+        width={720}
+        open={faroConfigOpen}
+        onClose={() => setFaroConfigOpen(false)}
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Button onClick={() => setFaroConfigOpen(false)}>
+              关闭
+            </Button>
+          </div>
+        }
+      >
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          {/* 打开监控面板 */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>打开监控面板</Text>
+              <Text type="secondary">
+                确认 Grafana 监控面板可以正常访问后，再进行后续步骤
+              </Text>
+              <Space style={{ marginTop: 4 }} size={16}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 13,
+                      border: '1px solid rgba(0, 0, 0, 0.06)',
+                      fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                      overflowX: 'auto',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    https://publisher.grafana.net/
+                  </div>
+                </div>
+                <Button
+                  type="primary"
+                  onClick={() => window.open('https://publisher.grafana.net/', '_blank')}
+                  style={{ height: 38 }}
+                >
+                  打开面板
+                </Button>
+              </Space>
+            </Space>
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              marginTop: 4,
+              paddingTop: 4
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              请参考以下步骤进行配置
+            </Text>
+          </div>
+
+          {/* 第一步：安装依赖包 */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>第1步：安装步骤包</Text>
+              <Text type="secondary">安装 Faro Web SDK 核心包</Text>
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                  position: 'relative',
+                  overflowX: 'auto',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>npm install @grafana/faro-web-sdk</span>
+                <Button
+                  size="small"
+                  type="default"
+                  icon={<CopyOutlined />}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 12,
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText('npm install @grafana/faro-web-sdk')
+                    messageApi.success('命令已复制')
+                  }}
+                >
+                  copy
+                </Button>
+              </div>
+
+              <Text type="secondary">安装 Faro 链路追踪包</Text>
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                  position: 'relative',
+                  overflowX: 'auto',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>npm install @grafana/faro-web-tracing</span>
+                <Button
+                  size="small"
+                  type="default"
+                  icon={<CopyOutlined />}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 12,
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText('npm install @grafana/faro-web-tracing')
+                    messageApi.success('命令已复制')
+                  }}
+                >
+                  copy
+                </Button>
+              </div>
+            </Space>
+          </div>
+
+          {/* 第二步：初始化 Faro */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>第2步：在项目中初始化 Faro</Text>
+              <Text type="secondary">
+                在你的应用入口文件（如 app.tsx 或 main.tsx）中添加以下代码
+              </Text>
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                  position: 'relative',
+                  overflowX: 'auto'
+                }}
+              >
+                <Button
+                  size="small"
+                  type="default"
+                  icon={<CopyOutlined />}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 12,
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(faroInitCode)
+                    messageApi.success('代码已复制')
+                  }}
+                >
+                  copy
+                </Button>
+                <pre style={{ margin: 0, whiteSpace: 'pre' }}>
+                  {faroInitCode}
+                </pre>
+              </div>
+            </Space>
+          </div>
+        </Space>
       </Drawer>
     </div>
   )

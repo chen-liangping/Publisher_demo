@@ -28,7 +28,7 @@ import {
 } from '@ant-design/icons'
 import type { TableColumnsType, UploadProps } from 'antd'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 const { Search } = Input
 
 // 文件数据类型定义
@@ -579,9 +579,24 @@ main "$@"`
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>文件管理</Title>
-      </div>
+      {/* 顶部说明卡片：标题 + 描述，与其他菜单统一 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 2,
+            paddingBottom: 2,
+          }}
+        >
+          <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+            文件管理
+          </Title>
+          <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.5 }}>
+            管理虚拟机上的共享文件，支持上传、下载和删除操作，方便快速分发配置与资源文件。
+          </Text>
+        </div>
+      </Card>
 
       <Card>
         {/* 面包屑导航 */}

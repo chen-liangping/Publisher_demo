@@ -199,16 +199,18 @@ export default function Home() {
 
   return (
     <Suspense fallback={null}>
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* 顶部导航 */}
-      <Header style={{ 
-        background: '#fff', 
-        padding: '0 24px', 
-        borderBottom: '1px solid #f0f0f0',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      {/* 顶部导航：背景与整体主题保持一致，具体配色在 globals.css 中统一控制 */}
+      <Header
+        style={{
+          background: 'transparent',
+          padding: '0 24px',
+          borderBottom: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Title level={3} style={{ margin: 0, lineHeight: '64px' }}>
             Publisher 用户平台
@@ -286,9 +288,9 @@ export default function Home() {
       </Drawer>
 
 
-      <Layout>
-        {/* 左侧导航栏 */}
-        <Sider width={200} style={{ background: '#fff' }}>
+      <Layout style={{ background: 'transparent' }}>
+        {/* 左侧导航栏：背景与主题保持一致，具体配色在 globals.css 中控制 */}
+        <Sider width={200} style={{ background: 'transparent' }}>
           <Menu
             mode="inline"
             selectedKeys={[selectedMenu]}
@@ -450,14 +452,14 @@ export default function Home() {
         </Sider>
 
         {/* 右侧内容区 */}
-        <Layout style={{ padding: '24px' }}>
+        <Layout style={{ padding: '24px', background: 'transparent' }}>
           <Content
             style={{
-              background: '#fff',
-              padding: 24,
+              background: 'transparent',
+              padding: 0,
               margin: 0,
               minHeight: 280,
-              borderRadius: 8
+              borderRadius: 0
             }}
           >
             {renderContent()}

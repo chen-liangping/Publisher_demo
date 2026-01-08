@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox } from 'antd'
-import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined } from '@ant-design/icons'
+import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message } from 'antd'
+import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined, ExportOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
 const { Title, Text } = Typography
@@ -37,9 +37,11 @@ export default function AlertSystem(): React.ReactElement {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [messageApi, contextHolder] = message.useMessage()
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
   const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
+  const [faroConfigOpen, setFaroConfigOpen] = useState<boolean>(false)
   // 模拟的告警参与者：人员 + 机器人 + 站内信（参考“消息配置”中的配置）
   const [actors] = useState<AlertActor[]>([
     { id: 'siteMsg',       name: '站内信', kind: 'site' },
@@ -181,6 +183,25 @@ export default function AlertSystem(): React.ReactElement {
     [editingConfigs]
   )
 
+  // Faro 初始化代码示例字符串（仅用于展示与复制）
+  const faroInitCode = `import { getWebInstrumentations, initializeFaro } from '@grafana/faro-web-sdk';
+import { TracingInstrumentation } from '@grafana/faro-web-tracing';
+
+initializeFaro({
+  url: 'https://faro-collector-prod-ap-southeast-0.grafana.net/collect/g123743be98abaec9cc8a3bb074ae188',
+  app: {
+    name: 'gametest',
+    version: '1.0.0',
+    environment: 'staging', // 可手动更改至正式或测试环境
+  },
+  instrumentations: [
+    // Mandatory, omits default instrumentations otherwise.
+    ...getWebInstrumentations(),
+    // Tracing package to get end-to-end visibility for HTTP requests.
+    new TracingInstrumentation(),
+  ],
+});`
+
   // 故障报警表格列配置
   const alertColumns: ColumnsType<AlertConfig> = useMemo(() => {
     const base: ColumnsType<AlertConfig> = [
@@ -288,20 +309,12 @@ export default function AlertSystem(): React.ReactElement {
   const faqItems = [
     {
       key: 'people-config',
-      label: '什么是人员配置？',
-      children: (
-        <div>
-          <Text>人员配置用于管理接收告警通知的人员信息，包括钉钉账号等联系方式。当系统检测到异常时，会向配置的人员发送通知。</Text>
-        </div>
-      ),
-      extra: <CloseOutlined />
-    },
-    {
-      key: 'fault-alert',
       label: '什么是故障报警？',
       children: (
         <div>
-          <Text>故障报警是系统自动监测应用运行状态的功能。当检测到应用异常、服务中断或性能问题时，系统会立即向相关人员发送告警通知，帮助团队快速响应和处理问题。</Text>
+          <Text><strong>故障报警：</strong>系统自动监测应用运行状态的功能。当检测到应用异常、服务中断或性能问题时，系统会立即向相关人员发送告警通知，帮助团队快速响应和处理问题。</Text>
+          <br />
+          <Text><strong>人员配置：</strong>用于管理接收告警通知的人员信息，包括钉钉账号等联系方式。当系统检测到异常时，会向配置的人员发送通知。</Text>
         </div>
       ),
       extra: <CloseOutlined />
@@ -310,10 +323,11 @@ export default function AlertSystem(): React.ReactElement {
 
   return (
     <div style={{ padding: '24px' }}>
+      {contextHolder}
       
       {/* 页面标题和描述 */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ paddingLeft: 24, paddingRight: 24, paddingTop: 16, paddingBottom: 16 }}>
+        <div style={{ paddingLeft: 24, paddingRight: 24, paddingTop: 2, paddingBottom: 2 }}>
           <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
             告警系统
           </Title>
@@ -321,10 +335,6 @@ export default function AlertSystem(): React.ReactElement {
             告警系统用于在游戏部署中监测运行状态，发现异常时向相关人员发送警报，帮助团队及时处理问题，减少对玩家的影响。
           </Text>
         </div>
-
-        {/* 分割线 */}
-        <div style={{ borderTop: '1px solid #f0f0f0', margin: 0 }} />
-
         {/* FAQ 折叠面板 */}
         <Collapse
           ghost
@@ -340,19 +350,52 @@ export default function AlertSystem(): React.ReactElement {
           items={faqItems.slice(0, 1)} // 只显示第一个FAQ
         />
 
-        <Collapse
-          ghost
-          expandIcon={({ isActive }) => (
-            <RightOutlined rotate={isActive ? 90 : 0} />
-          )}
-          style={{ 
-            paddingInline: 24, 
-            paddingBlock: 12, 
-            borderBottom: 'none',
-            borderRadius: 0 
+
+      </Card>
+
+      {/* 运行时指标采集（独立卡片） */}
+      <Card
+        style={{ marginBottom: 24, borderRadius: 12, padding: 0, overflow: 'hidden' }}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div
+          style={{
+            backgroundImage: 'url(/assets/faro-dashboard.png)',
+            backgroundSize: 'cover',
+            backgroundRepeat: 'no-repeat',
+            position: 'relative'
           }}
-          items={faqItems.slice(1, 2)} // 只显示第二个FAQ
-        />
+        >
+          <div
+            style={{
+              background: 'linear-gradient(0deg, white 35%, rgba(255, 255, 255, 0.3) 100%)',
+              padding: '200px 24px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}
+          >
+            <Text strong style={{ fontSize: 18 }}>
+              运行时指标采集
+            </Text>
+            <Text type="secondary" style={{ maxWidth: 520, fontSize: 13 }}>
+              配置完成后，可在 Grafana Dashboard 中查看并实时监控应用的运行时性能与资源指标。
+            </Text>
+            <Space size={16} style={{ marginTop: 8 }}>
+              <Button
+                icon={<ExportOutlined />}
+                size="small"
+                type="default"
+                onClick={() => window.open('https://publisher.grafana.net/explore', '_blank')}
+              >
+                前往面板
+              </Button>
+              <Button type="text" onClick={() => setFaroConfigOpen(true)}>
+                查看配置
+              </Button>
+            </Space>
+          </div>
+        </div>
       </Card>
 
       {/* 主要内容 - 故障报警 */}
@@ -450,6 +493,277 @@ export default function AlertSystem(): React.ReactElement {
           <Button type="dashed" onClick={handleAddConfigRow}>
             + 添加配置
           </Button>
+        </Space>
+      </Drawer>
+
+      {/* Faro 配置说明 Drawer（与客户端告警一致） */}
+      <Drawer
+        title="配置运行时指标采集"
+        width={720}
+        open={faroConfigOpen}
+        onClose={() => setFaroConfigOpen(false)}
+        footer={
+          <div style={{ textAlign: 'left' }}>
+            <Button onClick={() => setFaroConfigOpen(false)}>
+              关闭
+            </Button>
+          </div>
+        }
+      >
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          {/* 打开监控面板 */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>打开监控面板</Text>
+              <Text type="secondary">
+                确认 Grafana 监控面板可以正常访问后，再进行后续步骤
+              </Text>
+              <Space style={{ marginTop: 4 }} size={16}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 13,
+                      border: '1px solid rgba(0, 0, 0, 0.06)',
+                      fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                      overflowX: 'auto',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    https://publisher.grafana.net/explore
+                  </div>
+                </div>
+                <Button
+                  type="primary"
+                  onClick={() => window.open('https://publisher.grafana.net/explore', '_blank')}
+                  style={{ height: 38 }}
+                >
+                  打开面板
+                </Button>
+              </Space>
+            </Space>
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              marginTop: 4,
+              paddingTop: 4
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 14 }}>
+            你需要做什么：
+            <br />让你的应用在 Pod 内提供一个符合 Prometheus 格式的指标端点（`/metrics`），并且将容器端口 <strong>声明为 `9095`</strong>，平台就会自动发现并采集。
+            </Text>
+          </div>
+
+          {/* 第一步：安装依赖包 */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>第一步：配置参数</Text>
+              <Text type="secondary">在你的应用内暴露 `/metrics`（只需集群内可访问，无需公网暴露）</Text>
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                  position: 'relative',
+                  overflowX: 'auto',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>  - 端口：`9095`</span><br />
+                <span>  - 路径：`/metrics`</span><br />
+                <Button
+                  size="small"
+                  type="default"
+                  icon={<CopyOutlined />}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 12,
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText('npm install @grafana/faro-web-sdk')
+                    messageApi.success('命令已复制')
+                  }}
+                >
+                  复制
+                </Button>
+              </div>
+
+              <Text type="secondary">在部署配置中声明容器端口 `9095`，确保 Pod 的容器端口列表里包含 `9095`（通常在容器 `ports`/`containerPort` 配置里）</Text>
+
+                <Button
+                  size="small"
+                  type="default"
+                  icon={<CopyOutlined />}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 12,
+                    backgroundColor: '#fff'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText('npm install @grafana/faro-web-tracing')
+                    messageApi.success('命令已复制')
+                  }}
+                >
+                  复制
+                </Button>
+            </Space>
+          </div>
+
+          {/* 第二步：在 Grafana 验证 */}
+          <div>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text strong>第2步：在 Grafana 验证</Text>
+
+              {/* 进入 Explore 提示 */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+              >
+                <Text type="secondary">
+                  1）进入 <Text strong>Explore → 选择 Prometheus 数据源 → 左上角选择appid-Metrics → 输入查询语句</Text>
+                </Text>
+              </div>
+
+              {/* 查询 1：检查采集是否成功 */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <Text strong>2）输入以下sql先查采集是否成功：</Text>
+                <div
+                  style={{
+                    position: 'relative',
+                    backgroundColor: '#fff',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                    fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Button
+                    size="small"
+                    type="default"
+                    icon={<CopyOutlined />}
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 8,
+                      backgroundColor: '#fff',
+                    }}
+                    onClick={() => {
+                      navigator.clipboard.writeText('up{job="metrics_9095"}')
+                      messageApi.success('查询语句已复制')
+                    }}
+                  >
+                    复制
+                  </Button>
+                  <pre style={{ margin: 0 }}>{'up{job="metrics_9095"}'}</pre>
+                </div>
+              </div>
+
+              {/* 查询 2：按集群 / 命名空间 / 应用过滤 */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <Text strong>3）采集成功后，可按集群 / 命名空间 / 应用过滤（参考以下SQL）：</Text>
+                <div
+                  style={{
+                    position: 'relative',
+                    backgroundColor: '#fff',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                    fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+                    overflowX: 'auto',
+                  }}
+                >
+                  <Button
+                    size="small"
+                    type="default"
+                    icon={<CopyOutlined />}
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 8,
+                      backgroundColor: '#fff',
+                    }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        'up{job="metrics_9095", cluster="cpp-stg-k8s", namespace="<your-namespace>", app="<your-app>"}'
+                      )
+                      messageApi.success('查询语句已复制')
+                    }}
+                  >
+                    复制
+                  </Button>
+                  <pre style={{ margin: 0 }}>
+                    {'up{job="metrics_9095", cluster="cpp-stg-k8s", namespace="<your-namespace>", app="<your-app>"}'}
+                  </pre>
+                </div>
+              </div>
+
+              {/* 通用标签说明 */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+              >
+                <Text strong>可通过哪些通用标签过滤 / 聚合：</Text>
+                <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 0 }}>
+                  <li>
+                    <code>cluster</code>：例如 <code>cpp-stg-k8s</code> / <code>cpp-pro-k8s</code>
+                  </li>
+                  <li>
+                    <code>env</code>：例如 <code>staging</code> / <code>production</code>
+                  </li>
+                  <li>
+                    <code>namespace</code> / <code>pod</code> / <code>instance</code>
+                  </li>
+                  <li>
+                    <code>app</code>（来自 Pod label <code>app</code>，如未设置可能为空）
+                  </li>
+                </ul>
+              </div>
+              <Text strong>更多配置</Text>
+                <Text type="secondary">如果你需要更深的运行时信息、或者需要 <strong>分布式追踪（Trace）</strong>，可以使用 <strong>OpenTelemetry Java Agent</strong> 通过 <strong>OTLP（推送）</strong> 发送数据到 Alloy。或想了解更多grafana操作，请参考 <a href="https://developers.g123.jp/docs/infra#grafana-cloud" target="_blank">developer文档</a></Text>
+            </Space>
+          </div>
         </Space>
       </Drawer>
     </div>

@@ -373,9 +373,9 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
 
 
   return (
-    <>
+    <div style={{ padding: '24px' }}>
       {/* 虚拟机介绍卡片 */}
-      <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
+      <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 16 }}}>
         <Title level={4} style={{ margin: 0 }}>虚拟机</Title>
         <div style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
           <strong>描述：</strong> 提供可弹性伸缩的计算服务，支持多种规格配置，满足不同业务场景需求。通过虚拟机可以快速部署应用、搭建开发环境，实现业务的灵活扩展。
@@ -429,6 +429,6 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         </div>
       </Modal>
     </Card>
-    </>
+    </div>
   )
 }

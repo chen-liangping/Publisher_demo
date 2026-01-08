@@ -1,9 +1,9 @@
 'use client'
 
 import React, { useState, useRef } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select } from 'antd'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select, Popover } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined } from '@ant-design/icons'
+import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined, ExportOutlined, KeyOutlined } from '@ant-design/icons'
 import ClientPage from './ClientPage'
 
 const { Title, Paragraph, Text } = Typography
@@ -43,6 +43,12 @@ interface UploadFileInfo {
 
 // 监配置入口：固定前缀
 const MONITOR_ENTRY_PREFIX = 'https://h5.stg.g123.jp/game/gamedemo?gameEntry='
+// 游戏版本预览入口：固定前缀
+const GAME_ENTRY_PREFIX = 'https://gamedemo.stg.g123-cpp.com/'
+// G123 STG 测试环境固定入口
+const G123_STG_ENTRY_URL = 'https://h5.stg.g123.jp/game/gametest'
+const G123_STG_USERNAME = 'testuser'
+const G123_STG_PASSWORD = 'ctwstggame1!'
 
 const versionData: VersionRow[] = [
   {
@@ -84,6 +90,7 @@ export default function ClientVersionPage() {
   const [uploadingFiles, setUploadingFiles] = useState<UploadFileInfo[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const zipInputRef = useRef<HTMLInputElement>(null)
+  const [previewingVersion, setPreviewingVersion] = useState<string | null>(null)
 
 // “监配置更多入口”相关状态：用于配置多个 H5 外部入口（按版本自动生成 URL）
   interface ExtraEntryConfig {
@@ -101,6 +108,12 @@ export default function ClientVersionPage() {
     if (!version) return ''
     const localEntry = `/${version}/index.html`
     return `${MONITOR_ENTRY_PREFIX}${encodeURIComponent(localEntry)}`
+  }
+
+  // 构建某个版本的游戏预览入口 URL
+  const buildGameEntryUrl = (version: string): string => {
+    if (!version) return ''
+    return `${GAME_ENTRY_PREFIX}${version}/index.html`
   }
 
   // 新增一个入口（进入编辑态）
@@ -227,6 +240,49 @@ export default function ClientVersionPage() {
     setBrowsingVersion(version)
     setCurrentPath('/')
     message.info(`进入版本 ${version}（示例）`)
+  }
+
+  // 构建版本预览链接的展示内容（用于 Popover）
+  const renderPreviewContent = (version: string) => {
+    const previewUrl = buildGameEntryUrl(version)
+    if (!previewUrl) {
+      return <Text type="secondary">该版本暂无可用预览链接</Text>
+    }
+    return (
+      <Space direction="vertical" size={8}>
+        <Text type="secondary">使用以下链接可直接访问该版本页面：</Text>
+        <Space size={8}>
+          <Text code style={{ wordBreak: 'break-all' }}>{previewUrl}</Text>
+          {/* 图标按钮：复制链接 */}
+          <Tooltip title="复制链接">
+            <Button
+              size="small"
+              type="text"
+              icon={<CopyOutlined />}
+              onClick={async () => {
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(previewUrl)
+                  }
+                  message.success('预览链接已复制')
+                } catch {
+                  message.error('复制失败，请手动选择链接复制')
+                }
+              }}
+            />
+          </Tooltip>
+          {/* 图标按钮：在新标签页打开 */}
+          <Tooltip title="在新标签页打开">
+            <Button
+              size="small"
+              type="text"
+              icon={<ExportOutlined />}
+              onClick={() => window.open(previewUrl, '_blank')}
+            />
+          </Tooltip>
+        </Space>
+      </Space>
+    )
   }
 
   const handleBackToParent = (): void => {
@@ -486,9 +542,17 @@ export default function ClientVersionPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 280,
+      width: 360,
       render: (_: unknown, record: VersionRow) => (
         <Space size={8}>
+          <Popover
+            content={renderPreviewContent(record.version)}
+            trigger="click"
+            open={previewingVersion === record.version}
+            onOpenChange={(open) => setPreviewingVersion(open ? record.version : null)}
+          >
+            <Button type="link">预览</Button>
+          </Popover>
           <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
           <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
           {/* 同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
@@ -506,9 +570,10 @@ export default function ClientVersionPage() {
   ]
 
   return (
-    <div>
+    // 本页卡片不需要 hover 动效，使用 no-card-motion 包裹；同时与虚机等页面统一左右内边距
+    <div className="no-card-motion" style={{ padding: '24px' }}>
       {/* 顶部说明 */}
-      <Card styles={{ body: { padding: 16 } }} style={{ marginBottom: 16 }}>
+      <Card className="card" styles={{ body: { padding: 16 } }} style={{ marginBottom: 16 }}>
         <Title level={3} style={{ margin: 0 }}>客户端</Title>
         <Paragraph style={{ color: '#666', marginTop: 8, marginBottom: 0 }}>
           客户端用于存储不同游戏版本的图片以及文本等静态资源进行配置信息，您可以在此页面进行版本管理。
@@ -517,7 +582,7 @@ export default function ClientVersionPage() {
       </Card>
 
       {/* Tabs 本地切换（不跳路由） */}
-      <Card style={{ marginBottom: 16 }}>
+      <Card className="card" style={{ marginBottom: 16 }}>
         <Tabs
           activeKey={activeTab}
           onChange={(key) => {
@@ -536,113 +601,136 @@ export default function ClientVersionPage() {
         />
       </Card>
 
-      {/* 游戏入口 URL Card */}
+      {/* 游戏入口 & 固定 G123 测试入口 */}
       {activeTab === 'version' && (() => {
-        // 获取当前版本
         const currentVersion = versions.find(v => v.status === 'current')
-        if (currentVersion) {
-          const gameUrl = `https://gamedemo.stg.g123-cpp.com/${currentVersion.version}/index.html`
-          return (
-            <Card 
-              style={{ marginBottom: 16 }}
-              styles={{ body: { padding: '16px 24px' } }}
-            >
-              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        if (!currentVersion) return null
+        const gameUrl = buildGameEntryUrl(currentVersion.version)
+        return (
+          <Card
+            className="card"
+            style={{ marginBottom: 16 }}
+            styles={{ body: { padding: '16px 24px' } }}
+          >
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {/* 顶部标题 + 配置按钮 */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ flex: 1 }}>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                    游戏入口 URL
-                  </Text>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Text 
-                      strong 
-                      style={{ 
-                        fontSize: 14,
-                        color: '#1890ff',
-                        fontFamily: 'monospace'
+                <Text strong style={{ fontSize: 16 }}>游戏入口</Text>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => setEntryDrawerVisible(true)}
+                >
+                  配置更多g123入口
+                </Button>
+              </div>
+
+              {/* 当前版本入口 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ minWidth: 96 }}>当前版本入口：</Text>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontFamily: 'Menlo, Consolas, "Courier New", monospace', fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {gameUrl}
+                  </span>
+                  <Tooltip title="复制链接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      style={{ padding: 0 }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(gameUrl).then(() => {
+                          message.success('链接已复制到剪贴板')
+                        }).catch(() => {
+                          message.error('复制失败，请手动复制')
+                        })
                       }}
-                    >
-                      {gameUrl}
-                    </Text>
-                    <Tooltip title="复制链接">
-                      <Button 
-                        type="text" 
+                    />
+                  </Tooltip>
+                </div>
+              </div>
+
+              {/* G123 测试环境入口 + 账号密码弹层 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ minWidth: 96 }}>G123测试入口：</Text>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontFamily: 'Menlo, Consolas, "Courier New", monospace', fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {G123_STG_ENTRY_URL}
+                  </span>
+                  <Tooltip title="复制链接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      style={{ padding: 0 }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(G123_STG_ENTRY_URL).then(() => {
+                          message.success('链接已复制到剪贴板')
+                        }).catch(() => {
+                          message.error('复制失败，请手动复制')
+                        })
+                      }}
+                    />
+                  </Tooltip>
+                  <Popover
+                    placement="topRight"
+                    content={
+                      <Space direction="vertical" size={8}>
+                        <Text strong>STG登陆账号&密码</Text>
+                        <Space align="center" size={8}>
+                          <Text type="secondary">UserName:</Text>
+                          <Text code>{G123_STG_USERNAME}</Text>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CopyOutlined />}
+                            onClick={() => {
+                              navigator.clipboard.writeText(G123_STG_USERNAME).then(() => {
+                                message.success('账号已复制')
+                              }).catch(() => {
+                                message.error('复制失败，请重试')
+                              })
+                            }}
+                          />
+                        </Space>
+                        <Space align="center" size={8}>
+                          <Text type="secondary">Password:</Text>
+                          <Text code>{G123_STG_PASSWORD}</Text>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CopyOutlined />}
+                            onClick={() => {
+                              navigator.clipboard.writeText(G123_STG_PASSWORD).then(() => {
+                                message.success('密码已复制')
+                              }).catch(() => {
+                                message.error('复制失败，请重试')
+                              })
+                            }}
+                          />
+                        </Space>
+                      </Space>
+                    }
+                  >
+                    
+                    <Tooltip title="查看测试账号">
+                      <Button
                         size="small"
-                        icon={<CopyOutlined />}
-                        onClick={() => {
-                          // 复制链接到剪贴板
-                          navigator.clipboard.writeText(gameUrl).then(() => {
-                            message.success('链接已复制到剪贴板')
-                          }).catch(() => {
-                            message.error('复制失败，请手动复制')
-                          })
-                        }}
+                        type="text"
+                        icon={<KeyOutlined />}
                       />
                     </Tooltip>
-                    </div>
-                  </div>
+                  </Popover>
                 </div>
-                
-                {/* 监配置更多入口：为运营同学提供额外的 H5 跳转入口配置 */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                  <Button
-                    size="small"
-                    type="link"
-                    onClick={() => {
-                      // 打开入口管理抽屉，默认使用当前版本；若无入口则先创建一条
-                      if (extraEntries.length === 0) {
-                        handleAddMonitorEntry(currentVersion.version)
-                      }
-                      setEntryDrawerVisible(true)
-                    }}
-                  >
-                    配置更多入口
-                  </Button>
-                </div>
-
-                {extraEntries.length > 0 && (
-                  <div style={{ marginTop: 4 }}>
-                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                      已配置入口（示例）：
-                    </Text>
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      {extraEntries.map(entry => {
-                        const fullUrl = entry.finalUrl || buildMonitorEntryUrl(entry.version)
-                        return (
-                          <Space key={entry.id} size={8} style={{ fontSize: 12 }}>
-                            <Tag bordered={false} color="blue">{entry.version}</Tag>
-                            <Text code>{fullUrl}</Text>
-                            <Button
-                              type="link"
-                              size="small"
-                              onClick={async () => {
-                                try {
-                                  if (navigator.clipboard && navigator.clipboard.writeText) {
-                                    await navigator.clipboard.writeText(fullUrl)
-                                  }
-                                  message.success('入口链接已复制')
-                                } catch {
-                                  message.error('复制失败，请手动复制')
-                                }
-                              }}
-                            >
-                              复制入口链接
-                            </Button>
-                          </Space>
-                        )
-                      })}
-                    </Space>
               </div>
-                )}
-              </Space>
-            </Card>
-          )
-        }
-        return null
+            </Space>
+          </Card>
+        )
       })()}
 
       {/* 版本区块 / CDN 页面（同页切换） */}
       <Card
+        className="card"
         title={
           <Row align="middle" justify="space-between" style={{ width: '100%' }}>
             <Col>{activeTab === 'cdn' ? 'CDN' : (browsingVersion ? `版本 ${browsingVersion} / 文件` : '版本')}</Col>
@@ -747,7 +835,7 @@ export default function ClientVersionPage() {
 
       {/* 监配置更多入口 - 管理抽屉：多入口编辑 / 复制 */}
       <Drawer
-        title="监配置入口管理"
+        title="G123测试环境入口管理"
         placement="right"
         width={1020}
         open={entryDrawerVisible}
@@ -760,7 +848,7 @@ export default function ClientVersionPage() {
             message={(
               <span>
                 前缀 <Text code>{MONITOR_ENTRY_PREFIX}</Text> 固定不变，只需选择版本，系统会自动生成
-                <Text strong> 完整入口 URL</Text>，用于监配置跳转。
+                <Text strong> 完整G123 游戏入口 URL</Text>，可用于版本测试、监修等。
               </span>
             )}
           />

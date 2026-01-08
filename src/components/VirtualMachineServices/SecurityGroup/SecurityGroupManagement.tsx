@@ -438,13 +438,26 @@ export default function SecurityGroupManagement({ onViewDetails }: SecurityGroup
 
   return (
     <div style={{ padding: '24px' }}>
-      <Card>
-        <div style={{ marginBottom: 16 }}>
-          <Title level={3}>安全组管理</Title>
+      {/* 顶部说明卡片 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 2,
+            paddingBottom: 2
+          }}
+        >
+          <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+            安全组管理
+          </Title>
           <Text type="secondary">
             管理虚拟机的网络安全规则，控制入站和出站流量
           </Text>
         </div>
+      </Card>
+
+      <Card>
 
         {/* 操作栏 */}
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>

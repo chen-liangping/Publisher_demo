@@ -39,15 +39,25 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
   const stepDescWidth = 200 // 开服步骤中描述列宽，可调整
   const rightColumnWidth = 440 // 右侧列（流量策略 / 右侧小卡）宽度，可调整
   return (
-    <div className="container mx-auto p-6">
-      <div style={{ marginBottom: 20 }}>
-        <Title level={3} style={{ margin: 0, fontSize: 20, fontWeight: 600, lineHeight: '28px' }}>
-          应用
-        </Title>
-        <Text style={{ color: '#666', fontSize: 14, marginTop: 8, display: 'block' }}>
-          应用是用来承载游戏内的功能模块。应用内可配置多个Pod（容器）来分别对应不同的服务功能。每个Pod对应一个镜像及其镜像仓库启动方式。
-        </Text>
-      </div>
+    <div style={{ padding: '24px' }}>
+      {/* 顶部说明卡片：与其他菜单页保持一致样式 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 2,
+            paddingBottom: 2
+          }}
+        >
+          <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+            应用
+          </Title>
+          <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.5 }}>
+            应用是用来承载游戏内的功能模块。应用内可配置多个 Pod（容器）来分别对应不同的服务功能。每个 Pod 对应一个镜像及其镜像仓库启动方式。
+          </Text>
+        </div>
+      </Card>
 
       {/* 搜索 & 添加 区 */}
       <div className="flex items-center justify-between" style={{ marginBottom: 20 }}>

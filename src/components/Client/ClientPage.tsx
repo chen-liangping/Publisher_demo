@@ -357,7 +357,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   ]
 
   return (
-    <div>
+    <div style={{ padding: '24px' }}>
       {/* 顶部信息与导航（嵌入模式下隐藏） */}
       {!embedded && (
         <>

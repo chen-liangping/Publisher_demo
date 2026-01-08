@@ -27,7 +27,7 @@ import {
 import PromptManager from './PromptManager'
 import type { TableColumnsType } from 'antd'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 const { TextArea } = Input
 
 // 命令数据类型定义
@@ -295,16 +295,36 @@ export default function CommandManagement({ onViewDetails }: CommandManagementPr
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>命令管理</Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={handleCreateCommand}
+      {/* 顶部说明卡片：标题 + 描述，与其他菜单统一 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 2,
+            paddingBottom: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
         >
-          新建命令
-        </Button>
-      </div>
+          <div>
+            <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+              命令管理
+            </Title>
+            <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.5 }}>
+              管理常用远程命令模板，支持创建、编辑和复用，提升日常运维操作效率。
+            </Text>
+          </div>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={handleCreateCommand}
+          >
+            新建命令
+          </Button>
+        </div>
+      </Card>
 
       <Card>
         <Table

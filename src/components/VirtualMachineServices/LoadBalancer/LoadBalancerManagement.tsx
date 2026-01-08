@@ -168,22 +168,38 @@ export default function LoadBalancerManagement(): React.ReactElement {
 
   return (
     <div style={{ padding: '24px' }}>
-      {/* 头部 */}
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}>负载均衡</Title>
-          <Text type="secondary">管理负载均衡实例，配置监听规则和后端服务器</Text>
-        </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleEnable}
-          disabled={loadBalancers.length > 0}
-          loading={loading}
+      {/* 顶部说明卡片 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 2,
+            paddingBottom: 2,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
         >
-          启用负载均衡
-        </Button>
-      </div>
+          <div>
+            <Title level={1} style={{ marginBottom: 4, fontSize: 22 }}>
+              负载均衡
+            </Title>
+            <Text type="secondary">
+              管理负载均衡实例，配置监听规则和后端服务器
+            </Text>
+          </div>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleEnable}
+            disabled={loadBalancers.length > 0}
+            loading={loading}
+          >
+            启用负载均衡
+          </Button>
+        </div>
+      </Card>
 
       {/* 负载均衡卡片列表 */}
       {loadBalancers.length === 0 ? (
