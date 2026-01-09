@@ -27,3 +27,9 @@ yarn-error.log*
 
 # 其他系统或工具产生的文件
 *.swp
+
+# 忽略 npm 锁定文件
+package-lock.json
+# 忽略备份文件
+*.bak
+package-lock.json.bak
