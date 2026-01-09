@@ -847,8 +847,7 @@ export default function ClientVersionPage() {
             showIcon
             message={(
               <span>
-                前缀 <Text code>{MONITOR_ENTRY_PREFIX}</Text> 固定不变，只需选择版本，系统会自动生成
-                <Text strong> 完整G123 游戏入口 URL</Text>，可用于版本测试、监修等。
+                支持按版本生成独立游戏入口 URL。用户可为不同版本配置并使用对应 G123游戏URL 进行访问，实现测试版本、监修版本与正式版本并行存在。
               </span>
             )}
           />

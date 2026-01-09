@@ -360,7 +360,7 @@ initializeFaro({
       >
         <div
           style={{
-            backgroundImage: 'url(/assets/faro-dashboard.png)',
+            backgroundImage: 'url(/assets/landscape.jpg)',
             backgroundSize: 'cover',
             backgroundRepeat: 'no-repeat',
             position: 'relative'
@@ -368,7 +368,7 @@ initializeFaro({
         >
           <div
             style={{
-              background: 'linear-gradient(0deg, white 35%, rgba(255, 255, 255, 0.3) 100%)',
+              background: 'linear-gradient(0deg, white 45%, rgba(255, 255, 255, 0.3) 100%)',
               padding: '200px 24px 24px',
               display: 'flex',
               flexDirection: 'column',
@@ -378,8 +378,10 @@ initializeFaro({
             <Text strong style={{ fontSize: 18 }}>
               运行时指标采集
             </Text>
-            <Text type="secondary" style={{ maxWidth: 520, fontSize: 13 }}>
-              配置完成后，可在 Grafana Dashboard 中查看并实时监控应用的运行时性能与资源指标。
+            <Text type="secondary" style={{ maxWidth: 720, fontSize: 13 }}>
+            运行时指标采集 是平台内置的服务端可观测能力，用于持续采集应用运行时指标。<br />
+            通过这些指标，可在 Grafana Dashboard 中实时监控应用性能与资源使用情况，及时发现性能瓶颈、异常波动及容量风险。<br />
+            配置完成后，可在 Grafana Dashboard 中查看并实时监控应用的运行时性能与资源指标。
             </Text>
             <Space size={16} style={{ marginTop: 8 }}>
               <Button
@@ -391,7 +393,7 @@ initializeFaro({
                 前往面板
               </Button>
               <Button type="text" onClick={() => setFaroConfigOpen(true)}>
-                查看配置
+                配置指导
               </Button>
             </Space>
           </div>
@@ -747,16 +749,13 @@ initializeFaro({
                 <Text strong>可通过哪些通用标签过滤 / 聚合：</Text>
                 <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 0 }}>
                   <li>
-                    <code>cluster</code>：例如 <code>cpp-stg-k8s</code> / <code>cpp-pro-k8s</code>
+                    <code>cluster</code>： <code>cpp-stg-k8s</code> / <code>cpp-pro-k8s</code>
                   </li>
                   <li>
-                    <code>env</code>：例如 <code>staging</code> / <code>production</code>
+                    <code>env</code>： <code>staging</code> / <code>production</code>
                   </li>
                   <li>
-                    <code>namespace</code> / <code>pod</code> / <code>instance</code>
-                  </li>
-                  <li>
-                    <code>app</code>（来自 Pod label <code>app</code>，如未设置可能为空）
+                    <code>namespace</code> 、 <code>pod</code> 、 <code>instance</code>、<code>app</code>（来自 Pod label <code>app</code>，如未设置可能为空）
                   </li>
                 </ul>
               </div>
