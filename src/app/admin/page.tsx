@@ -2,7 +2,7 @@
 
 import { Layout, Typography, Button, Menu } from 'antd'
 import { useState } from 'react'
-import { 
+import {
   ArrowLeftOutlined,
   AppstoreOutlined,
   DatabaseOutlined,
@@ -15,14 +15,13 @@ import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
 import Announcement from '../../components/Admin/Announcement'
 import YamlViewer from '../../components/Admin/yaml'
-import GameFaroConfig from '../../components/Admin/GameFaroConfig'
+import GameEnvDetail from '../../components/Admin/GameEnvDetail'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
 type AdminMenuKey =
   | 'game-management'
-  | 'game-faro-config'
   | 'resource-configuration'
   | 'test-initialization'
   | 'announcement'
@@ -50,8 +49,6 @@ export default function AdminPage() {
     switch (selectedMenu) {
       case 'game-management':
         return <GameManagement />
-      case 'game-faro-config':
-        return <GameFaroConfig />
       case 'resource-configuration':
         return <ResourceConfiguration />
       case 'test-initialization':
@@ -105,12 +102,6 @@ export default function AdminPage() {
                 icon: <AppstoreOutlined />,
                 label: '游戏管理',
                 onClick: () => handleMenuClick('game-management')
-              },
-              {
-                key: 'game-faro-config',
-                icon: <FileTextOutlined />,
-                label: '游戏配置',
-                onClick: () => handleMenuClick('game-faro-config')
               },
               {
                 key: 'resource-configuration',
