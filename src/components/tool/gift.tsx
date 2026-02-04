@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image } from 'antd'
+import { useRouter } from 'next/navigation'
+import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image, Drawer, Tag, Divider } from 'antd'
 import type { TabsProps } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
@@ -41,6 +42,10 @@ interface GiftRow {
 export default function GiftDataPage(): React.ReactElement {
   const [search, setSearch] = useState('')
   const [giftSearch, setGiftSearch] = useState('')
+  // 控制「API 配置」Drawer 的显示与关闭
+  const [apiDrawerOpen, setApiDrawerOpen] = useState(false)
+  // 跳转到「接口测试」页面的路由
+  const router = useRouter()
   const [items] = useState<ItemRow[]>([
     {
       key: 'I06000043超级氮气1', itemId: 'I06000043', name: '超级氮气1', i18nKey: 'L_I06000010', detailI18nKey: 'L_I06000010',
@@ -146,8 +151,142 @@ export default function GiftDataPage(): React.ReactElement {
       </div>
       <Tabs
         items={itemsTabs}
-        tabBarExtraContent={{ right: (<Button onClick={() => window.alert('原型：自动化配置')}>自动化配置</Button>) }}
+        tabBarExtraContent={{
+          right: (
+            // 点击「自动化配置」按钮，打开右侧 Drawer 展示 API 配置详情
+            <Button type="default" onClick={() => setApiDrawerOpen(true)}>
+              自动化配置
+            </Button>
+          )
+        }}
       />
+      <Drawer
+        title="API 配置"
+        open={apiDrawerOpen}
+        width={1040}
+        placement="right"
+        onClose={() => setApiDrawerOpen(false)}
+        destroyOnClose
+      >
+        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+          <Card size="small" bordered={false} style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Title level={5} style={{ margin: 0 }}>认证 Token</Title>
+              <Text type="secondary">平台调用您注册的接口时，会在请求头中携带该固定的 Token（Authorization: Basic &lt;Base64(appId:secret)&gt;），请在服务端进行鉴权处理。</Text>
+              <Card
+                size="small"
+                style={{
+                  marginTop: 12,
+                  borderRadius: 12,
+                  background: '#0f172a',
+                  color: '#e5e7eb',
+                  border: 'none'
+                }}
+              >
+                <Text style={{ color: 'black', fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
+                  ZZFtZXRLc3Q6al1kY2N************************0d3BZVG5kWUsyW8=
+                </Text>
+              </Card>
+            </Space>
+          </Card>
+
+          <Card size="small" bordered={false} style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Title level={5} style={{ margin: 0 }}>接入 API</Title>
+                {/* 点击「测试」进入接口测试页，用于模拟 Postman 风格的 API 调用 */}
+                <Button type="primary" onClick={() => router.push('/api-test')}>
+                  测试
+                </Button>
+              </div>
+
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text type="secondary">拉取道具资源列表</Text>
+                <Card size="small" style={{ borderRadius: 12, background: '#f9fafb' }}>
+                  <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                    <Space size={8} wrap>
+                      <Tag color="green" style={{ borderRadius: 999, border: 'none', padding: '2px 10px' }}>GET</Tag>
+                      <Text
+                        code
+                        style={{
+                          fontSize: 14,
+                          lineHeight: '24px',
+                          padding: '4px 12px'
+                        }}
+                      >
+                        https://g123-jp-gametest-slb.stg.g123-cpp.com/open-platform/api/v1/webhook/items/mock?queryType=assets
+                      </Text>
+                    </Space>
+                    <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>上次成功同步时间 暂无数据</Text>
+                      <Space size={12}>
+                        <Text type="danger" style={{ fontSize: 12 }}>同步失败：fetch game [gametest] items from api error: get game [gametest] items from api failed with status code: ...</Text>
+                        <Button type="link">立即同步</Button>
+                      </Space>
+                    </Space>
+                  </Space>
+                </Card>
+              </Space>
+
+              <Divider style={{ margin: '12px 0' }} />
+
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text type="secondary">拉取礼包资源列表</Text>
+                <Card size="small" style={{ borderRadius: 12, background: '#f9fafb' }}>
+                  <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                    <Space size={8} wrap>
+                      <Tag color="green" style={{ borderRadius: 999, border: 'none', padding: '2px 10px' }}>GET</Tag>
+                      <Text
+                        code
+                        style={{
+                          fontSize: 14,
+                          lineHeight: '24px',
+                          padding: '4px 12px'
+                        }}
+                      >
+                        https://g123-jp-gametest-slb.stg.g123-cpp.com/open-platform/api/v1/webhook/gifts/mock
+                      </Text>
+                    </Space>
+                    <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>上次成功同步时间 暂无数据</Text>
+                      <Space size={12}>
+                      <Text type="danger" style={{ fontSize: 12 }}>同步失败：fetch game [gametest] items from api error: get game [gametest] items from api failed with status code: ...</Text>
+                      <Button type="link">立即同步</Button>
+                      </Space>
+                    </Space>
+                  </Space>
+                </Card>
+              </Space>
+
+              <Divider style={{ margin: '12px 0' }} />
+
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text type="secondary">Popup API</Text>
+                <Card size="small" style={{ borderRadius: 12, background: '#f9fafb' }}>
+                  <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                    <Space size={8} wrap>
+                      <Tag color="orange" style={{ borderRadius: 999, border: 'none', padding: '2px 10px' }}>POST</Tag>
+                      <Text
+                        code
+                        style={{
+                          fontSize: 14,
+                          lineHeight: '24px',
+                          padding: '4px 12px'
+                        }}
+                      >
+                        https://g123-jp-gametest-slb.stg.g123-cpp.com/open-platform/gift/popup
+                      </Text>
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      请自行配置防火墙白名单 IP；NAT EIP：「35.73.155.101」、「35.74.114.96」、「35.74.128.150」
+                    </Text>
+                  </Space>
+                </Card>
+              </Space>
+            </Space>
+          </Card>
+        </Space>
+      </Drawer>
     </div>
   )
 }
