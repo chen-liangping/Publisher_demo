@@ -86,6 +86,14 @@ interface CacheRuleFormValues {
   passCookiesWhitelist: string[]
 }
 
+// 变更对比行类型
+interface ChangeDiffRow {
+  key: string
+  field: string
+  before: string
+  after: string
+}
+
 // 缓存检测结果-表格行类型
 interface DetectedFileTypeRow {
   ext: string
@@ -119,6 +127,30 @@ const cacheData: CacheRule[] = [
   { pattern: '*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' }
 ]
 
+const originChangeDiffs: ChangeDiffRow[] = [
+  {
+    key: 'origin-1',
+    field: '回源协议',
+    before: '仅限HTTPS',
+    after: 'HTTP/HTTPS'
+  },
+  {
+    key: 'origin-2',
+    field: '源站路径',
+    before: '//{staging/production}-legolas-{appid}-statics',
+    after: '//{staging/production}-legolas-{appid}-statics-v2'
+  }
+]
+
+const cacheChangeDiffs: ChangeDiffRow[] = [
+  {
+    key: 'cache-1',
+    field: '缓存规则',
+    before: '/*/g123/i18n/*，缓存时间 100s',
+    after: '/*/g123/i18n/*，缓存时间 30s'
+  }
+]
+
 export default function ClientPage({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
   // S3 加速状态：控制是否为客户端静态资源开启 S3 上传与回源加速
@@ -128,6 +160,8 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   // 新增：编辑弹窗开关与键值（使用 pattern 作为唯一键）
   const [editVisible, setEditVisible] = React.useState<boolean>(false)
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
+  // 新增：区分“新增”与“编辑”，避免仅弹 toast
+  const [isCreateMode, setIsCreateMode] = React.useState<boolean>(false)
   // 新增：编辑表单实例
   const [editForm] = Form.useForm<CacheRuleFormValues>()
   // 新增：缓存检测抽屉开关与检测出的文件类型
@@ -138,13 +172,46 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const [showDetectedToast, setShowDetectedToast] = React.useState<boolean>(false)
   // 新增：最佳实践弹窗开关
   const [bestPracticeVisible, setBestPracticeVisible] = React.useState<boolean>(false)
+  // 新增：变更详情弹窗开关
+  const [changeDetailOpen, setChangeDetailOpen] = React.useState<boolean>(false)
+  // 新增：CDN 部署状态
+  const [cdnDeploying, setCdnDeploying] = React.useState<boolean>(false)
+  const [cdnLastDeployTime, setCdnLastDeployTime] = React.useState<string>('未部署')
   // 表格列定义：只显示缓存类型，无操作列
   const detectedColumns: TableColumnsType<DetectedFileTypeRow> = [
     { title: '缓存类型', dataIndex: 'ext', key: 'ext' }
   ]
+  const changeDiffColumns: TableColumnsType<ChangeDiffRow> = [
+    { title: '配置项', dataIndex: 'field', key: 'field', width: 140 },
+    { title: '变更前', dataIndex: 'before', key: 'before' },
+    { title: '变更后', dataIndex: 'after', key: 'after' }
+  ]
   // 交互：添加源站
   const handleAddOrigin = (): void => {
     message.info('点击了添加源站（示例）')
+  }
+
+  // 交互：打开变更详情
+  const handleOpenChangeDetail = (): void => {
+    setChangeDetailOpen(true)
+  }
+
+  // 交互：关闭变更详情
+  const handleCloseChangeDetail = (): void => {
+    setChangeDetailOpen(false)
+  }
+
+  // 交互：执行 CDN 部署（模拟实际部署流程）
+  const handleDeployCdn = (): void => {
+    setCdnDeploying(true)
+    message.loading({ content: 'CDN 部署中...', key: 'cdnDeploy', duration: 0 })
+    window.setTimeout(() => {
+      const now = new Date()
+      // 部署完成后更新时间与状态，形成真实业务反馈
+      setCdnLastDeployTime(now.toLocaleString('zh-CN'))
+      setCdnDeploying(false)
+      message.success({ content: 'CDN 部署完成', key: 'cdnDeploy' })
+    }, 900)
   }
 
   // 交互：切换 S3 加速
@@ -220,12 +287,30 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
 
   // 交互：添加缓存配置
   const handleAddCache = (): void => {
-    message.info('点击了添加缓存配置（示例）')
+    setIsCreateMode(true)
+    setEditingKey(null)
+    // 预填一份通用默认值，直接进入抽屉编辑
+    editForm.setFieldsValue({
+      pattern: '',
+      sourceId: 'Default',
+      accessProto: '仅限HTTPS',
+      httpMethods: ['GET', 'HEAD', 'OPTIONS'],
+      smartCompress: 'ON',
+      ttlSeconds: 600,
+      passHeadersMode: 'whitelist',
+      passHeadersWhitelist: ['Origin'],
+      passQueryStringsMode: 'none',
+      passQueryStringsWhitelist: [],
+      passCookiesMode: 'none',
+      passCookiesWhitelist: []
+    })
+    setEditVisible(true)
   }
 
   // 交互：打开编辑缓存规则弹窗
   const openEditCache = (row: CacheRule): void => {
     // 打开编辑弹窗：填充当前行数据
+    setIsCreateMode(false)
     setEditingKey(row.pattern)
     setEditVisible(true)
     const httpMethodsArray = row.httpMethods.split(',').map(s => s.trim())
@@ -249,7 +334,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const handleSaveCache = async (): Promise<void> => {
     try {
       const values = await editForm.validateFields()
-      if (!editingKey) return
       // 映射表单值 -> 数据结构
       const httpMethods = Array.isArray(values.httpMethods) ? (values.httpMethods as string[]).join(', ') : String(values.httpMethods)
       const passQueryStringsWhitelist = (values.passQueryStringsWhitelist || [])
@@ -277,12 +361,26 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
         passCookiesMode: values.passCookiesMode,
         passCookiesWhitelist
       }
+      // 校验 pattern 唯一性（新增或修改时均校验）
+      const conflict = cacheList.some(it => it.pattern === nextRow.pattern && it.pattern !== editingKey)
+      if (conflict) {
+        message.warning('已存在相同访问路径的缓存规则')
+        return
+      }
 
-      // 根据原始键（editingKey）定位并替换为新值
-      setCacheList(prev => prev.map(it => it.pattern === editingKey ? nextRow : it))
+      if (isCreateMode) {
+        setCacheList(prev => [...prev, nextRow])
+        message.success('已新增缓存规则')
+      } else if (editingKey) {
+        // 根据原始键（editingKey）定位并替换为新值
+        setCacheList(prev => prev.map(it => it.pattern === editingKey ? nextRow : it))
+        message.success('保存成功（示例）')
+      } else {
+        message.warning('未找到需要更新的规则')
+      }
       setEditVisible(false)
       setEditingKey(null)
-      message.success('保存成功（示例）')
+      setIsCreateMode(false)
     } catch {
       // ignore
     }
@@ -292,6 +390,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const handleCancelEdit = (): void => {
     setEditVisible(false)
     setEditingKey(null)
+    setIsCreateMode(false)
   }
 
   // 源站表头
@@ -408,7 +507,16 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       )}
 
       {/* 基础信息 */}
-      <Card title="基础信息" style={{ marginBottom: 16 }}>
+      <Card
+        title="基础信息"
+        extra={(
+          <Space>
+            <Button onClick={handleOpenChangeDetail}>变更详情</Button>
+            <Button type="primary" loading={cdnDeploying} onClick={handleDeployCdn}>CDN部署</Button>
+          </Space>
+        )}
+        style={{ marginBottom: 16 }}
+      >
         <Row gutter={[16, 12]}>
           <Col xs={24} md={8}>
             <div style={{ color: '#999' }}>ID</div>
@@ -433,6 +541,18 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
           <Col xs={24} md={8}>
             <div style={{ color: '#999' }}>CLI</div>
             <Button type="link" onClick={() => message.info('查看 CLI（示例）')}>查看</Button>
+          </Col>
+          <Col xs={24} md={8}>
+            <div style={{ color: '#999' }}>部署状态</div>
+            <Text type={cdnLastDeployTime === '未部署' ? 'secondary' : undefined}>
+              {cdnLastDeployTime === '未部署' ? '未部署' : '已部署'}
+            </Text>
+          </Col>
+          <Col xs={24} md={8}>
+            <div style={{ color: '#999' }}>最近部署时间</div>
+            <Text type={cdnLastDeployTime === '未部署' ? 'secondary' : undefined}>
+              {cdnLastDeployTime}
+            </Text>
           </Col>
         </Row>
       </Card>
@@ -531,6 +651,35 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
           />
         </Card>
       </Drawer>  
+      {/* 变更详情弹窗 */}
+      <Modal
+        title="变更详情"
+        open={changeDetailOpen}
+        onCancel={handleCloseChangeDetail}
+        footer={<Button onClick={handleCloseChangeDetail}>关闭</Button>}
+        width={860}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card title="源站配置变更">
+            <Table<ChangeDiffRow>
+              size="small"
+              columns={changeDiffColumns}
+              dataSource={originChangeDiffs}
+              rowKey={(row) => row.key}
+              pagination={false}
+            />
+          </Card>
+          <Card title="缓存配置变更">
+            <Table<ChangeDiffRow>
+              size="small"
+              columns={changeDiffColumns}
+              dataSource={cacheChangeDiffs}
+              rowKey={(row) => row.key}
+              pagination={false}
+            />
+          </Card>
+        </Space>
+      </Modal>
       {/* 编辑缓存规则抽屉 */}
       <Drawer
         title="编辑缓存规则"
@@ -675,14 +824,17 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               <Form.List name="passHeadersWhitelist">
                 {(fields, { add, remove }) => (
                   <div>
-                    {fields.map((field) => (
-                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Form.Item {...field} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
-                          <Input placeholder="输入一个值" />
-                        </Form.Item>
-                        <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
-                      </div>
-                    ))}
+                    {fields.map((field) => {
+                      const { key, ...restField } = field
+                      return (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <Form.Item {...restField} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
+                            <Input placeholder="输入一个值" />
+                          </Form.Item>
+                          <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
+                        </div>
+                      )
+                    })}
                     <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>添加一项</Button>
                   </div>
                 )}
@@ -704,14 +856,17 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               <Form.List name="passQueryStringsWhitelist">
                 {(fields, { add, remove }) => (
                   <div>
-                    {fields.map((field) => (
-                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Form.Item {...field} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
-                          <Input placeholder="输入一个值" />
-                        </Form.Item>
-                        <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
-                      </div>
-                    ))}
+                    {fields.map((field) => {
+                      const { key, ...restField } = field
+                      return (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <Form.Item {...restField} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
+                            <Input placeholder="输入一个值" />
+                          </Form.Item>
+                          <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
+                        </div>
+                      )
+                    })}
                     <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>添加一项</Button>
                   </div>
                 )}
@@ -733,14 +888,17 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               <Form.List name="passCookiesWhitelist">
                 {(fields, { add, remove }) => (
                   <div>
-                    {fields.map((field) => (
-                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Form.Item {...field} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
-                          <Input placeholder="输入一个值" />
-                        </Form.Item>
-                        <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
-                      </div>
-                    ))}
+                    {fields.map((field) => {
+                      const { key, ...restField } = field
+                      return (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <Form.Item {...restField} name={[field.name]} style={{ flex: 1, marginBottom: 0 }}>
+                            <Input placeholder="输入一个值" />
+                          </Form.Item>
+                          <Button danger type="text" aria-label="删除该值" onClick={() => remove(field.name)} icon={<MinusCircleOutlined />} />
+                        </div>
+                      )
+                    })}
                     <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>添加一项</Button>
                   </div>
                 )}

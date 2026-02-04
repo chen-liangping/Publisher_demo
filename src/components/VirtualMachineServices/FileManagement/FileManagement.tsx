@@ -147,7 +147,7 @@ const mockFileData: OSSFile[] = [
   {
     id: '41',
     name: 'backup-2024-01-12.tar.gz',
-    size: 1048576,
+    size: 10048576,
     type: 'file',
     updateTime: '2024-01-12 14:30:00',
     path: '/backup/backup-2024-01-12.tar.gz'
@@ -192,6 +192,12 @@ export default function FileManagement() {
   const [fileContent, setFileContent] = useState<string>('')
   const [isEditorLoading, setIsEditorLoading] = useState<boolean>(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false)
+  // 大文件预览确认弹窗状态
+  const [largeFileToOpen, setLargeFileToOpen] = useState<OSSFile | null>(null)
+  const [largeFileModalVisible, setLargeFileModalVisible] = useState<boolean>(false)
+
+  // 大文件阈值（用于在在线预览前提示用户加载可能较慢，这里设定为 5MB）
+  const LARGE_FILE_SIZE_THRESHOLD: number = 5 * 1024 * 1024
 
   // 格式化文件大小
   const formatFileSize = (bytes: number): string => {
@@ -213,13 +219,10 @@ export default function FileManagement() {
     }, 500)
   }
 
-  // 查看文件 - 打开在线编辑器
-  const handleViewFile = (file: OSSFile): void => {
-    if (file.type === 'folder') {
-      message.warning('无法查看文件夹内容')
-      return
-    }
-    
+  // 实际打开文件并加载内容的逻辑，普通文件和大文件确认后都会复用这段逻辑
+  const openFileInEditor = (file: OSSFile): void => {
+    // 打开编辑器抽屉并初始化加载状态
+    // 产品意图：点击「查看」后进入在线编辑器，默认以只读/编辑态预览文件内容
     setCurrentFile(file)
     setEditorVisible(true)
     setIsEditorLoading(true)
@@ -342,6 +345,44 @@ main "$@"`
       setFileContent(content)
       setIsEditorLoading(false)
     }, 800)
+  }
+
+  // 查看文件 - 打开在线编辑器（包含大文件友好提示）
+  const handleViewFile = (file: OSSFile): void => {
+    if (file.type === 'folder') {
+      message.warning('无法查看文件夹内容')
+      return
+    }
+
+    // 若文件大于设定阈值，先提示用户「大文件在线预览可能较慢」，由用户确认后再加载
+    if (file.size > LARGE_FILE_SIZE_THRESHOLD) {
+      // 通过受控 Modal 展示确认弹窗，避免全局 Modal.confirm 带来的不确定行为
+      setLargeFileToOpen(file)
+      setLargeFileModalVisible(true)
+      return
+    }
+
+    // 普通文件直接打开
+    openFileInEditor(file)
+  }
+
+  // 确认打开大文件
+  const handleConfirmOpenLargeFile = (): void => {
+    if (!largeFileToOpen) {
+      setLargeFileModalVisible(false)
+      return
+    }
+
+    const fileToOpen = largeFileToOpen
+    setLargeFileModalVisible(false)
+    setLargeFileToOpen(null)
+    openFileInEditor(fileToOpen)
+  }
+
+  // 取消打开大文件
+  const handleCancelOpenLargeFile = (): void => {
+    setLargeFileModalVisible(false)
+    setLargeFileToOpen(null)
   }
 
   // 下载文件
@@ -552,7 +593,7 @@ main "$@"`
         <Space>
           {file.type === 'file' && (
             <>
-              <Tooltip title="查看">
+              <Tooltip title={file.size > LARGE_FILE_SIZE_THRESHOLD ? '查看（大文件，加载较慢，建议下载到本地查看）' : '查看'}>
                 <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewFile(file)} />
               </Tooltip>
               <Tooltip title="下载">
@@ -806,6 +847,22 @@ main "$@"`
           </div>
         )}
       </Drawer>
+
+      {/* 大文件预览确认弹窗：用于提示用户可能存在较长加载时间 */}
+      <Modal
+        open={largeFileModalVisible}
+        title="文件较大，在线查看可能较慢"
+        onOk={handleConfirmOpenLargeFile}
+        onCancel={handleCancelOpenLargeFile}
+        okText="继续打开"
+        cancelText="取消"
+      >
+        <p>
+          {largeFileToOpen
+            ? `当前文件大小为 ${formatFileSize(largeFileToOpen.size)}，在线预览可能需要较长时间，是否继续打开？`
+            : '当前文件较大，在线预览可能需要较长时间，是否继续打开？'}
+        </p>
+      </Modal>
 
       {/* 添加旋转动画的 CSS */}
       <style jsx>{`

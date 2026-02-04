@@ -22,9 +22,11 @@ const { Title } = Typography
 const { Search } = Input
 
 // 资源配额数据类型定义
-interface ResourceQuota {
+export interface ResourceQuota {
   id: string
   appId: string
+  // 内存单位：GB
+  memoryGB: number
   cpuCores: number
   mysqlInstances: number
   mongoInstances: number
@@ -37,7 +39,8 @@ const mockResourceData: ResourceQuota[] = [
   {
     id: 'resource-001',
     appId: 'gamedemo',
-    cpuCores: 2,
+    memoryGB: 256,
+    cpuCores: 64,
     mysqlInstances: 1,
     mongoInstances: 1,
     redisInstances: 1,
@@ -46,7 +49,8 @@ const mockResourceData: ResourceQuota[] = [
   {
     id: 'resource-002',
     appId: 'testgame',
-    cpuCores: 2,
+    memoryGB: 256,
+    cpuCores: 64,
     mysqlInstances: 2,
     mongoInstances: 1,
     redisInstances: 2,
@@ -55,15 +59,20 @@ const mockResourceData: ResourceQuota[] = [
   {
     id: 'resource-003',
     appId: 'demogame',
-    cpuCores: 8,
+    memoryGB: 256,
+    cpuCores: 64,
     mysqlInstances: 1,
     mongoInstances: 1,
     redisInstances: 1,
-    zookeeperInstances: 1  }
+    zookeeperInstances: 1
+  }
 ]
 
 // 表单提交的值类型（仅包含可编辑字段）
-type ResourceFormValues = Pick<ResourceQuota, 'cpuCores' | 'mysqlInstances' | 'mongoInstances' | 'redisInstances' | 'zookeeperInstances'>
+type ResourceFormValues = Pick<
+  ResourceQuota,
+  'memoryGB' | 'cpuCores' | 'mysqlInstances' | 'mongoInstances' | 'redisInstances' | 'zookeeperInstances'
+>
 
 export default function ResourceConfiguration() {
   const [resourceList, setResourceList] = useState<ResourceQuota[]>(mockResourceData)
@@ -100,6 +109,7 @@ export default function ResourceConfiguration() {
     const errors: string[] = []
     
     if (
+      values.memoryGB === undefined ||
       values.cpuCores === undefined ||
       values.mysqlInstances === undefined ||
       values.mongoInstances === undefined ||
@@ -107,6 +117,10 @@ export default function ResourceConfiguration() {
       values.zookeeperInstances === undefined
     ) {
       errors.push('请完整填写所有配额')
+    }
+
+    if (values.memoryGB < 1 || values.memoryGB > 1024) {
+      errors.push('内存需在 1–1024 GB 之间')
     }
 
     if (values.cpuCores < 1 || values.cpuCores > 64) {
@@ -195,6 +209,12 @@ export default function ResourceConfiguration() {
       render: (appId: string) => (
         <span style={{ fontWeight: 500 }}>{appId}</span>
       )
+    },
+    {
+      title: '内存(GB)',
+      dataIndex: 'memoryGB',
+      key: 'memoryGB',
+      render: (m: number) => `${m} GB`
     },
     {
       title: '应用资源CPU核数',
@@ -292,6 +312,27 @@ export default function ResourceConfiguration() {
           layout="vertical"
           onFinish={handleUpdateQuota}
         >
+          <Form.Item
+            label="内存 (GB)"
+            name="memoryGB"
+            rules={[
+              { required: true, message: '请输入内存大小' },
+              {
+                type: 'number',
+                min: 1,
+                max: 1024,
+                message: '内存需在 1–1024 GB 之间'
+              }
+            ]}
+          >
+            <InputNumber
+              min={1}
+              max={1024}
+              style={{ width: '100%' }}
+              placeholder="请输入内存大小"
+            />
+          </Form.Item>
+
           <Form.Item
             label="CPU最大核数"
             name="cpuCores"
