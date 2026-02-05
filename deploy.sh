@@ -204,7 +204,7 @@ EOF
 
 # 启动开发服务器
 start_dev_server() {
-    local port=${1:-3000}
+    local port=${1:-3006}
     log_info "启动开发服务器 (端口: $port)..."
     
     # 设置环境变量
@@ -242,12 +242,12 @@ show_help() {
     echo "用法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  -p, --port PORT    指定端口号 (默认: 3000)"
+    echo "  -p, --port PORT    指定端口号 (默认: 3006)"
     echo "  -c, --clean        强制清理缓存和重新安装依赖"
     echo "  -h, --help         显示帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                 # 使用默认端口 3000"
+    echo "  $0                 # 使用默认端口 3006"
     echo "  $0 -p 8080         # 使用端口 8080"
     echo "  $0 --clean         # 强制清理并重新安装"
 }

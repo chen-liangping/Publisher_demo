@@ -513,7 +513,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
       >
         {/* 初始化配置 Card：展示 ToDo 样式概览，开关可直接点击，操作前需确认 */}
         <Card
-          headStyle={{ paddingTop: 16, paddingBottom: 16 }}
+          styles={{ header: { paddingTop: 16, paddingBottom: 16 } }}
           title={
             <div>
               <div>初始化配置</div>
