@@ -149,7 +149,7 @@ export default function Announcement() {
             ? { ...item, title: values.title, content: values.content, method: values.method, type: values.type, gameScope: values.gameScope }
             : item
         ))
-        message.success('编辑保存成功（示例）')
+        message.success('编辑保存成功（冲突展示）')
       } else {
         // 新建公告
         const id = String(Date.now())
