@@ -29,7 +29,6 @@ import {
   SendOutlined,
   BellOutlined
 } from '@ant-design/icons'
-import AlertPage from './alert'
 
 const { Title } = Typography
 
@@ -61,15 +60,15 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
   const [groupDrawerOpen, setGroupDrawerOpen] = useState<boolean>(false)
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: '史迪仔', dingId: 'dingtalk:slime', group: '默认分组' },
-    { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin', group: '默认分组' }
+    { id: 'yu.b', name: 'yu.bo', dingId: 'dingtalk:yu.b', group: '默认分组' },
+    { id: 'xuyin', name: '刘悦', dingId: 'dingtalk:xuyin', group: '默认分组' }
   ])
   const [personForm] = Form.useForm<Person>()
   // 分组管理：支持为人员分配所属分组
   const [groups, setGroups] = useState<string[]>(['默认分组'])
   const [newGroupName, setNewGroupName] = useState<string>('')
 
-  // 自建群机器人配置相关状态
+  // 自建接收渠道配置相关状态
   const [webhooks, setWebhooks] = useState<WebhookItem[]>([
     // 默认示例机器人：方便演示绑定效果
     { id: 'kumo_cp', name: '小包', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
@@ -450,7 +449,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
           <Card styles={{ body: { paddingTop: 8 } }} bordered={false}>
             <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
               <Typography.Text type="secondary">
-                支持配置多个自建群机器人，用于将告警/提醒发送到不同群。
+                支持配置多个自建接收渠道，用于将告警/提醒发送到不同群。
               </Typography.Text>
               <Tooltip title="新增机器人">
                 {/* 图标按钮：打开新增机器人抽屉 */}
@@ -470,7 +469,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
             )}
           </Card>
 
-          {/* 新增 Webhook 抽屉：用于新增自建群机器人 */}
+          {/* 新增 Webhook 抽屉：用于新增自建接收渠道 */}
           <Drawer
             title="新增机器人"
             open={addWebhookOpen}
@@ -496,7 +495,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
                   { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
                 ]}
               >
-                <Input placeholder="例如：发布告警机器人" />
+                <Input placeholder="例如：CP群" />
               </Form.Item>
               <Form.Item
                 label="Webhook 地址"
@@ -541,7 +540,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
                   { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
                 ]}
               >
-                <Input placeholder="例如：发布告警机器人" />
+                <Input placeholder="例如：CP群" />
               </Form.Item>
               <Form.Item
                 label="Webhook 地址"

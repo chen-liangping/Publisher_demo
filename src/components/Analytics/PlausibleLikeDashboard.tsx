@@ -161,7 +161,7 @@ export default function PlausibleLikeDashboard(): React.ReactElement {
 
   // AppID 点击次数 TOP10（使用指定的 10 个 AppID）
   const appIds = [
-    'gamedemo','kumo','hightschool','okashi','slime','guruguru','newgame','ossan','gameone','Doraemon'
+    'gamedemo','kumo','hightschool','okashi','yu.b','guruguru','newgame','ossan','gameone','Doraemon'
   ]
   const top10Apps: AppClicksRow[] = useMemo(() => {
     const map = new Map<string, number>()

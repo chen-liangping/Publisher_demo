@@ -14,7 +14,7 @@ interface HistoryRecord {
   id: string
   type: string // 告警类型（告警项）
   content: string // 消息内容
-  channels: string[] // 通知渠道：自建群机器人名称、小包
+  channels: string[] // 通知渠道：自建接收渠道名称、小包
   people: string[] // 相关人员名称
   time: string // 时间（ISO 或可读字符串）
 }
@@ -39,7 +39,7 @@ const buildMock = (): HistoryRecord[] => {
     const fail = t.includes('失败')
     const success = t.includes('成功')
     const channels: string[] = fail ? ['kumo_webhook', '小包'] : ['kumo_webhook']
-    const people = fail ? ['徐音', 'slime'] : (success ? ['slime'] : [])
+    const people = fail ? ['刘悦', 'yu.b'] : (success ? ['yu.b'] : [])
     const time = new Date(baseTime + idx * 7 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
     const content = success
       ? `${t}：操作已完成，系统运行正常`

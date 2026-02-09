@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons'
 import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
 import AlertPage from './alert'
+import AdminNotificationGate from './AdminNotificationGate'
 
 const { RangePicker } = DatePicker
 const { Text, Title } = Typography
@@ -34,7 +35,7 @@ interface AlertMessage {
   id: string
   type: string // 告警类型（告警项）
   content: string // 消息内容
-  channels: string[] // 通知渠道：自建群机器人名称、小包
+  channels: string[] // 通知渠道：自建接收渠道名称、小包
   people: string[] // 相关人员名称
   time: string // 时间（ISO 或可读字符串）
 }
@@ -95,7 +96,7 @@ const buildMockAlertMessages = (): AlertMessage[] => {
     const fail = t.includes('失败')
     const success = t.includes('成功')
     const channels: string[] = fail ? ['kumo_webhook', '小包'] : ['kumo_webhook']
-    const people = fail ? ['徐音', 'slime'] : (success ? ['slime'] : [])
+    const people = fail ? ['刘悦', 'yu.b'] : (success ? ['yu.b'] : [])
     const time = new Date(baseTime + idx * 7 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
     const content = success
       ? `${t}：操作已完成，系统运行正常`
@@ -128,12 +129,12 @@ export default function MessageNotification(): React.ReactElement {
   const [webhooks] = useState<WebhookItem[]>([
     {
       id: 'robot-1',
-      name: '发布告警机器人',
+      name: 'CP群',
       url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-1'
     },
     {
       id: 'robot-2',
-      name: '运维值班机器人',
+      name: '小包',
       url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-2'
     }
   ])
@@ -366,7 +367,10 @@ export default function MessageNotification(): React.ReactElement {
       ),
       children: (
         <div style={{ marginTop: 8 }}>
-          <AlertPage webhooks={webhooks} />
+          {/* 交互逻辑：消息配置同样受管理员“通知总开关”控制（关闭时只读且不可操作）。 */}
+          <AdminNotificationGate>
+            <AlertPage webhooks={webhooks} />
+          </AdminNotificationGate>
         </div>
       )
     }

@@ -15,11 +15,11 @@ interface AlertConfig {
   frequency: string
 }
 
-// 通知参与者：人员 + 机器人 + 站内信
+// 通知参与者：人员 + 机器人
 interface AlertActor {
   id: string
   name: string
-  kind: 'person' | 'webhook' | 'site'
+  kind: 'person' | 'webhook'
 }
 
 // 模拟告警配置数据
@@ -42,18 +42,17 @@ export default function AlertSystem(): React.ReactElement {
   const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
   const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [faroConfigOpen, setFaroConfigOpen] = useState<boolean>(false)
-  // 模拟的告警参与者：人员 + 机器人 + 站内信（参考“消息配置”中的配置）
+  // 模拟的告警参与者：人员 + 机器人（参考“消息配置”中的配置）
   const [actors] = useState<AlertActor[]>([
-    { id: 'siteMsg',       name: '站内信', kind: 'site' },
-    { id: 'person_slime',  name: 'slime', kind: 'person' },
-    { id: 'person_xuyin',  name: '徐音',  kind: 'person' },
+    { id: 'person_yu.b',  name: 'yu.b', kind: 'person' },
+    { id: 'person_xuyin',  name: '刘悦',  kind: 'person' },
     { id: 'webhook_kumo',  name: '小包',  kind: 'webhook' }
   ])
-  // 每个应用 x 参与者的开关矩阵（站内信默认开启）
+  // 每个应用 x 参与者的开关矩阵（默认未配置视为勾选）
   const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>(() => {
     const initial: Record<string, Record<string, boolean>> = {}
     mockAlertConfigs.forEach(cfg => {
-      initial[cfg.id] = { siteMsg: true }
+      initial[cfg.id] = {}
     })
     return initial
   })
@@ -154,11 +153,8 @@ export default function AlertSystem(): React.ReactElement {
         enabled: true
       }
     ])
-    // 新增配置默认开启站内信
-    setActorMatrix(prev => ({
-      ...prev,
-      [id]: { ...(prev[id] ?? {}), siteMsg: true }
-    }))
+    // 交互逻辑：新增配置行时初始化矩阵行（默认未配置视为勾选）
+    setActorMatrix(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}) } }))
   }, [])
 
   // 抽屉中保存配置
@@ -261,44 +257,57 @@ initializeFaro({
       }
     ]
 
-    // 动态追加“通知渠道参与者”列：按类别分组（站内信 / 人员 / 机器人）
+    // 动态追加“通知渠道参与者”列：按类别分组（人员 / 机器人）
     const personActors = actors.filter(actor => actor.kind === 'person')
     const webhookActors = actors.filter(actor => actor.kind === 'webhook')
-    const siteActors = actors.filter(actor => actor.kind === 'site')
 
-    const buildActorCols = (actorList: AlertActor[]): ColumnsType<AlertConfig> =>
-      actorList.map(actor => ({
-        title: actor.name,
-        key: `actor_${actor.id}`,
-        width: 100,
-        align: 'center',
-        className: 'alert-actor-col-center',
-        render: (_: unknown, record: AlertConfig) => (
+    const renderActorChecklist = (
+      actorList: AlertActor[],
+      layout: 'vertical' | 'horizontal'
+    ) => (_: unknown, record: AlertConfig): React.ReactElement => {
+      const content = actorList.map(actor => (
+        <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
           <Checkbox
             checked={getActorCheckedForApp(record.id, actor.id)}
             onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
-          />
+          >
+            {actor.name}
+          </Checkbox>
+        </div>
+      ))
+
+      if (layout === 'horizontal') {
+        return (
+          <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+            {content}
+          </Space>
         )
-      }))
+      }
+
+      return (
+        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
+          {content}
+        </Space>
+      )
+    }
 
     const groupedActorCols: ColumnsType<AlertConfig> = []
 
-    // 站内信：只有一个渠道，不再做分组表头，直接作为普通列展示
-    if (siteActors.length > 0) {
-      groupedActorCols.push(...buildActorCols(siteActors))
+    if (webhookActors.length > 0) {
+      groupedActorCols.push({
+        title: '接收渠道',
+        key: 'channels',
+        width: 220,
+        render: renderActorChecklist(webhookActors, 'vertical')
+      })
     }
+
     if (personActors.length > 0) {
       groupedActorCols.push({
         title: '联系人',
-        children: buildActorCols(personActors),
-        className: 'alert-actor-group-header'
-      })
-    }
-    if (webhookActors.length > 0) {
-      groupedActorCols.push({
-        title: '群机器人',
-        children: buildActorCols(webhookActors),
-        className: 'alert-actor-group-header'
+        key: 'contacts',
+        width: 260,
+        render: renderActorChecklist(personActors, 'horizontal')
       })
     }
 

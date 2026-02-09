@@ -15,7 +15,7 @@
   - 服务端（Level1） → 自动开服（Level2） → 自动开服成功（Level3）
   - CDN（Level1） → CDN部署成功/失败（Level2）
 - 通道：
-  - 自建群机器人（Webhook）
+  - 自建接收渠道（Webhook）
   - 小包（独立通道）
 - 人员：被 @ 的联系人集合（动态列）。
 
@@ -39,13 +39,13 @@
   - robotMatrix: Record<string, boolean>
   - packageMatrix: Record<string, boolean>（小包通道）
   - personChannelMatrix: Record<string, Record<string, boolean>>
-  - rowWebhookByKey: Record<string, string[]>（自建群机器人选择，字符串为机器人名称/ID；可多选；空数组=不触发）
+  - rowWebhookByKey: Record<string, string[]>（自建接收渠道选择，字符串为机器人名称/ID；可多选；空数组=不触发）
 
 ## 4. 告警管理矩阵（核心交互）
 表格列：
 - 消息类型（树形缩进：Level1=0、Level2=16、Level3=24）
 - 小包（Switch）
-- 自建群机器人（Checkbox + 配置按钮）
+- 自建接收渠道（Checkbox + 配置按钮）
 - 人员列（动态：每个人员一列，Switch）
 
 ### 4.1 通道开关与三态（小包/机器人）
@@ -77,7 +77,7 @@
 - 规则配置内“应用”不可重复（保存与渲染时均校验）。
 - 初始：
   - 机器人默认内置 1 个：kumo_webhook。
-  - 人员示例：史迪仔、徐音。
+  - 人员示例：yu.bo、刘悦。
 
 ## 6. Webhook 管理
 - 列表：展示多个机器人（名称、地址、可选的加签密钥）。
@@ -121,7 +121,7 @@
 ## 2. 业务告警字段
 - 告警类型：文本
 - 消息内容：文本（超长省略）
-- 通知渠道：字符串数组，值为“自建群机器人名称”“小包”，示例：`['kumo_webhook', '小包']`
+- 通知渠道：字符串数组，值为“自建接收渠道名称”“小包”，示例：`['kumo_webhook', '小包']`
 - @负责人：人员名称列表，以 Tag 展示
 - 时间：精确到秒，可排序
 

@@ -177,10 +177,10 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     { id: 'kumo_cp', name: 'kumo_webhook', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
   ]
 
-  // 人员配置（默认包含一名联系人 slime）
+  // 人员配置（默认包含一名联系人 yu.b）
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: 'slime', dingId: 'dingtalk:slime' },
-    { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin' }
+    { id: 'yu.b', name: 'yu.b', dingId: 'dingtalk:yu.b' },
+    { id: 'xuyin', name: '刘悦', dingId: 'dingtalk:xuyin' }
   ])
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
@@ -660,16 +660,15 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     return out
   }
 
-  // 参与者：人员 + 机器人 + 站内信，在矩阵中每个参与者对应一列
+  // 参与者：人员 + 机器人，在矩阵中每个参与者对应一列
   interface Actor {
     id: string
     name: string
-    kind: 'person' | 'robot' | 'site'
+    kind: 'person' | 'robot'
   }
 
   const actors: Actor[] = useMemo(
     () => [
-      { id: 'siteMsg', name: '站内信', kind: 'site' as const },
       ...webhooks.map(w => ({ id: `robot:${w.id}`, name: w.name, kind: 'robot' as const })),
       ...people.map(p => ({ id: p.id, name: p.name, kind: 'person' as const }))
         ],
@@ -708,7 +707,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   const treeColumns: ColumnsType<TreeRow> = useMemo(() => {
     const base: ColumnsType<TreeRow> = [
       {
-        title: '消息类型', dataIndex: 'name', key: 'name', width: 80, fixed: 'left',
+        title: '消息类型', dataIndex: 'name', key: 'name', width: 160, fixed: 'left',
         render: (_: unknown, r: TreeRow) => (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ paddingLeft: r.level === 1 ? 0 : r.level === 2 ? 16 : 24, flex: '0 1 auto' }}>{r.name}</div>
@@ -733,127 +732,66 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       }
     ]
 
-    // 将参与者按类别分组：站内信 / 人员 / 机器人
+    // 将参与者按类别分组：人员 / 机器人
     const personActors = actors.filter(actor => actor.kind === 'person')
     const robotActors = actors.filter(actor => actor.kind === 'robot')
-    const siteActors = actors.filter(actor => actor.kind === 'site')
 
-    const buildActorCols = (actorList: Actor[]): ColumnsType<TreeRow> =>
-      actorList.map((actor): ColumnType<TreeRow> => ({
-        title: actor.name,
-        key: `actor_${actor.id}`,
-        width: 64,
-        align: 'center',
-        className: 'alert-actor-col-center',
-        render: (_: unknown, r: TreeRow) => {
-          const tri = getActorTri(r.key, actor.id)
-          return renderChannelCheckbox(tri, (checked) => setActorCascade(r.key, actor.id, checked))
-        }
-      }))
+    const renderActorChecklist = (
+      actorList: Actor[],
+      layout: 'vertical' | 'horizontal'
+    ) => (_: unknown, r: TreeRow): React.ReactElement => {
+      const content = actorList.map(actor => {
+        const tri = getActorTri(r.key, actor.id)
+        return (
+          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              indeterminate={tri === 'indeterminate'}
+              checked={tri === true}
+              onChange={(e) => setActorCascade(r.key, actor.id, e.target.checked)}
+            >
+              {actor.name}
+            </Checkbox>
+          </div>
+        )
+      })
+
+      if (layout === 'horizontal') {
+        return (
+          <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+            {content}
+          </Space>
+        )
+      }
+
+      return (
+        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
+          {content}
+        </Space>
+      )
+    }
 
     const groupedActorCols: ColumnsType<TreeRow> = []
 
-    // 站内信：只有一个渠道，不做分组表头，直接作为单列表头展示
-    if (siteActors.length > 0) {
-      groupedActorCols.push(...buildActorCols(siteActors))
+    if (robotActors.length > 0) {
+      groupedActorCols.push({
+        title: '接收渠道',
+        key: 'channels',
+        width: 160,
+        render: renderActorChecklist(robotActors, 'vertical')
+      })
     }
 
     if (personActors.length > 0) {
       groupedActorCols.push({
         title: '联系人',
-        children: buildActorCols(personActors),
-        className: 'alert-actor-group-header'
-      })
-    }
-
-    if (robotActors.length > 0) {
-      groupedActorCols.push({
-        title: '群机器人',
-        children: buildActorCols(robotActors),
-        className: 'alert-actor-group-header'
+        key: 'contacts',
+        width: 260,
+        render: renderActorChecklist(personActors, 'horizontal')
       })
     }
 
     return [...base, ...groupedActorCols]
   }, [actors, actorChannelMatrix])
-
-  const clientTreeData: TreeRow[] = useMemo(() => ([
-    {
-      key: 'client-root', name: '客户端告警', level: 1, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false, person: 'indeterminate',
-      children: [
-        {
-          key: 'client-version', name: '客户端版本', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'clientNewVersion', name: '客户端创建新版本', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
-            { key: 'clientVersionSwitch', name: '客户端版本切换', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
-            { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' },
-            { key: 'CDNDeployFail', name: 'CDN部署失败', level: 3, siteMsg: true, sms: true, email: true, robot: false, person: 'indeterminate' }
-          ]
-        },
-        {
-          key: 'client-s3', name: 'S3 解压', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 's3UnzipSuccess', name: 'S3 zip解压成功', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 's3UnzipFail', name: 'S3 zip解压失败', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        },
-        { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', level: 2, siteMsg: true, sms: true, email: true, robot: false },
-        { key: 'ossConfigChange', name: 'oss配置文件变更', level: 2, siteMsg: true, sms: true, email: true, robot: false },
-        { key: 'CDNDeploySuccess', name: 'CDN部署成功', level: 2, siteMsg: true, sms: true, email: true, robot: false }
-      ]
-    }
-  ]), [])
-
-  const serverTreeData: TreeRow[] = useMemo(() => ([
-    {
-      key: 'server-root', name: '服务端告警', level: 1, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-      children: [
-        {
-          key: 'server-auto-open', name: '自动开服', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'autoOpenServerSuccess', name: '自动开服成功', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'autoOpenServerFail', name: '自动开服失败', level: 3, siteMsg: true, sms: true, email: true, robot: false }, 
-            { key: 'notifyCPFail', name: '通知CP新预备服失败', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'prepareDeployFail', name: '预备服部署失败', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'autoOpenPolicyChange', name: '自动开服策略变更', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        },
-        {
-          key: 'server-deploy', name: '应用故障告警', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'serverDeployStart', name: '服务端部署', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'serverDeployDone', name: '服务端部署完成', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        },
-        {
-          key: 'server-gray', name: '灰度发布', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'grayRollback', name: '灰度回滚', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'grayRollbackDone', name: '灰度回滚完成', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'grayAppend', name: '追加灰度', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'grayAppendDone', name: '灰度追加完成', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'grayFullDeploy', name: '灰度全量部署', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        },
-        {
-          key: 'server-pod', name: 'pod 状态', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'podHealthCheckFail', name: 'pod健康检查失败', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'podFailure', name: 'Pod故障', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'podUpdateAbnormal', name: 'Pod更新异常', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        },
-        {
-          key: 'server-CDN', name: 'CDN 部署告警', level: 2, siteMsg: 'indeterminate', sms: 'indeterminate', email: 'indeterminate', robot: false,
-          children: [
-            { key: 'CDNDeploySuccess', name: 'CDN部署成功', level: 3, siteMsg: true, sms: true, email: true, robot: false },
-            { key: 'CDNDeployFail', name: 'CDN部署失败', level: 3, siteMsg: true, sms: true, email: true, robot: false }
-          ]
-        }
-      ]
-    }
-  ]), [])
 
   const NoticeSection = (
     <>
