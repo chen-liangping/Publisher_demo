@@ -116,12 +116,6 @@ export default function AdminNotificationGate(props: {
     <div>
       {disabledRowKeySet.size > 0 && (
         <div style={{ marginBottom: 12 }}>
-          <Alert
-            type="info"
-            showIcon
-            message="部分通知项由管理员锁定"
-            description="被锁定的行（以及其父级行）在用户侧将不可操作；其余项仍可自定义。"
-          />
         </div>
       )}
 
@@ -180,20 +174,16 @@ export default function AdminNotificationGate(props: {
               pointer-events: none !important;
             }
 
-            /* 禁用样式：整行置灰 + 轻背景 + 禁用态光标 + 去掉 hover 高亮 */
-            .ant-table-tbody > tr[data-row-key="${k}"] {
+            /* 视觉策略：不整行置灰，只让“可操作控件”呈现禁用态（置灰）。 */
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-btn,
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-switch,
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-checkbox-wrapper,
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-radio-wrapper,
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-select,
+            .ant-table-tbody > tr[data-row-key="${k}"] .ant-select-selector {
+              opacity: 0.45;
+              filter: grayscale(0.2);
               cursor: not-allowed;
-            }
-            .ant-table-tbody > tr[data-row-key="${k}"] > td {
-              background: rgba(0, 0, 0, 0.02) !important;
-              color: rgba(0, 0, 0, 0.35) !important;
-            }
-            .ant-table-tbody > tr[data-row-key="${k}"] > td * {
-              color: rgba(0, 0, 0, 0.35) !important;
-              border-color: rgba(0, 0, 0, 0.15) !important;
-            }
-            .ant-table-tbody > tr[data-row-key="${k}"]:hover > td {
-              background: rgba(0, 0, 0, 0.02) !important;
             }
 
             .ant-table-tbody > tr[data-row-key="${k}"] .ant-btn,
@@ -203,7 +193,6 @@ export default function AdminNotificationGate(props: {
             .ant-table-tbody > tr[data-row-key="${k}"] .ant-select,
             .ant-table-tbody > tr[data-row-key="${k}"] .ant-select-selector {
               pointer-events: none !important;
-              opacity: 0.55;
             }
 
             /* 被管理员锁定的行：视觉上也显示为“关闭” */

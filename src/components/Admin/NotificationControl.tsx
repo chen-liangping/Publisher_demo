@@ -205,7 +205,7 @@ export default function NotificationControl(): React.ReactElement {
     {
       title: (
         <Space>
-          <span>允许用户配置</span>
+          <span>全局配置</span>
           <Tooltip title="关闭后，用户侧该项的开关会被禁用（只读）。">
             <Text type="secondary">说明</Text>
           </Tooltip>
@@ -257,17 +257,11 @@ export default function NotificationControl(): React.ReactElement {
         styles={{ body: { paddingTop: 12 } }}
       >
         <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-          <Alert
-            type="info"
-            showIcon
-            message="管理员在此逐条控制：每个消息类型是否允许用户配置。"
-            description="关闭某条后，用户侧该条将不可操作，并强制显示为关闭；开启后用户才能自定义。"
-          />
 
           <Card
             title={
               <Space>
-                <span style={{ fontSize: 16 }}>通知配置范围（与用户侧一致）</span>
+                <span style={{ fontSize: 16 }}>全局通知配置</span>
                 <Tag color="purple" bordered={false} style={{ borderRadius: 999, paddingInline: 10 }}>
                   可单独控制
                 </Tag>
