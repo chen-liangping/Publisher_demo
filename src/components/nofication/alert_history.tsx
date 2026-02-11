@@ -12,7 +12,7 @@ const { Text } = Typography
 // 告警历史记录类型（与 MessageNotification 中的 AlertMessage 对齐）
 interface HistoryRecord {
   id: string
-  type: string // 告警类型（告警项）
+  type: string // 告警名称（告警项）
   content: string // 消息内容
   channels: string[] // 通知渠道：自建接收渠道名称、小包
   people: string[] // 相关人员名称
@@ -38,7 +38,7 @@ const buildMock = (): HistoryRecord[] => {
   return allMessageTypes.map((t, idx) => {
     const fail = t.includes('失败')
     const success = t.includes('成功')
-    const channels: string[] = fail ? ['kumo_webhook', '小包'] : ['kumo_webhook']
+    const channels: string[] = fail ? ['cp 群', '小包'] : ['cp 群']
     const people = fail ? ['刘悦', 'yu.b'] : (success ? ['yu.b'] : [])
     const time = new Date(baseTime + idx * 7 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
     const content = success
@@ -64,7 +64,7 @@ export default function AlertHistory(): React.ReactElement {
   const [range, setRange] = useState<[string | null, string | null]>([null, null])
 
   const columns: ColumnsType<HistoryRecord> = useMemo(() => ([
-    { title: '告警类型', dataIndex: 'type', key: 'type', width: 160 },
+    { title: '告警名称', dataIndex: 'type', key: 'type', width: 160 },
     { title: '消息内容', dataIndex: 'content', key: 'content', render: (v: string) => (
       <Text ellipsis style={{ maxWidth: 520, display: 'inline-block' }}>{v}</Text>
     ) },
@@ -101,7 +101,7 @@ export default function AlertHistory(): React.ReactElement {
         <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
           <Input
             allowClear
-            placeholder="搜索告警类型或消息内容"
+            placeholder="搜索告警名称或消息内容"
             prefix={<SearchOutlined />}
             style={{ width: 280 }}
             value={keyword}

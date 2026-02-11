@@ -1,142 +1,152 @@
-# 告警配置（Alert）需求与交互文档
+# 告警消息与消息配置（Alert）需求与交互文档
 
-> 本文档描述 `src/components/alert.tsx` 的业务目标、字段说明、交互逻辑与业务限制，用于产品、设计与前端协作。实现基于 Next.js + Ant Design v5（前端原型，纯前端态）。
+> 本文档描述“告警消息列表 + 消息类型配置 + 管理员管控”的业务目标、字段说明与关键交互，用于产品、设计与前端协作。实现基于 Next.js（App Router）+ Ant Design v5（前端原型，纯前端态）。
 
-## 1. 模块范围
-- 页面入口：侧边栏一级菜单「告警配置」。
-- 页面包含三个子模块：
-  - Webhook 管理（新增、编辑、删除、测试）
-  - 人员配置（新增、删除）
-  - 告警管理（核心矩阵：消息类型树 x 通道/人员）
+## 0. 文件与入口概览
+
+- **用户侧：消息类型配置页**：`src/components/nofication/alert.tsx`
+  - 入口 1：`/`（`src/app/page.tsx`）菜单 `menu=alert`
+  - 入口 2：消息通知页（见下）
+- **用户侧：告警消息列表（“告警消息”Tab）**：`src/components/nofication/MessageNotification.tsx`
+  - 入口：`/` 菜单 `menu=message-notification`
+- **管理侧：消息类型开关（按条控制）**：`src/components/Admin/NotificationControl.tsx`（挂载于 `/admin`）
+- **用户侧：管理员联动门禁**：`src/components/nofication/AdminNotificationGate.tsx`
+
+> 说明：目录名为 `nofication`（历史拼写），本文按现状引用路径。
+
+## 1. 模块范围（本次原型覆盖）
+
+- **告警消息列表**：展示告警/通知消息，支持搜索、时间筛选、分页。
+- **消息类型配置（核心）**：树形“消息类型”配置渠道与联系人绑定。
+- **管理员管控（核心）**：管理员按“消息类型”逐条开关，控制用户侧是否可配置对应项。
 
 ## 2. 术语与对象
-- 消息类型（Message Type）：树形层级（Level1、Level2、Level3）。示例：
-  - 客户端（Level1） → 客户端版本（Level2） → 客户端创建新版本（Level3）
-  - 服务端（Level1） → 自动开服（Level2） → 自动开服成功（Level3）
-  - CDN（Level1） → CDN部署成功/失败（Level2）
-- 通道：
-  - 自建接收渠道（Webhook）
-  - 小包（独立通道）
-- 人员：被 @ 的联系人集合（动态列）。
 
-## 3. 字段与数据结构
-- WebhookItem
-  - id: string
-  - name: string（示例：kumo_webhook）
-  - url: string
-  - secret?: string
-- Person
-  - id: string
-  - name: string
-  - dingId: string
-- TreeRow（用于渲染消息类型树表格）
-  - key: string（唯一主键）
-  - name: string（显示名）
-  - level: 1 | 2 | 3（层级）
-  - robot: TriState（true | false | 'indeterminate'）
-  - children?: TreeRow[]
-- 前端状态（内存态，仅用于原型演示）
-  - robotMatrix: Record<string, boolean>
-  - packageMatrix: Record<string, boolean>（小包通道）
-  - personChannelMatrix: Record<string, Record<string, boolean>>
-  - rowWebhookByKey: Record<string, string[]>（自建接收渠道选择，字符串为机器人名称/ID；可多选；空数组=不触发）
+- **消息类型（Message Type）**：树形层级（Level1/2/3）。
+  - Level1：`告警` / `通知`
+  - Level2：业务场景（如 自动开服 / 静态资源与 CDN / 配置变更）
+  - Level3：具体消息项（如 自动开服成功 / pod健康检查失败）
+- **接收渠道（Channel）**：当前原型里等价于“群机器人/Webhook 渠道”（可以有多个）。
+- **联系人（Receiver/People）**：每个渠道可以配置一组联系人（渠道 → 联系人绑定）。
 
-## 4. 告警管理矩阵（核心交互）
-表格列：
-- 消息类型（树形缩进：Level1=0、Level2=16、Level3=24）
-- 小包（Switch）
-- 自建接收渠道（Checkbox + 配置按钮）
-- 人员列（动态：每个人员一列，Switch）
+## 3. 数据结构（前端原型态）
 
-### 4.1 通道开关与三态（小包/机器人）
-- 三态计算基于叶子回溯：true/false/'indeterminate'。
-- 父级任意开关影响全部子级（级联）。
-- 人员列可用性：当任一通道开启（小包=on 或 机器人=on）时，人员可用；两者都关闭时，人员强制关闭并禁用。
+### 3.1 消息类型配置相关
 
-### 4.2 机器人配置按钮
-- 当机器人通道开启但未配置时：
-  - 按钮 danger=红色，提示“请配置机器人”，并带轻微动效。
-- 点击打开 Modal（Table 列表：名称 + Webhook 地址），支持多选、不选。
-  - 保存后：将选择应用到当前节点及其全部子节点（级联继承）。
-  - 不选=不触发（该节点 rowWebhookByKey[key] = []）。
+- **Actor**
+  - `id: string`
+  - `name: string`
+  - `kind: 'robot' | 'person'`
+- **actorChannelMatrix**：消息类型节点 × 渠道开关矩阵（用于三态与级联）
+  - `Record<nodeKey, Record<actorId, boolean>>`
+- **channelReceiversByKey（方案 A 核心）**：消息类型节点 × 渠道 × 联系人绑定
+  - `Record<nodeKey, Record<channelActorId, personActorId[]>>`
 
-### 4.3 CDN 作为一级分组
-- CDN告警（例如：CDN部署成功/失败）与客户端/服务端同级（Level1）。
-- 渲染数据源为三棵根：客户端、服务端、CDN。
+### 3.2 管理员管控相关
 
-### 4.4 告警规则配置（示例：服务端部署）
-- 在“服务端部署”行右侧显示“编辑”图标，点击打开规则配置 Modal。
-- 规则项字段：
-  - 告警应用（Select，不可与同列表内其他规则重复）
-  - 报警频率（Select）
-- 支持新增/删除多条规则；首次打开预填两条：open-platform/1h，flashlaunch/1h。
+- **pp:admin_notice_enabled_map**（localStorage）
+  - `Record<noticeLeafKey, boolean>`
+  - `false` 表示该消息类型（叶子项）在用户侧“禁用且显示为关闭”
 
-## 5. 业务规则与限制
-- 任一通道开启即允许人员开关；两通道均关闭时人员强制关闭并禁用。
-- 机器人配置支持多选；子节点继承父级保存时的配置。
-- 规则配置内“应用”不可重复（保存与渲染时均校验）。
-- 初始：
-  - 机器人默认内置 1 个：kumo_webhook。
-  - 人员示例：yu.bo、刘悦。
+### 3.3 业务规则（有效配置与发送逻辑）
 
-## 6. Webhook 管理
-- 列表：展示多个机器人（名称、地址、可选的加签密钥）。
-- 操作：新增、编辑、删除、测试。
-- 默认内置 1 个机器人：`kumo_webhook`。
+**核心规则：实际发送时的有效配置 = 管理员已开启 ∩ 用户配置**
 
-### 6.1 Webhook CRUD 字段与校验
-- name：必填，1~32 个字符，字符集受限。
-- url：必填，合法 http(s) URL，长度 ≤ 200。
-- secret：可选，长度 ≤ 128。
-- 唯一性：name/url 不可重复。
-- 删除引用：若被矩阵使用，删除时二次确认；引用节点视为未配置。
+| 层级 | 规则 | 说明 |
+|------|------|------|
+| 管理员 | 管理员关闭某消息类型 → 该类型**不发送** | 无论用户如何配置，管理员关闭即生效 |
+| 用户 | 管理员开启时，用户配置的渠道与联系人生效 | 用户可自定义接收渠道、联系人 |
+| 有效配置 | `有效配置(noticeKey) = admin_enabled(noticeKey) ? 用户配置(noticeKey) : 空` | 发送逻辑必须基于有效配置，而非仅用户配置 |
 
-## 7. 人员配置
-- 列表：展示人员（名称、dingId）。
-- 操作：新增、删除。
-- 删除会同步清理矩阵内该人员的状态。
+**实现说明：**
 
-## 8. 可用性与提示
-- 未配置机器人时给出红色提示与动效。
-- Webhook 选择列表截断显示长 URL，Modal 允许横向滚动。
+- **本原型**：当前仅在前端 UI 层做禁用（控件不可操作、置灰），无真实发送逻辑，故未实现“发送前校验”。
+- **线上系统**：建议在发送链路（后端或网关）中再次校验 `pp:admin_notice_enabled_map`（或等价的配置源），确保管理员关闭的消息类型绝不投递。
 
-## 9. 分页策略（全局化）
-- 提供全局分页工具 `src/components/Common/GlobalPagination.ts`：
-  - `getTablePagination(pageSize, pageSizeOptions)` 返回统一配置（含 showSizeChanger 与选项）。
-  - 预设：
-    - `BUSINESS_DEFAULT_PAGINATION`：默认 5 条，选项 [5, 10, 20, 50]
-    - `CDN_DEFAULT_PAGINATION`：默认 10 条，选项 [10, 20, 50, 100]
+## 4. 用户侧：消息类型配置（核心交互）
+
+### 4.1 表格结构（树形表格）
+
+列结构：
+- **消息类型**：树形缩进（Level1=0、Level2=16、Level3=24）
+- **接收渠道**：单列；单元格里竖排多条渠道项（checkbox）
+- **联系人**：单列；只读汇总（按渠道展示已绑定联系人）
+
+### 4.2 渠道开关与三态（级联）
+
+- 三态计算：某节点与其后代节点在同一渠道上的状态聚合为 `true / false / indeterminate`。
+- 父级切换会级联影响所有后代节点（用于快速批量开关）。
+
+### 4.3 渠道 → 联系人绑定（方案 A）
+
+目标：让用户明确“联系人是绑定在某个渠道下的收件人”，避免“联系人像第二个渠道”的误解。
+
+交互：
+- 在“接收渠道”列中，每条渠道项展示：
+  - 渠道 checkbox
+  - 当渠道 **已勾选** 时，显示 `联系人（N）` 与 **编辑 icon**（tooltip：编辑联系人）
+- 点击编辑 icon 打开 Modal：
+  - 多选联系人
+  - 支持“全选/清空”
+  - 保存后生效
+
+默认与约束：
+- **首次开启渠道**且当前未设置联系人时，默认预置第一个联系人，避免“开了渠道但没人接收”的空状态。
+- 关闭渠道时，会清空该渠道在当前节点及后代节点的联系人绑定（避免残留配置产生误解）。
+- 绑定关系保存时，按节点级联：对父级节点设置会同步到后代节点（与渠道开关级联保持一致）。
+
+### 4.4 联系人列（只读汇总）
+
+- 按渠道展示绑定结果：
+  - 渠道未开启：显示“未开启”
+  - 渠道已开但无联系人：显示“未设置”
+  - 否则用 Tag 展示联系人名单
+
+## 5. 管理侧：消息类型开关（按条控制）
+
+页面：管理台 `/admin` 菜单「消息类型开关」
+
+交互：
+- 树形结构与用户侧一致（告警/通知 → 场景 → 具体项）。
+- 叶子节点：单条开/关
+- 父节点：级联开/关（支持 indeterminate）
+
+存储：
+- 写入 localStorage：`pp:admin_notice_enabled_map`
+
+默认策略（原型）：
+- 告警类默认 `true`
+- 通知类默认 `false`（减少误配置）
+
+## 6. 用户侧联动：禁用与视觉反馈
+
+当管理员将某叶子项关闭（`false`）时：
+- 用户侧对应行（以及包含该叶子的父级行）**不可操作**
+- 视觉上：仅“可操作控件”（checkbox/switch/button/select）呈禁用态（置灰），文字不必整行置灰
+- 且控件强制显示为“关闭”状态（避免禁用但看起来开启的歧义）
+
+## 7. 告警消息列表（MessageNotification 的“告警消息”Tab）
+
+文件：`src/components/nofication/MessageNotification.tsx`
+
+字段与列：
+- **类型**：`通知 / 告警`
+- **告警名称**：消息类型名称（Tag 渲染）
+- **消息内容**：文本（超长省略）
+- **通知渠道 / 相关人员**：合并为一列
+  - 上行：渠道 Tag（不同值不同颜色）
+  - 下行：人员 Tag（不同值不同颜色；为空显示 `—`）
+- **时间**：精确到秒，可排序
+
+搜索：
+- 关键词可匹配：告警名称、消息内容、渠道、人员、类型
+
+## 8. 分页策略（全局）
+
+- 全局分页工具：`src/components/Common/GlobalPagination.ts`
+  - `BUSINESS_DEFAULT_PAGINATION`：默认 5 条，选项 `[5, 10, 20, 50]`
+  - `CDN_DEFAULT_PAGINATION`：默认 10 条，选项 `[10, 20, 50, 100]`
 
 ---
 
-# 告警历史
-
-> 文件：`src/components/alert/alert_history.tsx`
-
-## 1. 页面结构
-- 顶部卡片标题“告警事件”，下含 Tabs：
-  - 业务告警：历史记录列表（搜索 + 时间范围筛选 + 分页）
-  - CDN告警：问题 URI 列表（Status、URI、Counts、操作）
-
-## 2. 业务告警字段
-- 告警类型：文本
-- 消息内容：文本（超长省略）
-- 通知渠道：字符串数组，值为“自建接收渠道名称”“小包”，示例：`['kumo_webhook', '小包']`
-- @负责人：人员名称列表，以 Tag 展示
-- 时间：精确到秒，可排序
-
-## 3. CDN告警字段
-- Status：例如 4XX
-- URI：路径，示例数据包含
-  - /、/favicon.ico、/offliciate、/images/favicon-icon.png、/images/favicon.png、/imgs/logox.png、/image/favicon.ico、/images/favicon-196x196.png、/assets/img/favicon.png、/favicon.ico
-- Counts：出现次数（其中 2 会出现多次）
-- 操作：每条有“重新扫描”链接（点击后提示“已发起重新扫描：{URI}”）
-
-## 4. 分页
-- 业务告警表：使用 `BUSINESS_DEFAULT_PAGINATION`
-- CDN告警表：使用 `CDN_DEFAULT_PAGINATION`
-
----
-最后更新：与实现保持同步（以 `src/components/alert.tsx` 与 `src/components/alert/alert_history.tsx` 为准）。
-
-
+最后更新：以实现为准（重点文件：`src/components/nofication/alert.tsx`、`src/components/Admin/NotificationControl.tsx`、`src/components/nofication/MessageNotification.tsx`）。

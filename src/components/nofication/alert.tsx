@@ -174,7 +174,7 @@ interface AlertPageProps {
 export default function AlertPage(props: AlertPageProps): React.ReactElement {
   // Webhook：来自父组件（人员配置 -> webhook 管理）；未传时使用一个默认示例
   const webhooks: WebhookItem[] = props.webhooks ?? [
-    { id: 'kumo_cp', name: 'kumo_webhook', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
+    { id: 'kumo_cp', name: 'cp 群', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
   ]
 
   // 人员配置（默认包含一名联系人 yu.b）
@@ -459,6 +459,17 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   const [actorChannelMatrix, setActorChannelMatrix] = useState<Record<string, Record<string, boolean>>>({})
   // 保留行级 webhook 选择结构（仅供弹窗展示使用，简化为 key -> webhookId 数组）
   const [rowWebhookByKey, setRowWebhookByKey] = useState<Record<string, string[]>>({})
+
+  /**
+   * 方案 A：渠道 -> 联系人 绑定
+   * - 每个消息类型（nodeKey）下，每个接收渠道（robot actor）都可以配置一组联系人（person actor）
+   * - UI 入口放在“接收渠道”列中（每个渠道旁边“设置联系人”）
+   */
+  type ChannelReceiversByKey = Record<string, Record<string, string[]>>
+  const [channelReceiversByKey, setChannelReceiversByKey] = useState<ChannelReceiversByKey>({})
+  const [receiverModalOpen, setReceiverModalOpen] = useState<boolean>(false)
+  const [receiverEditing, setReceiverEditing] = useState<{ nodeKey: string; channelActorId: string } | null>(null)
+  const [tempReceiverIds, setTempReceiverIds] = useState<string[]>([])
   
   // 告警规则：每个节点可配置多条（服务端部署等）
   interface AlertRule { id: string; app: string; frequency: string }
@@ -649,6 +660,24 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     return out
   }
 
+  const getChannelReceivers = (nodeKey: string, channelActorId: string): string[] => (
+    channelReceiversByKey[nodeKey]?.[channelActorId] ?? []
+  )
+
+  const setChannelReceiversCascade = (nodeKey: string, channelActorId: string, receiverIds: string[]): void => {
+    // 交互逻辑：当对父级节点设置联系人时，同步应用到所有后代节点（与渠道开关级联保持一致）
+    const keys = [nodeKey, ...getDescendants(nodeKey)]
+    setChannelReceiversByKey(prev => {
+      const next: ChannelReceiversByKey = { ...prev }
+      keys.forEach(k => {
+        const row = { ...(next[k] ?? {}) }
+        row[channelActorId] = [...receiverIds]
+        next[k] = row
+      })
+      return next
+    })
+  }
+
   const getAncestors = (key: string): string[] => {
     const out: string[] = []
     let cur: string | null = key
@@ -674,6 +703,12 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
         ],
     [people, webhooks]
   )
+
+  const channelNameByActorId = useMemo(() => {
+    const m = new Map<string, string>()
+    actors.filter(a => a.kind === 'robot').forEach(a => m.set(a.id, a.name))
+    return m
+  }, [actors])
 
   // 三态：某个节点及其所有子节点，对同一参与者的整体状态
   const getActorTri = (key: string, actorId: string): TriState => {
@@ -736,6 +771,17 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     const personActors = actors.filter(actor => actor.kind === 'person')
     const robotActors = actors.filter(actor => actor.kind === 'robot')
 
+    const personNameById = new Map(personActors.map(p => [p.id, p.name]))
+    const channelNameById = new Map(robotActors.map(c => [c.id, c.name]))
+
+    const pickTagColor = (value: string, palette: string[]): string => {
+      // 展示逻辑：不同值的 tag 使用不同颜色（稳定映射）
+      let hash = 0
+      for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0
+      return palette[hash % palette.length] ?? 'default'
+    }
+    const peoplePalette = ['green', 'lime', 'gold', 'orange', 'volcano']
+
     const renderActorChecklist = (
       actorList: Actor[],
       layout: 'vertical' | 'horizontal'
@@ -770,14 +816,135 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       )
     }
 
+    const renderChannelChecklistWithReceiverConfig = (_: unknown, r: TreeRow): React.ReactElement => {
+      if (robotActors.length === 0) return <Text type="secondary">—</Text>
+      const content = robotActors.map(actor => {
+        const tri = getActorTri(r.key, actor.id)
+        const checked = tri === true
+        const receiverCount = getChannelReceivers(r.key, actor.id).length
+        const canEditReceivers = checked && personActors.length > 0
+        return (
+          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <Checkbox
+              indeterminate={tri === 'indeterminate'}
+              checked={checked}
+              onChange={(e) => {
+                // 交互逻辑：渠道开关仍按树级联；关闭时同时清空该渠道在本节点及后代的联系人绑定
+                const nextChecked = e.target.checked
+                setActorCascade(r.key, actor.id, nextChecked)
+                if (!nextChecked) {
+                  setChannelReceiversCascade(r.key, actor.id, [])
+                } else if (personActors.length > 0 && getChannelReceivers(r.key, actor.id).length === 0) {
+                  // 交互逻辑：首次开启渠道且未设置联系人时，默认预置第一个联系人，减少“开了渠道但没人接收”的空状态
+                  setChannelReceiversCascade(r.key, actor.id, [personActors[0]!.id])
+                }
+              }}
+            >
+              <Space size={8} wrap>
+                <span>{actor.name}</span>
+
+                {/* 方案 A：只有已勾选的接收渠道，才展示联系人数量与编辑入口 */}
+                {checked && (
+                  <>
+                    <Tag
+                      bordered={false}
+                      color="default"
+                      style={{ borderRadius: 999, paddingInline: 10, opacity: 0.85 }}
+                    >
+                      联系人（{receiverCount}）
+                    </Tag>
+                    <Tooltip title="编辑联系人">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        disabled={!canEditReceivers}
+                        aria-label="编辑联系人"
+                        onClick={(ev) => {
+                          // 交互逻辑：避免点击按钮触发 Checkbox 的切换
+                          ev.stopPropagation()
+                          // 交互逻辑：打开联系人配置弹窗（针对当前行的该渠道）
+                          setReceiverEditing({ nodeKey: r.key, channelActorId: actor.id })
+                          const preset = getChannelReceivers(r.key, actor.id)
+                          setTempReceiverIds(preset.length > 0 ? preset : (personActors[0] ? [personActors[0].id] : []))
+                          setReceiverModalOpen(true)
+                        }}
+                        style={{ width: 32, height: 32, paddingInline: 0 }}
+                      >
+                      </Button>
+                    </Tooltip>
+                  </>
+                )}
+              </Space>
+            </Checkbox>
+          </div>
+        )
+      })
+      return (
+        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
+          {content}
+        </Space>
+      )
+    }
+
+    const renderContactsSummary = (_: unknown, r: TreeRow): React.ReactElement => {
+      if (robotActors.length === 0) return <Text type="secondary">—</Text>
+      return (
+        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
+          {robotActors.map(channel => {
+            const tri = getActorTri(r.key, channel.id)
+            if (tri === false) {
+              return (
+                <div key={channel.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
+                  <Text type="secondary">{channel.name}：未开启</Text>
+                </div>
+              )
+            }
+
+            const receiverIds = getChannelReceivers(r.key, channel.id)
+            return (
+              <div key={channel.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Tag
+                  bordered={false}
+                  color="geekblue"
+                  style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
+                >
+                  {channel.name}
+                </Tag>
+                {receiverIds.length === 0 ? (
+                  <Tag bordered={false} color="default" style={{ borderRadius: 999, paddingInline: 10 }}>
+                    未设置
+                  </Tag>
+                ) : (
+                  receiverIds.map(pid => {
+                    const name = personNameById.get(pid) ?? pid
+                    return (
+                      <Tag
+                        key={`${channel.id}_${pid}`}
+                        bordered={false}
+                        color={pickTagColor(name, peoplePalette)}
+                        style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
+                      >
+                        {name}
+                      </Tag>
+                    )
+                  })
+                )}
+              </div>
+            )
+          })}
+        </Space>
+      )
+    }
+
     const groupedActorCols: ColumnsType<TreeRow> = []
 
     if (robotActors.length > 0) {
       groupedActorCols.push({
         title: '接收渠道',
         key: 'channels',
-        width: 160,
-        render: renderActorChecklist(robotActors, 'vertical')
+        width: 260,
+        render: renderChannelChecklistWithReceiverConfig
       })
     }
 
@@ -785,13 +952,14 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       groupedActorCols.push({
         title: '联系人',
         key: 'contacts',
-        width: 260,
-        render: renderActorChecklist(personActors, 'horizontal')
+        width: 360,
+        // 展示逻辑：联系人不再作为独立“渠道列”让用户逐一勾选，而是作为“按渠道绑定联系人”的只读总览
+        render: renderContactsSummary
       })
     }
 
     return [...base, ...groupedActorCols]
-  }, [actors, actorChannelMatrix])
+  }, [actors, actorChannelMatrix, channelReceiversByKey])
 
   const NoticeSection = (
     <>
@@ -820,6 +988,72 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       >
         {NoticeSection}
       </Card>
+
+      {/* 渠道 -> 联系人 配置 Modal（方案 A） */}
+      <Modal
+        title="设置联系人"
+        open={receiverModalOpen}
+        onCancel={() => setReceiverModalOpen(false)}
+        onOk={() => {
+          if (!receiverEditing) return
+          // 交互逻辑：保存“该节点及其后代”的渠道联系人绑定
+          setChannelReceiversCascade(receiverEditing.nodeKey, receiverEditing.channelActorId, tempReceiverIds)
+          setReceiverModalOpen(false)
+          const channelName = receiverEditing.channelActorId ? (channelNameByActorId.get(receiverEditing.channelActorId) ?? '接收渠道') : '接收渠道'
+          message.success(`${channelName} 联系人已更新`)
+        }}
+        okText="保存"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Space direction="vertical" size={12} style={{ display: 'flex' }}>
+          <Text type="secondary">
+            选择该接收渠道的联系人（同一个“消息类型”下，不同渠道可配置不同联系人）。
+          </Text>
+
+          <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+            <Space>
+              <Button
+                onClick={() => {
+                  // 交互逻辑：全选联系人
+                  const personIds = actors.filter(a => a.kind === 'person').map(a => a.id)
+                  setTempReceiverIds(personIds)
+                }}
+              >
+                全选
+              </Button>
+              <Button
+                onClick={() => {
+                  // 交互逻辑：清空联系人
+                  setTempReceiverIds([])
+                }}
+              >
+                清空
+              </Button>
+            </Space>
+            <Tag bordered={false} color="blue" style={{ borderRadius: 999, paddingInline: 10 }}>
+              已选 {tempReceiverIds.length}
+            </Tag>
+          </Space>
+
+          <Checkbox.Group
+            style={{ width: '100%' }}
+            value={tempReceiverIds}
+            onChange={(vals) => {
+              // 交互逻辑：更新临时选择，不立即落库，点击保存后生效
+              setTempReceiverIds(vals as string[])
+            }}
+          >
+            <Space direction="vertical" size={8} style={{ display: 'flex' }}>
+              {actors.filter(a => a.kind === 'person').map(p => (
+                <Checkbox key={p.id} value={p.id}>
+                  {p.name}
+                </Checkbox>
+              ))}
+            </Space>
+          </Checkbox.Group>
+        </Space>
+      </Modal>
 
       {/* Webhook 配置 Modal：应用于被点击的节点（整行） */}
       <Modal
