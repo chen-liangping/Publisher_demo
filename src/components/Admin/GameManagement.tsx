@@ -426,7 +426,7 @@ export default function GameManagement() {
         onOk={handleAddGame}
         okText="提交"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Input
           value={newAppId}

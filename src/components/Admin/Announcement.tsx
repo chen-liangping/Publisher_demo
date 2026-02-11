@@ -31,7 +31,7 @@ export default function Announcement() {
   const [items, setItems] = useState<AnnouncementItem[]>([
     { id: '1', title: '系统维护通知', content: '# 系统维护\n\n我们将于 **今晚 23:00-01:00** 进行系统维护，期间可能影响服务。', method: 'modal', type: '系统消息', status: '未发布', publishAt: '2024/09/01 10:00:00', gameScope: ['全部游戏'] },
     { id: '2', title: '新活动上线', content: '# 新活动\n\n参与活动可获得丰厚奖励，详见 [活动页](https://example.com)。', method: 'bottom', type: '系统消息', status: '已发布', publishAt: '2024/09/01 10:00:00', publishHistory: ['2024/09/01 10:00:00'], gameScope: ['gamedemo', 'kumo'] },
-    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: '系统消息', status: '未发布', publishAt: '2024/09/01 10:00:00', gameScope: ['slime'] }
+    { id: '3', title: '小规模优化', content: '本次版本包含若干性能优化，提升启动速度。', method: 'modal', type: '系统消息', status: '未发布', publishAt: '2024/09/01 10:00:00', gameScope: ['yu.b'] }
   ])
   
   // 模拟历史版本数据（实际应从后端获取）
@@ -74,7 +74,7 @@ export default function Announcement() {
     { label: '全部游戏', value: '全部游戏' },
     { label: 'gamedemo', value: 'gamedemo' },
     { label: 'kumo', value: 'kumo' },
-    { label: 'slime', value: 'slime' }
+    { label: 'yu.b', value: 'yu.b' }
   ]
 
   // 处理游戏范围选择的互斥逻辑：选择"全部游戏"时清除其他选项，选择其他游戏时移除"全部游戏"
@@ -149,7 +149,7 @@ export default function Announcement() {
             ? { ...item, title: values.title, content: values.content, method: values.method, type: values.type, gameScope: values.gameScope }
             : item
         ))
-        message.success('编辑保存成功（示例）')
+        message.success('编辑保存成功（冲突展示）')
       } else {
         // 新建公告
         const id = String(Date.now())

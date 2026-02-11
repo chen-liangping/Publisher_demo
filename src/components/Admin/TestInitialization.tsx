@@ -6,6 +6,7 @@ import {
   Button, 
   Modal,
   Progress,
+  Steps,
   Typography,
   Space,
   message,
@@ -54,19 +55,16 @@ export default function TestInitialization() {
     // 实际项目中应该从全局状态或API获取
     const mockConfigs = {
       client: [
-        { name: 'S3存储配置', desc: 'Amazon S3 存储桶初始化' },
-        { name: 'CDN加速配置', desc: 'CloudFront CDN 节点配置' }
+        { name: 'CDN 配置', desc: '配置 CDN 加速与缓存策略' },
+        { name: 'S3 Bucket', desc: '创建/校验对象存储桶与权限策略' },
+        { name: '静态文件配置', desc: '静态资源路径、缓存与访问域名配置' }
       ],
-      server:
-        deployType === 'container'
-          ? [
-              { name: 'K8S集群配置', desc: 'Kubernetes 集群初始化' },
-              { name: '服务部署配置', desc: '应用服务部署配置' }
-            ]
-          : [
-              { name: '虚机集群配置', desc: '虚拟机集群资源初始化' },
-              { name: '服务部署配置', desc: '应用服务部署配置' }
-            ]
+      server: [
+        { name: 'Namespace', desc: '创建/校验命名空间与基础配额' },
+        { name: 'MSE', desc: '微服务治理与注册发现相关配置' },
+        { name: 'Route53', desc: '域名解析与记录绑定' },
+        { name: '对象存储', desc: '服务端对象存储访问与权限配置' }
+      ]
     }
 
     // 模拟有配置的情况（80%概率有配置）
@@ -462,6 +460,30 @@ export default function TestInitialization() {
               showInfo={false}
               size="default"
             />
+
+            {/* 交互意图：用 Steps 明确展示当前初始化到哪一步，便于用户理解等待原因 */}
+            <div style={{ marginTop: 16, textAlign: 'left' }}>
+              <Steps
+                size="small"
+                direction="vertical"
+                current={Math.min(
+                  Math.max(initProgressData.currentStep - 1, 0),
+                  Math.max(initProgressData.configs.length - 1, 0)
+                )}
+                items={initProgressData.configs.map(cfg => ({
+                  title: cfg.name,
+                  description: cfg.desc,
+                  status:
+                    cfg.status === 'completed'
+                      ? 'finish'
+                      : cfg.status === 'running'
+                        ? 'process'
+                        : cfg.status === 'failed'
+                          ? 'error'
+                          : 'wait'
+                }))}
+              />
+            </div>
             
             <div style={{ marginTop: 16, color: '#666', fontSize: '14px' }}>
               请耐心等待初始化完成

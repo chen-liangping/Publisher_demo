@@ -46,6 +46,7 @@ import GiftDataPage from '../components/tool/gift'
 import I18nPage from '../components/tool/i18n'
 import AlertPage from '../components/nofication/alert'
 import AlertHistory from '../components/nofication/alert_history'
+import AdminNotificationGate from '../components/nofication/AdminNotificationGate'
 import LogPage from '../components/log'
 import PeopleManagement from '../components/nofication/PeopleManagement'
 import MessageNotification from '../components/nofication/MessageNotification'
@@ -179,7 +180,12 @@ export default function Home() {
       case 'i18n':
         return <I18nPage />
       case 'alert':
-        return <AlertPage />
+        // 交互逻辑：通知配置页由管理员统一总开关控制；关闭时用户侧只读（不改 alert.tsx 本体）。
+        return (
+          <AdminNotificationGate>
+            <AlertPage />
+          </AdminNotificationGate>
+        )
       case 'alert-history':
         return <AlertHistory />
       case 'log':

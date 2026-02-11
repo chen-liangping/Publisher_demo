@@ -9,7 +9,6 @@ import {
   Drawer,
   Form,
   Input,
-  Select,
   message,
   Tooltip,
   Typography,
@@ -29,7 +28,6 @@ import {
   SendOutlined,
   BellOutlined
 } from '@ant-design/icons'
-import AlertPage from './alert'
 
 const { Title } = Typography
 
@@ -38,7 +36,6 @@ interface Person {
   id: string
   name: string
   dingId: string
-  group?: string
 }
 
 // 机器人 Webhook 类型定义
@@ -59,17 +56,13 @@ interface PeopleManagementProps {
 export default function PeopleManagement({ initialActiveTab }: PeopleManagementProps): React.ReactElement {
   // 人员配置相关状态
   const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
-  const [groupDrawerOpen, setGroupDrawerOpen] = useState<boolean>(false)
   const [people, setPeople] = useState<Person[]>([
-    { id: 'slime', name: '史迪仔', dingId: 'dingtalk:slime', group: '默认分组' },
-    { id: 'xuyin', name: '徐音', dingId: 'dingtalk:xuyin', group: '默认分组' }
+    { id: 'yu.b', name: 'yu.bo', dingId: 'dingtalk:yu.b' },
+    { id: 'xuyin', name: '刘悦', dingId: 'dingtalk:xuyin' }
   ])
   const [personForm] = Form.useForm<Person>()
-  // 分组管理：支持为人员分配所属分组
-  const [groups, setGroups] = useState<string[]>(['默认分组'])
-  const [newGroupName, setNewGroupName] = useState<string>('')
 
-  // 自建群机器人配置相关状态
+  // 自建接收渠道配置相关状态
   const [webhooks, setWebhooks] = useState<WebhookItem[]>([
     // 默认示例机器人：方便演示绑定效果
     { id: 'kumo_cp', name: '小包', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
@@ -95,9 +88,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
     personForm.validateFields().then((values: Person) => {
       const newPerson: Person = {
         ...values,
-        id: `person_${Date.now()}`,
-        // 默认放入第一个分组（如果存在）
-        group: groups[0]
+        id: `person_${Date.now()}`
       }
       setPeople(prev => [...prev, newPerson])
       setAddPersonOpen(false)
@@ -164,29 +155,6 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
       key: 'name'
     },
     {
-      title: '分组',
-      dataIndex: 'group',
-      key: 'group',
-      render: (_: unknown, record: Person) => (
-        <div className="person-group-cell">
-          <Select
-            className="person-group-select"
-            placeholder="未分组"
-            size="small"
-            style={{ width: 140 }}
-            value={record.group ?? undefined}
-            options={groups.map(g => ({ label: g, value: g }))}
-            allowClear
-            onChange={(value) => {
-              setPeople(prev =>
-                prev.map(p => (p.id === record.id ? { ...p, group: value } : p))
-              )
-            }}
-          />
-        </div>
-      )
-    },
-    {
       title: '钉钉ID',
       dataIndex: 'dingId',
       key: 'dingId'
@@ -211,33 +179,6 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
       )
     }
   ]
-
-  // 新增分组
-  const handleAddGroup = (): void => {
-    const name = newGroupName.trim()
-    if (!name) {
-      message.warning('请输入分组名称')
-      return
-    }
-    if (groups.includes(name)) {
-      message.warning('该分组已存在')
-      return
-    }
-    setGroups(prev => [...prev, name])
-    setNewGroupName('')
-    message.success('分组已创建')
-  }
-
-  // 删除分组（仅当没有成员使用该分组时允许删除）
-  const handleDeleteGroup = (groupName: string): void => {
-    const used = people.some(p => p.group === groupName)
-    if (used) {
-      message.warning('该分组下仍有人员，请先调整人员分组')
-      return
-    }
-    setGroups(prev => prev.filter(g => g !== groupName))
-    message.success('分组已删除')
-  }
 
   // 机器人列表列定义（以表格形式展示 webhook）
   const webhookColumns: ColumnsType<WebhookItem> = [
@@ -295,12 +236,12 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
       label: (
         <Space>
           <TeamOutlined />
-          <span>人员管理</span>
+          <span>联系人管理</span>
         </Space>
       ),
       children: (
         <Card styles={{ body: { paddingTop: 8 } }} bordered={false}>
-          {/* 人员 Tab 内部操作：新增人员 + 分组管理按钮，右侧并排展示 */}
+          {/* 人员 Tab 内部操作：新增人员 */}
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
             <Space>
               <Tooltip title="新增人员">
@@ -308,9 +249,6 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
                   新增人员
                 </Button>
               </Tooltip>
-              <Button onClick={() => setGroupDrawerOpen(true)}>
-                分组管理
-              </Button>
             </Space>
           </div>
 
@@ -354,86 +292,6 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
               </Form.Item>
             </Form>
           </Drawer>
-
-          {/* 分组管理 Drawer：查看 / 创建 / 删除分组 */}
-          <Drawer
-            title="分组管理"
-            open={groupDrawerOpen}
-            width={480}
-            onClose={() => setGroupDrawerOpen(false)}
-            destroyOnClose
-            footer={
-              <div style={{ textAlign: 'right' }}>
-                <Button onClick={() => setGroupDrawerOpen(false)}>关闭</Button>
-              </div>
-            }
-          >
-            <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                在这里可以集中管理人员分组，支持新增分组以及删除未被使用的分组。
-              </Typography.Paragraph>
-
-              <Space>
-                <Typography.Text>新增分组：</Typography.Text>
-                <Input
-                  placeholder="例如：运维组"
-                  value={newGroupName}
-                  onChange={e => setNewGroupName(e.target.value)}
-                  style={{ width: 220 }}
-                  onPressEnter={handleAddGroup}
-                />
-                <Button type="primary" onClick={handleAddGroup}>
-                  新增
-                </Button>
-              </Space>
-
-              {groups.length === 0 ? (
-                <Typography.Text type="secondary">
-                  当前暂无分组，可通过上方输入框添加。
-                </Typography.Text>
-              ) : (
-                <Table
-                  rowKey={(g) => g as string}
-                  size="small"
-                  pagination={false}
-                  dataSource={groups}
-                  columns={[
-                    {
-                      title: '分组名称',
-                      dataIndex: 'name',
-                      key: 'name',
-                      render: (_: unknown, group: string) => group
-                    },
-                    {
-                      title: '成员数量',
-                      key: 'count',
-                      render: (_: unknown, group: string) =>
-                        people.filter(p => p.group === group).length
-                    },
-                    {
-                      title: '操作',
-                      key: 'actions',
-                      render: (_: unknown, group: string) => {
-                        const used = people.some(p => p.group === group)
-                        const isDefault = group === '默认分组'
-                        return (
-                          <Button
-                            type="link"
-                            danger
-                            disabled={used || isDefault}
-                            onClick={() => handleDeleteGroup(group)}
-                          >
-                            删除
-                          </Button>
-                        )
-                      }
-                    }
-                  ]}
-                  rowClassName={() => 'group-row'}
-                />
-              )}
-            </Space>
-          </Drawer>
         </Card>
       )
     },
@@ -442,7 +300,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
       label: (
         <Space>
           <RobotOutlined />
-          <span>webhook管理</span>
+          <span>接收渠道管理</span>
         </Space>
       ),
       children: (
@@ -450,7 +308,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
           <Card styles={{ body: { paddingTop: 8 } }} bordered={false}>
             <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
               <Typography.Text type="secondary">
-                支持配置多个自建群机器人，用于将告警/提醒发送到不同群。
+                支持配置多个自建接收渠道，用于将告警/提醒发送到不同群。
               </Typography.Text>
               <Tooltip title="新增机器人">
                 {/* 图标按钮：打开新增机器人抽屉 */}
@@ -470,7 +328,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
             )}
           </Card>
 
-          {/* 新增 Webhook 抽屉：用于新增自建群机器人 */}
+          {/* 新增 Webhook 抽屉：用于新增自建接收渠道 */}
           <Drawer
             title="新增机器人"
             open={addWebhookOpen}
@@ -496,7 +354,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
                   { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
                 ]}
               >
-                <Input placeholder="例如：发布告警机器人" />
+                <Input placeholder="例如：CP群" />
               </Form.Item>
               <Form.Item
                 label="Webhook 地址"
@@ -541,7 +399,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
                   { pattern: /^[\u4e00-\u9fa5A-Za-z0-9]+$/, message: '仅支持汉字、英文、数字' }
                 ]}
               >
-                <Input placeholder="例如：发布告警机器人" />
+                <Input placeholder="例如：CP群" />
               </Form.Item>
               <Form.Item
                 label="Webhook 地址"
