@@ -6,6 +6,7 @@ import Deployment from './deployment'
 import DeploymentOther from './deployment_other'
 import { QuestionCircleOutlined, CaretUpOutlined, DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons'
 import { apps, AppItem as AppItemType } from './apps'
+import DeployPlanList, { DeployPlanRecord } from './DeployPlanList'
 import DeployPlan from './DeployPlan'
 
 const { Title, Text } = Typography
@@ -24,8 +25,10 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
   const [updateDrawerOpen, setUpdateDrawerOpen] = useState<boolean>(false)
   const [updateForm] = Form.useForm()
   const [changeDetailModalOpen, setChangeDetailModalOpen] = useState<boolean>(false)
-  // 部署计划视图状态：点击"部署计划"按钮后切换到流水线视图
-  const [deployPlanOpen, setDeployPlanOpen] = useState<boolean>(false)
+  // 部署计划视图：list = 列表页，editor = 编辑器页
+  const [deployView, setDeployView] = useState<'none' | 'list' | 'editor'>('none')
+  // 正在编辑的部署计划（null = 新建）
+  const [editingPlan, setEditingPlan] = useState<DeployPlanRecord | undefined>(undefined)
 
   const openAppDetail = (app: AppItemType) => {
     if (onOpenDeployment) {
@@ -42,9 +45,30 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
   const stepDescWidth = 200 // 开服步骤中描述列宽，可调整
   const rightColumnWidth = 440 // 右侧列（流量策略 / 右侧小卡）宽度，可调整
 
-  // 当部署计划视图打开时，全屏渲染流水线编辑器
-  if (deployPlanOpen) {
-    return <DeployPlan onBack={() => setDeployPlanOpen(false)} />
+  // 部署计划列表页
+  if (deployView === 'list') {
+    return (
+      <DeployPlanList
+        onBack={() => setDeployView('none')}
+        onEdit={(plan) => {
+          setEditingPlan(plan)
+          setDeployView('editor')
+        }}
+      />
+    )
+  }
+
+  // 部署计划编辑器页
+  if (deployView === 'editor') {
+    return (
+      <DeployPlan
+        onBack={() => {
+          setEditingPlan(undefined)
+          setDeployView('list')
+        }}
+        editingPlan={editingPlan}
+      />
+    )
   }
 
   return (
@@ -77,7 +101,7 @@ export default function ContainerApplication({ onOpenDeployment }: { onOpenDeplo
           {/* 部署计划：点击后进入类似阿里云流水线的批量部署界面，支持拖拽编排并行/串行部署顺序 */}
           <Button
             icon={<SendOutlined />}
-            onClick={() => setDeployPlanOpen(true)}
+            onClick={() => setDeployView('list')}
             style={{
               height: 32,
               borderColor: '#1677ff',

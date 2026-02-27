@@ -23,6 +23,7 @@ import {
   AppstoreOutlined
 } from '@ant-design/icons'
 import { apps, AppItem } from './apps'
+import type { DeployPlanRecord } from './DeployPlanList'
 
 const { Title, Text } = Typography
 
@@ -101,14 +102,29 @@ const createInitialStages = (): PipelineStage[] => [
    ============================== */
 interface DeployPlanProps {
   onBack: () => void
+  /** 传入已有计划数据时进入编辑模式，undefined 为新建 */
+  editingPlan?: DeployPlanRecord
 }
 
-export default function DeployPlan({ onBack }: DeployPlanProps) {
-  const [stages, setStages] = useState<PipelineStage[]>(createInitialStages)
+export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
+  const [stages, setStages] = useState<PipelineStage[]>(() => {
+    if (!editingPlan) return createInitialStages()
+    // 将 DeployPlanRecord 的 stages 转换为编辑器的 PipelineStage
+    return editingPlan.stages.map((s, idx) => ({
+      id: s.id,
+      name: `阶段${idx + 1}`,
+      items: s.apps.map(a => ({
+        id: a.id,
+        appId: apps.find(app => app.name.includes(a.name))?.id || '1',
+        status: 'pending' as const,
+        configured: true
+      }))
+    }))
+  })
   const [selectedItem, setSelectedItem] = useState<PipelineApp | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [deployForm] = Form.useForm()
-  const [planName, setPlanName] = useState('批量部署计划 2023-08-27')
+  const [planName, setPlanName] = useState(editingPlan?.name || '新建部署计划')
   const [editingName, setEditingName] = useState(false)
   // 添加应用弹窗
   const [addModalOpen, setAddModalOpen] = useState(false)
