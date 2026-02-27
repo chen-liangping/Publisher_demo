@@ -99,7 +99,7 @@ export default function Home() {
   // 模拟当前用户信息
   const currentUser = {
     name: 'fuyu',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+    avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=fuyu&backgroundColor=f0f0f0',
     role: '管理员'
   }
 

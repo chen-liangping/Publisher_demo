@@ -143,8 +143,11 @@ export default function UserAvatarMenu({ user }: UserAvatarMenuProps) {
           icon={<UserOutlined />}
           style={{ 
             marginRight: 12,
-            border: '2px solid #f0f0f0',
-            transition: 'all 0.3s ease'
+            border: '2px solid #e6e6e6',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            transition: 'all 0.3s ease',
+            borderRadius: '50%',
+            backgroundColor: '#f5f5f5'
           }}
         />
         <div style={{ 
