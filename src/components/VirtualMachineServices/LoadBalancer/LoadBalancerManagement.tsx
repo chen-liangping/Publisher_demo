@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import type { SystemServerGroup, SystemForwardingPolicy } from '../VirtualMachine/VirtualMachineList'
 import { 
   Card, 
   Button, 
@@ -106,7 +107,13 @@ const mockLoadBalancerData: LoadBalancer[] = [
   }
 ]
 
-export default function LoadBalancerManagement(): React.ReactElement {
+interface LoadBalancerManagementProps {
+  systemManagedServerGroups?: SystemServerGroup[]
+  systemManagedPolicies?: SystemForwardingPolicy[]
+  onReleaseSystemManaged?: (group: SystemServerGroup) => void
+}
+
+export default function LoadBalancerManagement({ systemManagedServerGroups = [], systemManagedPolicies = [], onReleaseSystemManaged }: LoadBalancerManagementProps): React.ReactElement {
   const [loadBalancers, setLoadBalancers] = useState<LoadBalancer[]>(mockLoadBalancerData)
   const [selectedLB, setSelectedLB] = useState<LoadBalancer | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
@@ -162,6 +169,9 @@ export default function LoadBalancerManagement(): React.ReactElement {
       <LoadBalancerDetails
         loadBalancer={selectedLB}
         onBack={() => setSelectedLB(null)}
+        systemManagedServerGroups={systemManagedServerGroups}
+        systemManagedPolicies={systemManagedPolicies}
+        onReleaseSystemManaged={onReleaseSystemManaged}
       />
     )
   }

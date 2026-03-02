@@ -10,7 +10,8 @@ import {
   Card,
   Modal,
   message,
-  Select
+  Select,
+  Alert
 } from 'antd'
 import { 
   PlusOutlined, 
@@ -19,7 +20,8 @@ import {
   DeleteOutlined,
   PlayCircleOutlined,
   LinkOutlined,
-  DesktopOutlined
+  DesktopOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
@@ -28,13 +30,46 @@ import AutoServerModule from '../../Common/AutoServerModule'
 
 const { Title, Link } = Typography
 
+// 开启公网时创建的系统托管虚拟机组结构（会同步到负载均衡的虚拟机组列表）
+export interface SystemServerGroup {
+  id: string
+  name: string
+  serverCount: number
+  healthCheck: 'enabled' | 'disabled'
+  servers: Array<{
+    vmId: string
+    vmName: string
+    privateIp: string
+    ports: Array<{ id: string; port: number; weight: number }>
+  }>
+  isSystemManaged: true
+}
+
+// 开启公网时生成的系统托管转发策略（域名固定，URI 为虚机名称）
+export interface SystemForwardingPolicy {
+  id: string
+  listenerId: string
+  domain: string
+  path: string
+  serverGroup: string
+  remark: string
+  isSystemManaged: true
+}
+
 // 组件接口定义
 interface VirtualMachineListProps {
   onViewDetails?: (vm: VirtualMachine) => void
   vmList?: VirtualMachine[]
   setVmList?: (list: VirtualMachine[]) => void
   onNavigateToLoadBalancer?: () => void
+  /** 开启公网时创建虚机组后的回调，用于将虚机组同步到负载均衡列表 */
+  onServerGroupCreatedFromPublic?: (group: SystemServerGroup) => void
+  /** 开启公网时生成转发策略后的回调，用于同步到监听规则的转发策略 */
+  onForwardingPolicyCreatedFromPublic?: (policy: SystemForwardingPolicy) => void
 }
+
+// 公网域名默认前缀（负载均衡域名）
+const LB_DOMAIN = 'g123-jp-testapp-slb.stg.g123-cpp.com'
 
 // 虚拟机数据类型定义
 export interface VirtualMachine {
@@ -52,6 +87,10 @@ export interface VirtualMachine {
   loginUser?: string
   securityGroups?: string[]
   securityGroupNames?: string[]
+  /** 是否已开启公网 */
+  publicDomainEnabled?: boolean
+  /** 公网访问 URL，开启后格式为 {LB_DOMAIN}/test1 */
+  publicDomainUrl?: string
 }
 
 // 模拟虚拟机数据
@@ -94,7 +133,7 @@ const mockSecurityGroups = [
   { id: 'sg-002', name: 'database-group' }
 ]
 
-export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList, onNavigateToLoadBalancer }: VirtualMachineListProps = {}) {
+export default function VirtualMachineList({ onViewDetails, vmList: propVmList, setVmList: propSetVmList, onNavigateToLoadBalancer, onServerGroupCreatedFromPublic, onForwardingPolicyCreatedFromPublic }: VirtualMachineListProps = {}) {
   const [internalVmList, internalSetVmList] = useState<VirtualMachine[]>(mockVMData)
   const vmList = propVmList ?? internalVmList
   const setVmList = propSetVmList ?? internalSetVmList
@@ -104,6 +143,9 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
   const [bindTargetVm, setBindTargetVm] = useState<VirtualMachine | null>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [selectedVm, setSelectedVm] = useState<VirtualMachine | null>(null)
+  // 开启公网弹窗
+  const [showEnablePublicModal, setShowEnablePublicModal] = useState<boolean>(false)
+  const [enablePublicTargetVm, setEnablePublicTargetVm] = useState<VirtualMachine | null>(null)
 
   // 虚拟机状态标签渲染
   const renderStatus = (status: VirtualMachine['status']): React.ReactElement => {
@@ -160,7 +202,62 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
     })
   }
 
+  // 打开开启公网弹窗：为该虚机创建新虚机组，LB 端口 443，后端 8080，路径 /test1
+  const handleOpenEnablePublic = (vm: VirtualMachine): void => {
+    setEnablePublicTargetVm(vm)
+    setShowEnablePublicModal(true)
+  }
 
+  // 确认开启公网：创建虚机组并更新 VM 公网状态，虚机组同步到负载均衡列表并标记为系统托管
+  const handleConfirmEnablePublic = (): void => {
+    if (!enablePublicTargetVm) return
+    const vm = enablePublicTargetVm
+    const groupName = `${vm.name}-公网` // 系统生成的虚机组名称，不可更改
+    const publicUrl = `${LB_DOMAIN}/test1`
+    const updated = vmList.map(v =>
+      v.id === vm.id
+        ? {
+            ...v,
+            publicDomainEnabled: true,
+            publicDomainUrl: publicUrl
+          }
+        : v
+    )
+    setVmList(updated)
+    setShowEnablePublicModal(false)
+    setEnablePublicTargetVm(null)
+    message.success('已开启公网，公网访问地址：' + publicUrl)
+
+    // 创建系统托管虚机组并同步到负载均衡的虚拟机组列表
+    const systemGroup: SystemServerGroup = {
+      id: `system-${vm.id}-${Date.now()}`,
+      name: groupName,
+      serverCount: 1,
+      healthCheck: 'enabled',
+      servers: [
+        {
+          vmId: vm.id,
+          vmName: vm.name,
+          privateIp: vm.privateIp,
+          ports: [{ id: `port-${Date.now()}`, port: 8080, weight: 100 }]
+        }
+      ],
+      isSystemManaged: true
+    }
+    onServerGroupCreatedFromPublic?.(systemGroup)
+
+    // 生成系统托管转发策略：域名固定 www.appid-clb.pro.g123-cpp.com，URI 为虚机名称
+    const systemPolicy: SystemForwardingPolicy = {
+      id: `system-policy-${vm.id}-${Date.now()}`,
+      listenerId: 'listener-2', // HTTPS_Listener_443
+      domain: 'www.appid-clb.pro.g123-cpp.com',
+      path: `/${vm.name}`,
+      serverGroup: groupName,
+      remark: '系统托管',
+      isSystemManaged: true
+    }
+    onForwardingPolicyCreatedFromPublic?.(systemPolicy)
+  }
 
   const openDetails = (vm: VirtualMachine) => {
     // 如果父组件提供 onViewDetails，则保持兼容；否则在内部切换到详情
@@ -234,6 +331,18 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
       key: 'systemImage'
     },
     {
+      title: '公网域名',
+      key: 'publicDomain',
+      render: (_: unknown, vm: VirtualMachine) =>
+        vm.publicDomainEnabled && vm.publicDomainUrl ? (
+          <Typography.Link copyable href={`https://${vm.publicDomainUrl}`} target="_blank">
+            {vm.publicDomainUrl}
+          </Typography.Link>
+        ) : (
+          <Typography.Text type="secondary">未开启</Typography.Text>
+        )
+    },
+    {
       title: '创建时间',
       dataIndex: 'createTime',
       key: 'createTime'
@@ -280,6 +389,16 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
           >
             重启
           </Link>
+
+          {/* 开启公网：未开启时展示，点击后为该虚机创建虚机组并开启公网 */}
+          {!vm.publicDomainEnabled && (
+            <Link
+              onClick={() => handleOpenEnablePublic(vm)}
+              style={{ color: '#1677ff' }}
+            >
+              开启公网
+            </Link>
+          )}
           
           <Link
             onClick={() => handleDelete(vm)}
@@ -427,6 +546,56 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
             options={mockSecurityGroups.map(g => ({ value: g.id, label: `${g.name} (${g.id})` }))}
           />
         </div>
+      </Modal>
+
+      {/* 开启公网弹窗：为该虚机创建虚机组，LB 443，后端 8080，路径 /test1 */}
+      <Modal
+        title="开启公网"
+        open={showEnablePublicModal}
+        onCancel={() => { setShowEnablePublicModal(false); setEnablePublicTargetVm(null); }}
+        onOk={handleConfirmEnablePublic}
+        okText="确定开启"
+        cancelText="关闭"
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            icon={<InfoCircleOutlined />}
+            message={
+              <span>
+                开启公网能力后，系统将自动生成公网域名，若需实现负载均衡能力，可前往{' '}
+                <Link
+                  onClick={() => {
+                    setShowEnablePublicModal(false)
+                    setEnablePublicTargetVm(null)
+                    onNavigateToLoadBalancer?.()
+                  }}
+                  style={{ color: '#1677ff' }}
+                >
+                  负载均衡管理
+                </Link>
+                {' '}进行调整
+              </span>
+            }
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>负载均衡监听端口</div>
+              <div style={{ fontSize: 14 }}>443 (HTTPS)</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>后端虚拟机组监听端口</div>
+              <div style={{ fontSize: 14 }}>8080</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>访问路径</div>
+              <div style={{ fontSize: 14, fontFamily: 'monospace' }}>
+                {enablePublicTargetVm ? `${LB_DOMAIN}/test1` : '-'}
+              </div>
+            </div>
+          </div>
+        </Space>
       </Modal>
     </Card>
     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import type { SystemServerGroup, SystemForwardingPolicy } from '../VirtualMachine/VirtualMachineList'
 import { 
   Card, 
   Button, 
@@ -67,6 +68,8 @@ interface ServerGroup {
   serverCount: number
   healthCheck: 'enabled' | 'disabled'
   servers: ServerConfig[] // 虚拟机配置列表
+  /** 系统托管（由开启公网等操作自动创建） */
+  isSystemManaged?: boolean
 }
 
 // 虚拟机配置类型
@@ -87,9 +90,15 @@ interface PortConfig {
 interface LoadBalancerDetailsProps {
   loadBalancer: LoadBalancer
   onBack: () => void
+  /** 开启公网时创建的系统托管虚拟机组，合并显示在虚拟机组列表中 */
+  systemManagedServerGroups?: SystemServerGroup[]
+  /** 开启公网时生成的系统托管转发策略 */
+  systemManagedPolicies?: SystemForwardingPolicy[]
+  /** 解除系统托管后的回调，从父级移除该虚机组 */
+  onReleaseSystemManaged?: (group: SystemServerGroup) => void
 }
 
-export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalancerDetailsProps) {
+export default function LoadBalancerDetails({ loadBalancer, onBack, systemManagedServerGroups = [], systemManagedPolicies = [], onReleaseSystemManaged }: LoadBalancerDetailsProps) {
   // 监听规则数据
   const [listeners, setListeners] = useState<ListenerRule[]>([
     {
@@ -196,6 +205,8 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
   // 监听规则详情相关状态
   const [listenerDetailModalOpen, setListenerDetailModalOpen] = useState(false)
   const [selectedListenerDetail, setSelectedListenerDetail] = useState<ListenerRule | null>(null)
+  // 解除系统托管二次确认弹窗
+  const [releaseConfirmTarget, setReleaseConfirmTarget] = useState<ServerGroup | null>(null)
   
   // 转发规则列表（临时存储，用于批量添加）
   interface ForwardingRule {
@@ -219,6 +230,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     path: string
     serverGroup: string
     remark?: string
+    isSystemManaged?: boolean
   }
   
   const [domainGroups, setDomainGroups] = useState<DomainGroup[]>([
@@ -233,11 +245,14 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
   
   const [listenerForm] = Form.useForm<{ name: string; protocol: string; port: number; certificate?: string; serverGroup: string; healthCheck: string }>()
   
-  // 监听配置转发策略Modal打开，初始化已有策略
+  // 监听配置转发策略Modal打开，初始化已有策略（含系统托管策略）
   useEffect(() => {
     if (forwardingPolicyModalOpen && currentListenerRule) {
-      // 获取当前监听规则的所有转发策略
-      const listenerPolicies = policies.filter(p => p.listenerId === currentListenerRule.id)
+      // 获取当前监听规则的所有转发策略（含开启公网生成的系统托管策略）
+      const listenerPolicies = [
+        ...policies.filter(p => p.listenerId === currentListenerRule.id),
+        ...systemManagedPolicies.filter(p => p.listenerId === currentListenerRule.id)
+      ]
       
       if (listenerPolicies.length > 0) {
         // 按域名分组
@@ -247,15 +262,16 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
           domainMap.set(policy.domain, [...existing, policy])
         })
         
-        // 转换为 domainGroups 格式
+        // 转换为 domainGroups 格式，标记系统托管策略
         const initialDomainGroups: DomainGroup[] = Array.from(domainMap.entries()).map(([domain, domainPolicies]) => ({
           id: `domain-${Date.now()}-${Math.random()}`,
           domain,
           pathRules: domainPolicies.map(p => ({
-            id: `path-${Date.now()}-${Math.random()}`,
+            id: p.id,
             path: p.path || '',
             serverGroup: p.serverGroup,
-            remark: p.remark || ''
+            remark: p.remark || '',
+            isSystemManaged: !!(p as { isSystemManaged?: boolean }).isSystemManaged
           }))
         }))
         
@@ -273,7 +289,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
         ])
       }
     }
-  }, [forwardingPolicyModalOpen, currentListenerRule, policies])
+  }, [forwardingPolicyModalOpen, currentListenerRule, policies, systemManagedPolicies])
   const [forwardingPolicyForm] = Form.useForm<{ domain: string; path: string; serverGroup: string; remark?: string }>()
   const [groupForm] = Form.useForm<{ name: string; serverCount: number }>()
   
@@ -472,9 +488,23 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     }
   ]
 
+  // 合并普通转发策略与系统托管转发策略（开启公网时生成）
+  const allPolicies: (ForwardingPolicy & { isSystemManaged?: boolean })[] = [
+    ...policies,
+    ...systemManagedPolicies.map(p => ({
+      id: p.id,
+      listenerId: p.listenerId,
+      domain: p.domain,
+      path: p.path,
+      serverGroup: p.serverGroup,
+      remark: p.remark,
+      isSystemManaged: true as const
+    }))
+  ]
+
   // 获取关联的转发策略（基于监听规则ID）
   const getRelatedPolicies = (groupName: string): string[] => {
-    return policies
+    return allPolicies
       .filter(p => p.serverGroup === groupName)
       .map(p => `${p.domain}${p.path}`)
   }
@@ -486,13 +516,34 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       .map(l => l.name)
   }
 
+  // 合并普通虚拟机组与系统托管虚拟机组（开启公网时创建）
+  const allServerGroups: ServerGroup[] = [
+    ...serverGroups,
+    ...systemManagedServerGroups.map(
+      (g): ServerGroup => ({
+        ...g,
+        isSystemManaged: true
+      })
+    )
+  ]
+
   // 虚拟机组列定义
   const groupColumns: ColumnsType<ServerGroup> = [
     {
       title: '虚拟机组名称',
       dataIndex: 'name',
       key: 'name',
-      width: 180
+      width: 220,
+      render: (name: string, record: ServerGroup) => (
+        <Space>
+          <span>{name}</span>
+          {record.isSystemManaged && (
+            <Tag color="blue" style={{ borderRadius: '999px' }}>
+              系统托管
+            </Tag>
+          )}
+        </Space>
+      )
     },
     {
       title: '关联转发策略',
@@ -538,21 +589,44 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 200,
       fixed: 'right',
       render: (_: unknown, record: ServerGroup) => {
         const inUse = isServerGroupInUse(record.name) // 检查是否被使用
         
         return (
           <Space size="small">
-            <Button 
-              type="link" 
-              size="small" 
-              onClick={() => handleEditServerGroup(record)}
-            >
-              编辑
-            </Button>
-            {inUse ? (
+            {record.isSystemManaged ? (
+              <Tooltip title="系统托管虚拟机组，由开启公网自动创建，不可编辑">
+                <Button type="link" size="small" disabled>
+                  编辑
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                onClick={() => handleEditServerGroup(record)}
+              >
+                编辑
+              </Button>
+            )}
+            {record.isSystemManaged ? (
+              <>
+                <Tooltip title="系统托管虚拟机组，由开启公网自动创建，不可删除">
+                  <Button type="link" danger size="small" icon={<DeleteOutlined />} disabled>
+                    删除
+                  </Button>
+                </Tooltip>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => handleOpenReleaseConfirm(record)}
+                >
+                  解除系统托管
+                </Button>
+              </>
+            ) : inUse ? (
               // 如果被使用，显示禁用的删除按钮带 Tooltip
               <Tooltip title="该虚拟机组已被监听规则或转发策略关联，无法删除">
                 <Button 
@@ -1238,6 +1312,8 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
 
   // 删除路径规则
   const handleRemovePathRule = (domainId: string, pathId: string): void => {
+    const pathRule = domainGroups.flatMap(g => g.pathRules).find(p => p.id === pathId)
+    if (pathRule?.isSystemManaged) return // 系统托管策略不可删除
     setDomainGroups(domainGroups.map(group => {
       if (group.id === domainId) {
         if (group.pathRules.length === 1) {
@@ -1271,9 +1347,9 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
     const hasEmptyDomain = domainGroups.some(group => !group.domain.trim())
     if (hasEmptyDomain) return true
 
-    // 检查域名格式
+    // 检查域名格式（支持 www.appid-clb.pro.g123-cpp.com 等含数字、连字符的域名）
     const hasDomainError = domainGroups.some(group => 
-      group.domain && !/^(\*\.[\w-]+\.[\w-]+|[\w-]+\.[\w-]+(\.[a-z]+)*)$/.test(group.domain)
+      group.domain && !/^(\*\.[\w-]+(\.[\w-]+)*|[\w-]+(\.[\w-]+)+)$/.test(group.domain)
     )
     if (hasDomainError) return true
 
@@ -1316,6 +1392,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       }
 
       validPathRules.forEach(pathRule => {
+        if (pathRule.isSystemManaged) return // 系统托管策略不加入待保存列表
         allRules.push({
           id: `rule-${Date.now()}-${Math.random()}`,
           domain: group.domain,
@@ -1357,7 +1434,8 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       return
     }
 
-    if (forwardingRules.length === 0) {
+    const systemManagedForListener = systemManagedPolicies.filter(p => p.listenerId === currentListenerRule.id)
+    if (forwardingRules.length === 0 && systemManagedForListener.length === 0) {
       message.error('请至少添加一条转发规则')
       return
     }
@@ -1372,12 +1450,14 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
       remark: rule.remark
     }))
     
-    setPolicies([...policies, ...newPolicies])
+    if (newPolicies.length > 0) {
+      setPolicies([...policies, ...newPolicies])
+      message.success(`已成功配置 ${newPolicies.length} 条转发策略`)
+    }
     setForwardingPolicyModalOpen(false)
     setForwardingRules([])
     forwardingPolicyForm.resetFields()
     setCurrentListenerRule(null)
-    message.success(`已成功配置 ${newPolicies.length} 条转发策略`)
   }
 
   // 关闭转发策略配置弹窗
@@ -1445,8 +1525,8 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
   const isServerGroupInUse = (groupName: string): boolean => {
     // 检查是否被监听规则使用
     const usedByListener = listeners.some(listener => listener.serverGroup === groupName)
-    // 检查是否被转发策略使用
-    const usedByPolicy = policies.some(policy => policy.serverGroup === groupName)
+    // 检查是否被转发策略使用（含系统托管）
+    const usedByPolicy = allPolicies.some(policy => policy.serverGroup === groupName)
     
     return usedByListener || usedByPolicy
   }
@@ -1455,6 +1535,22 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
   const handleDeleteGroup = (id: string): void => {
     setServerGroups(serverGroups.filter(g => g.id !== id))
     message.success('删除成功')
+  }
+
+  // 解除系统托管：打开二次确认弹窗
+  const handleOpenReleaseConfirm = (record: ServerGroup): void => {
+    setReleaseConfirmTarget(record)
+  }
+
+  // 解除系统托管：确认后转为普通虚机组
+  const handleConfirmRelease = (): void => {
+    if (!releaseConfirmTarget) return
+    const record = releaseConfirmTarget
+    const { isSystemManaged, ...rest } = record
+    setServerGroups(prev => [...prev, { ...rest }])
+    onReleaseSystemManaged?.(record as SystemServerGroup)
+    setReleaseConfirmTarget(null)
+    message.success('已解除系统托管')
   }
 
   // 如果显示创建虚拟机组页面，则渲染创建页面
@@ -1513,11 +1609,11 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                     pagination={false}
                     expandable={{
                       expandedRowRender: (record: ListenerRule) => {
-                        const relatedPolicies = policies.filter((p: ForwardingPolicy) => p.listenerId === record.id)
+                        const relatedPolicies = allPolicies.filter((p) => p.listenerId === record.id)
                         
                         // 根据虚拟机组名称获取虚拟机详情的辅助函数
                         const getServerGroupDetails = (groupName: string) => {
-                          const group = serverGroups.find(g => g.name === groupName)
+                          const group = allServerGroups.find(g => g.name === groupName)
                           return group?.servers || []
                         }
                         
@@ -1654,7 +1750,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                   </div>
                   <Table
                     columns={groupColumns}
-                    dataSource={serverGroups}
+                    dataSource={allServerGroups}
                     rowKey="id"
                     pagination={false}
                     scroll={{ x: 1000 }}
@@ -1834,7 +1930,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                           style={{ width: '100%' }}
                           status={serverGroupError ? 'error' : undefined}
                         >
-                          {serverGroups.map(group => (
+                          {allServerGroups.map(group => (
                             <Select.Option key={group.id} value={group.name}>
                               {group.name}
                             </Select.Option>
@@ -1844,7 +1940,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
 
                       {/* 显示选中虚拟机组的详情 */}
                       {selectedServerGroup && (() => {
-                        const group = serverGroups.find(g => g.name === selectedServerGroup)
+                        const group = allServerGroups.find(g => g.name === selectedServerGroup)
                         return group ? (
                           <div style={{ 
                             padding: '16px', 
@@ -2142,7 +2238,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                                   style={{ width: '100%' }}
                                   status={pathRuleErrors[pathRule.id] ? 'error' : undefined}
                                 >
-                                  {serverGroups.map(sg => (
+                                  {allServerGroups.map(sg => (
                                     <Select.Option key={sg.id} value={sg.name}>
                                       {sg.name}
                                     </Select.Option>
@@ -2340,15 +2436,15 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                               value={group.domain}
                               onChange={(e) => handleUpdateDomain(group.id, e.target.value)}
                               placeholder="例如：www.test.com"
-                              status={group.domain && !/^(\*\.[\w-]+\.[\w-]+|[\w-]+\.[\w-]+(\.[a-z]+)*)$/.test(group.domain) ? 'error' : ''}
-                              disabled={groupIndex === 0 && pathIndex === 0}
+                              status={group.domain && !/^(\*\.[\w-]+(\.[\w-]+)*|[\w-]+(\.[\w-]+)+)$/.test(group.domain) ? 'error' : ''}
+                              disabled={(groupIndex === 0 && pathIndex === 0) || !!pathRule.isSystemManaged}
                             />
                             {groupIndex === 0 && pathIndex === 0 && (
                               <div style={{ fontSize: 11, color: '#1890ff', marginTop: 4 }}>
                                 默认域名（不可修改）
                               </div>
                             )}
-                            {group.domain && !/^(\*\.[\w-]+\.[\w-]+|[\w-]+\.[\w-]+(\.[a-z]+)*)$/.test(group.domain) && (
+                            {group.domain && !/^(\*\.[\w-]+(\.[\w-]+)*|[\w-]+(\.[\w-]+)+)$/.test(group.domain) && (
                               <div style={{ color: '#ff4d4f', fontSize: '12px', marginTop: '4px' }}>
                                 域名格式不正确
                               </div>
@@ -2367,7 +2463,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
                             placeholder="例如：/api（可选）"
                             style={{ flex: 1 }}
                             status={pathRule.path && pathRule.path.trim() && (!/^\/[a-zA-Z0-9\-\/.%?#&*]{1,79}$/.test(pathRule.path) || pathRule.path === '/') ? 'error' : ''}
-                            disabled={groupIndex === 0 && pathIndex === 0}
+                            disabled={(groupIndex === 0 && pathIndex === 0) || !!pathRule.isSystemManaged}
                           />
                         </div>
                         {groupIndex === 0 && pathIndex === 0 && (
@@ -2384,40 +2480,57 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
 
                       {/* 虚拟机组列 */}
                       <div style={{ flex: 1.2 }}>
-                        <Select
-                          value={pathRule.serverGroup || undefined}
-                          onChange={(value) => handleUpdatePathRule(group.id, pathRule.id, 'serverGroup', value)}
-                          placeholder=""
-                          style={{ width: '100%' }}
-                        >
-                          {serverGroups.map(serverGroup => (
-                            <Select.Option key={serverGroup.id} value={serverGroup.name}>
-                              {serverGroup.name}
-                            </Select.Option>
-                          ))}
-                        </Select>
+                        {pathRule.isSystemManaged ? (
+                          <span>{pathRule.serverGroup}</span>
+                        ) : (
+                          <Select
+                            value={pathRule.serverGroup || undefined}
+                            onChange={(value) => handleUpdatePathRule(group.id, pathRule.id, 'serverGroup', value)}
+                            placeholder=""
+                            style={{ width: '100%' }}
+                          >
+                            {allServerGroups.map(serverGroup => (
+                              <Select.Option key={serverGroup.id} value={serverGroup.name}>
+                                {serverGroup.name}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        )}
                       </div>
 
                       {/* 备注列 */}
                       <div style={{ flex: 1.5 }}>
-                        <Input
-                          value={pathRule.remark}
-                          onChange={(e) => handleUpdatePathRule(group.id, pathRule.id, 'remark', e.target.value)}
-                          placeholder="请输入备注"
-                          maxLength={200}
-                        />
+                        {pathRule.isSystemManaged ? (
+                          <Space>
+                            <span>{pathRule.remark || '-'}</span>
+                            <Tag color="blue" style={{ borderRadius: '999px' }}>系统托管</Tag>
+                          </Space>
+                        ) : (
+                          <Input
+                            value={pathRule.remark}
+                            onChange={(e) => handleUpdatePathRule(group.id, pathRule.id, 'remark', e.target.value)}
+                            placeholder="请输入备注"
+                            maxLength={200}
+                          />
+                        )}
                       </div>
 
                       {/* 操作列 */}
                       <div style={{ width: 80 }}>
-                        <Button
-                          type="link"
-                          danger
-                          size="small"
-                          onClick={() => handleRemovePathRule(group.id, pathRule.id)}
-                        >
-                          删除
-                        </Button>
+                        {pathRule.isSystemManaged ? (
+                          <Tooltip title="系统托管策略，不可删除">
+                            <Button type="link" size="small" disabled>删除</Button>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            type="link"
+                            danger
+                            size="small"
+                            onClick={() => handleRemovePathRule(group.id, pathRule.id)}
+                          >
+                            删除
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -2654,6 +2767,18 @@ export default function LoadBalancerDetails({ loadBalancer, onBack }: LoadBalanc
             </Card>
           </div>
         )}
+      </Modal>
+
+      {/* 解除系统托管二次确认 */}
+      <Modal
+        title="解除系统托管"
+        open={!!releaseConfirmTarget}
+        onCancel={() => setReleaseConfirmTarget(null)}
+        onOk={handleConfirmRelease}
+        okText="继续"
+        cancelText="取消"
+      >
+        <p>解除系统托管，系统将停止自动维护其公网规则，往后需要用户手动维护负载均衡规则，是否继续？</p>
       </Modal>
 
     </div>
