@@ -19,7 +19,7 @@ import {
   MonitorOutlined
 } from '@ant-design/icons'
 import PlausibleLikeDashboard from '../components/Analytics/PlausibleLikeDashboard'
-import VirtualMachineList from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
+import VirtualMachineList, { type SystemServerGroup, type SystemForwardingPolicy } from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
 import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
 // 详情由组件内部自管理
 import FileManagement from '../components/VirtualMachineServices/FileManagement/FileManagement'
@@ -93,6 +93,10 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>(initialMode)
   // 命令列表/详情由组件内部自管理
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
+  // 开启公网时生成的系统托管虚拟机组，同步到负载均衡的虚拟机组列表
+  const [systemManagedServerGroups, setSystemManagedServerGroups] = useState<SystemServerGroup[]>([])
+  // 开启公网时生成的系统托管转发策略
+  const [systemManagedPolicies, setSystemManagedPolicies] = useState<SystemForwardingPolicy[]>([])
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
   
 
@@ -134,7 +138,13 @@ export default function Home() {
   const renderContent = (): React.ReactElement => {
     switch (selectedMenu) {
       case 'vm-management':
-        return <VirtualMachineList onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')} />
+        return (
+          <VirtualMachineList
+            onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')}
+            onServerGroupCreatedFromPublic={(g) => setSystemManagedServerGroups((prev) => [...prev, g])}
+            onForwardingPolicyCreatedFromPublic={(p) => setSystemManagedPolicies((prev) => [...prev, p])}
+          />
+        )
       case 'cron-job':
         return <Task />
       case 'key-management':
@@ -146,7 +156,16 @@ export default function Home() {
       case 'security-group':
         return <SecurityGroupManagement />
       case 'load-balancer':
-        return <LoadBalancerManagement />
+        return (
+          <LoadBalancerManagement
+            systemManagedServerGroups={systemManagedServerGroups}
+            systemManagedPolicies={systemManagedPolicies}
+            onReleaseSystemManaged={(g) => {
+              setSystemManagedServerGroups((prev) => prev.filter((x) => x.id !== g.id))
+              setSystemManagedPolicies((prev) => prev.filter((p) => p.serverGroup !== g.name))
+            }}
+          />
+        )
       case 'container-app':
         // 如果有选中的应用 id，展示 Deployment 页面，否则展示应用卡片列表
         if (selectedAppId) {
@@ -199,7 +218,13 @@ export default function Home() {
       case 'alert-system':
         return <AlertSystem />
       default:
-        return <VirtualMachineList onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')} />
+        return (
+          <VirtualMachineList
+            onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')}
+            onServerGroupCreatedFromPublic={(g) => setSystemManagedServerGroups((prev) => [...prev, g])}
+            onForwardingPolicyCreatedFromPublic={(p) => setSystemManagedPolicies((prev) => [...prev, p])}
+          />
+        )
     }
   }
 
