@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from 'react'
 import {
   Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
-  Modal, message, Tabs, Drawer, Form
+  Modal, message, Tabs, Drawer
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined } from '@ant-design/icons'
@@ -108,9 +108,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
 
   const [activeTab, setActiveTab] = useState('all')
   const [searchText, setSearchText] = useState('')
-  const [editModalOpen, setEditModalOpen] = useState(false)
-  const [editingRow, setEditingRow] = useState<MessageRow | null>(null)
-  const [editForm] = Form.useForm()
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
@@ -134,33 +131,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
         ? { ...r, channels: { ...r.channels, [channelId]: !r.channels[channelId] } }
         : r
     ))
-  }
-
-  const openEdit = (row: MessageRow) => {
-    setEditingRow(row)
-    editForm.setFieldsValue({
-      channels: Object.entries(row.channels).filter(([, v]) => v).map(([k]) => k),
-      contacts: Object.entries(row.contacts).filter(([, v]) => v).map(([k]) => k)
-    })
-    setEditModalOpen(true)
-  }
-
-  const saveEdit = () => {
-    if (!editingRow) return
-    const values = editForm.getFieldsValue()
-    const channelSet = new Set(values.channels || [])
-    const contactSet = new Set(values.contacts || [])
-    setRows(prev => prev.map(r =>
-      r.key === editingRow.key
-        ? {
-            ...r,
-            channels: Object.fromEntries(webhooks.map(w => [w.id, channelSet.has(w.id)])),
-            contacts: Object.fromEntries(people.map(p => [p.id, contactSet.has(p.id)]))
-          }
-        : r
-    ))
-    setEditModalOpen(false)
-    message.success('配置已更新')
   }
 
   const batchModify = () => {
@@ -200,12 +170,13 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     })
   }
 
-  const renderContactStatus = (row: MessageRow, person: Person) => {
-    const channelOn = Object.values(row.channels).some(v => v)
-    if (!channelOn || !row.contacts[person.id]) {
-      return <Text type="secondary" style={{ fontSize: 12 }}>未开启</Text>
-    }
-    return <Text style={{ fontSize: 12 }}>{person.name}</Text>
+  // 联系人开关切换（与接收渠道一样，直接 checkbox 操作）
+  const toggleContact = (rowKey: string, personId: string) => {
+    setRows(prev => prev.map(r =>
+      r.key === rowKey
+        ? { ...r, contacts: { ...r.contacts, [personId]: !r.contacts[personId] } }
+        : r
+    ))
   }
 
   const columns: ColumnsType<MessageRow> = useMemo(() => [
@@ -267,27 +238,18 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     {
       title: '联系人',
       key: 'contacts',
-      width: 220,
+      width: 200,
       render: (_: unknown, row: MessageRow) => (
         <Space direction="vertical" size={2}>
           {people.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Text type="secondary" style={{ fontSize: 12, minWidth: 44 }}>{p.name}：</Text>
-              {renderContactStatus(row, p)}
-            </div>
+            <Checkbox
+              key={p.id}
+              checked={row.contacts[p.id] || false}
+              onChange={() => toggleContact(row.key, p.id)}
+            >
+              <Text style={{ fontSize: 13 }}>{p.name}</Text>
+            </Checkbox>
           ))}
-        </Space>
-      )
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 130,
-      fixed: 'right',
-      render: (_: unknown, row: MessageRow) => (
-        <Space>
-          <Button type="link" style={{ padding: 0 }} onClick={() => openEdit(row)}>修改</Button>
-          <Button type="link" style={{ padding: 0, color: '#8c8c8c' }}>修订记录</Button>
         </Space>
       )
     }
@@ -340,39 +302,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           size="middle"
         />
       </Card>
-
-      {/* 修改弹窗 */}
-      <Modal
-        title={editingRow ? `修改 — ${editingRow.name}` : '修改'}
-        open={editModalOpen}
-        onCancel={() => setEditModalOpen(false)}
-        onOk={saveEdit}
-        okText="保存"
-        cancelText="取消"
-        destroyOnClose
-        width={480}
-      >
-        <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="channels" label="接收渠道">
-            <Checkbox.Group style={{ width: '100%' }}>
-              <Space direction="vertical" size={8}>
-                {webhooks.map(w => (
-                  <Checkbox key={w.id} value={w.id}>{w.name}</Checkbox>
-                ))}
-              </Space>
-            </Checkbox.Group>
-          </Form.Item>
-          <Form.Item name="contacts" label="联系人">
-            <Checkbox.Group style={{ width: '100%' }}>
-              <Space direction="vertical" size={8}>
-                {people.map(p => (
-                  <Checkbox key={p.id} value={p.id}>{p.name}</Checkbox>
-                ))}
-              </Space>
-            </Checkbox.Group>
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Drawer
         title="埋点数据仪表盘"
