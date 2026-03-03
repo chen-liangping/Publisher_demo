@@ -1,16 +1,20 @@
 // 消息配置页面 — 平铺表格，按"告警/通知"分类
+// Pod故障 支持应用级高级告警配置（右侧抽屉）
 'use client'
 
 import React, { useMemo, useState } from 'react'
 import {
   Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
-  Modal, message, Tabs, Drawer
+  Modal, message, Tabs, Drawer, Switch, Select, InputNumber, Tooltip
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined } from '@ant-design/icons'
+import {
+  SearchOutlined, SettingOutlined, PlusOutlined,
+  DeleteOutlined, AppstoreOutlined
+} from '@ant-design/icons'
 import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
 
-const { Text } = Typography
+const { Text, Title } = Typography
 
 /* ==============================
    数据定义
@@ -28,26 +32,29 @@ interface Person {
   name: string
 }
 
-/** 性质：告警 或 通知 */
 type MessageNature = '告警' | '通知'
 
-/** 平铺后的每一行 */
 interface MessageRow {
   key: string
-  /** MessageType 标识 */
   messageType: string
-  /** 中文含义 */
   name: string
-  /** 性质 */
   nature: MessageNature
-  /** 各接收渠道开关 */
   channels: Record<string, boolean>
-  /** 各联系人开关 */
   contacts: Record<string, boolean>
+  /** 是否支持应用级高级配置（目前只有 PodFailed） */
+  hasAdvancedConfig?: boolean
 }
 
-/* 完整消息类型列表，按性质分为"告警"和"通知" */
-const allMessageTypes: { key: string; messageType: string; name: string; nature: MessageNature }[] = [
+/** 应用级告警配置项 */
+interface AppAlertConfig {
+  id: string
+  appName: string
+  channel: string
+  frequency: string
+  enabled: boolean
+}
+
+const allMessageTypes: { key: string; messageType: string; name: string; nature: MessageNature; hasAdvancedConfig?: boolean }[] = [
   { key: 'CheckStatusFailed', messageType: 'CheckStatusFailed', name: 'pod健康检查失败', nature: '告警' },
   { key: 'AutoLaunchSuccess', messageType: 'AutoLaunchSuccess', name: '自动开服成功', nature: '通知' },
   { key: 'AutoLaunchFailed', messageType: 'AutoLaunchFailed', name: '自动开服失败', nature: '告警' },
@@ -64,7 +71,8 @@ const allMessageTypes: { key: string; messageType: string; name: string; nature:
   { key: 'ClientRelease', messageType: 'ClientRelease', name: '客户端创建新版本', nature: '通知' },
   { key: 'CalculateFailedMsg', messageType: 'CalculateFailedMsg', name: 'flashlaunch静态资源计算阻塞', nature: '告警' },
   { key: 'LimitUserChange', messageType: 'LimitUserChange', name: '自动开服策略变更', nature: '通知' },
-  { key: 'PodFailed', messageType: 'PodFailed', name: 'Pod故障', nature: '告警' },
+  // Pod故障：支持应用级高级配置
+  { key: 'PodFailed', messageType: 'PodFailed', name: 'Pod故障', nature: '告警', hasAdvancedConfig: true },
   { key: 'PodUpdatingAlert', messageType: 'PodUpdatingAlert', name: 'Pod更新异常', nature: '告警' },
   { key: 'TranslateSyncCDNFailed', messageType: 'TranslateSyncCDNFailed', name: '翻译文本同步CDN失败', nature: '告警' },
   { key: 'S3ZIPExtractFailure', messageType: 'S3ZIPExtractFailure', name: 'S3 zip解压失败', nature: '告警' },
@@ -75,6 +83,23 @@ const allMessageTypes: { key: string; messageType: string; name: string; nature:
   { key: 'HPAOpen', messageType: 'HPAOpen', name: '开启HPA', nature: '通知' },
   { key: 'HPAClose', messageType: 'HPAClose', name: '关闭HPA', nature: '通知' },
   { key: 'HPAUpdate', messageType: 'HPAUpdate', name: '更新HPA', nature: '通知' }
+]
+
+/* 可选应用列表（告警配置抽屉中使用） */
+const availableApps = [
+  'open-platform', 'game-server', 'health', 'cpgame',
+  'xcron-cloud', 'kumo游服', 'center-server', 'flashlaunch'
+]
+
+const frequencyOptions = [
+  { label: '1 分钟', value: '1 分钟' },
+  { label: '5 分钟', value: '5 分钟' },
+  { label: '15 分钟', value: '15 分钟' },
+  { label: '30 分钟', value: '30 分钟' },
+  { label: '1 小时', value: '1 小时' },
+  { label: '6 小时', value: '6 小时' },
+  { label: '12 小时', value: '12 小时' },
+  { label: '24 小时', value: '24 小时' }
 ]
 
 /* ==============================
@@ -102,7 +127,8 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       name: t.name,
       nature: t.nature,
       channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
-      contacts: Object.fromEntries(people.map(p => [p.id, false]))
+      contacts: Object.fromEntries(people.map(p => [p.id, false])),
+      hasAdvancedConfig: t.hasAdvancedConfig
     }))
   )
 
@@ -110,6 +136,137 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   const [searchText, setSearchText] = useState('')
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+
+  /* ---- Pod故障 应用级高级配置 ---- */
+  const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
+  const [configDrawerTitle, setConfigDrawerTitle] = useState('')
+  const [appAlertConfigs, setAppAlertConfigs] = useState<AppAlertConfig[]>([
+    { id: '1', appName: 'open-platform', channel: '钉钉大群消息', frequency: '1 小时', enabled: false },
+    { id: '2', appName: 'health', channel: '钉钉大群消息', frequency: '5 分钟', enabled: true },
+    { id: '3', appName: 'cpgame', channel: '钉钉大群消息', frequency: '5 分钟', enabled: true }
+  ])
+
+  // 打开高级配置抽屉
+  const openAdvancedConfig = (row: MessageRow) => {
+    setConfigDrawerTitle(row.name)
+    setConfigDrawerOpen(true)
+  }
+
+  // 添加告警应用
+  const addAppConfig = () => {
+    const usedApps = new Set(appAlertConfigs.map(c => c.appName))
+    const available = availableApps.filter(a => !usedApps.has(a))
+    if (available.length === 0) {
+      message.warning('所有应用已添加')
+      return
+    }
+    setAppAlertConfigs(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        appName: available[0],
+        channel: '钉钉大群消息',
+        frequency: '5 分钟',
+        enabled: true
+      }
+    ])
+  }
+
+  // 删除告警应用
+  const removeAppConfig = (id: string) => {
+    setAppAlertConfigs(prev => prev.filter(c => c.id !== id))
+    message.success('已删除')
+  }
+
+  // 切换告警应用开关
+  const toggleAppEnabled = (id: string) => {
+    setAppAlertConfigs(prev => prev.map(c =>
+      c.id === id ? { ...c, enabled: !c.enabled } : c
+    ))
+  }
+
+  // 更新告警应用字段
+  const updateAppConfig = (id: string, field: keyof AppAlertConfig, value: string) => {
+    setAppAlertConfigs(prev => prev.map(c =>
+      c.id === id ? { ...c, [field]: value } : c
+    ))
+  }
+
+  // 应用级配置表格列
+  const appConfigColumns: ColumnsType<AppAlertConfig> = [
+    {
+      title: '应用名称',
+      dataIndex: 'appName',
+      key: 'appName',
+      width: 200,
+      render: (val: string, record: AppAlertConfig) => {
+        const usedApps = new Set(appAlertConfigs.filter(c => c.id !== record.id).map(c => c.appName))
+        return (
+          <Select
+            value={val}
+            onChange={v => updateAppConfig(record.id, 'appName', v)}
+            style={{ width: '100%' }}
+          >
+            {availableApps.map(app => (
+              <Select.Option key={app} value={app} disabled={usedApps.has(app)}>
+                <Space>
+                  <AppstoreOutlined style={{ color: '#8c8c8c' }} />
+                  {app}
+                </Space>
+              </Select.Option>
+            ))}
+          </Select>
+        )
+      }
+    },
+    {
+      title: '通知渠道',
+      dataIndex: 'channel',
+      key: 'channel',
+      width: 160,
+      render: () => <Text>钉钉大群消息</Text>
+    },
+    {
+      title: '报警频率',
+      dataIndex: 'frequency',
+      key: 'frequency',
+      width: 140,
+      render: (val: string, record: AppAlertConfig) => (
+        <Select
+          value={val}
+          onChange={v => updateAppConfig(record.id, 'frequency', v)}
+          style={{ width: 120 }}
+          options={frequencyOptions}
+        />
+      )
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 120,
+      render: (_: unknown, record: AppAlertConfig) => (
+        <Space size={12}>
+          <Switch
+            checked={record.enabled}
+            onChange={() => toggleAppEnabled(record.id)}
+            checkedChildren="ON"
+            unCheckedChildren="OFF"
+            style={{ minWidth: 50 }}
+          />
+          <Button
+            type="link"
+            danger
+            style={{ padding: 0 }}
+            onClick={() => removeAppConfig(record.id)}
+          >
+            删除
+          </Button>
+        </Space>
+      )
+    }
+  ]
+
+  /* ---- 主表格逻辑 ---- */
 
   const filteredRows = useMemo(() => {
     let result = rows
@@ -129,6 +286,14 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     setRows(prev => prev.map(r =>
       r.key === rowKey
         ? { ...r, channels: { ...r.channels, [channelId]: !r.channels[channelId] } }
+        : r
+    ))
+  }
+
+  const toggleContact = (rowKey: string, personId: string) => {
+    setRows(prev => prev.map(r =>
+      r.key === rowKey
+        ? { ...r, contacts: { ...r.contacts, [personId]: !r.contacts[personId] } }
         : r
     ))
   }
@@ -170,15 +335,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     })
   }
 
-  // 联系人开关切换（与接收渠道一样，直接 checkbox 操作）
-  const toggleContact = (rowKey: string, personId: string) => {
-    setRows(prev => prev.map(r =>
-      r.key === rowKey
-        ? { ...r, contacts: { ...r.contacts, [personId]: !r.contacts[personId] } }
-        : r
-    ))
-  }
-
   const columns: ColumnsType<MessageRow> = useMemo(() => [
     {
       title: 'MessageType消息类型',
@@ -194,7 +350,25 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       dataIndex: 'name',
       key: 'name',
       width: 220,
-      render: (text: string) => <Text style={{ fontSize: 13 }}>{text}</Text>
+      render: (text: string, row: MessageRow) => (
+        <Space>
+          <Text style={{ fontSize: 13 }}>{text}</Text>
+          {/* 只有 Pod故障 等特定告警才显示「配置」按钮 */}
+          {row.hasAdvancedConfig && (
+            <Tooltip title="告警应用配置">
+              <Button
+                type="link"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={() => openAdvancedConfig(row)}
+                style={{ padding: 0, fontSize: 13 }}
+              >
+                配置
+              </Button>
+            </Tooltip>
+          )}
+        </Space>
+      )
     },
     {
       title: '性质',
@@ -204,11 +378,8 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       render: (nature: MessageNature) => (
         <Tag
           style={{
-            borderRadius: 999,
-            border: 0,
-            fontSize: 12,
-            lineHeight: '22px',
-            padding: '0 10px',
+            borderRadius: 999, border: 0, fontSize: 12,
+            lineHeight: '22px', padding: '0 10px',
             background: nature === '告警' ? 'rgba(255,77,79,0.08)' : 'rgba(22,119,255,0.08)',
             color: nature === '告警' ? '#ff4d4f' : '#1677ff'
           }}
@@ -224,11 +395,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       render: (_: unknown, row: MessageRow) => (
         <Space direction="vertical" size={2}>
           {webhooks.map(w => (
-            <Checkbox
-              key={w.id}
-              checked={row.channels[w.id] || false}
-              onChange={() => toggleChannel(row.key, w.id)}
-            >
+            <Checkbox key={w.id} checked={row.channels[w.id] || false} onChange={() => toggleChannel(row.key, w.id)}>
               <Text style={{ fontSize: 13 }}>{w.name}</Text>
             </Checkbox>
           ))}
@@ -242,11 +409,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       render: (_: unknown, row: MessageRow) => (
         <Space direction="vertical" size={2}>
           {people.map(p => (
-            <Checkbox
-              key={p.id}
-              checked={row.contacts[p.id] || false}
-              onChange={() => toggleContact(row.key, p.id)}
-            >
+            <Checkbox key={p.id} checked={row.contacts[p.id] || false} onChange={() => toggleContact(row.key, p.id)}>
               <Text style={{ fontSize: 13 }}>{p.name}</Text>
             </Checkbox>
           ))}
@@ -258,7 +421,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   return (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card>
-        {/* Tab：全部 / 告警 / 通知 */}
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -270,7 +432,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           style={{ marginBottom: 16 }}
         />
 
-        {/* 工具栏 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space>
             <Checkbox
@@ -291,7 +452,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           />
         </div>
 
-        {/* 表格 */}
         <Table<MessageRow>
           rowKey="key"
           columns={columns}
@@ -302,6 +462,41 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           size="middle"
         />
       </Card>
+
+      {/* Pod故障 — 应用级高级告警配置抽屉 */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <Space>
+              <Text strong style={{ fontSize: 16 }}>{configDrawerTitle}</Text>
+            </Space>
+            <Button icon={<SettingOutlined />} onClick={() => message.info('全局设置')}>设置</Button>
+          </div>
+        }
+        width={720}
+        placement="right"
+        onClose={() => setConfigDrawerOpen(false)}
+        open={configDrawerOpen}
+        styles={{ body: { paddingTop: 16 } }}
+      >
+        <Table<AppAlertConfig>
+          rowKey="id"
+          columns={appConfigColumns}
+          dataSource={appAlertConfigs}
+          pagination={false}
+          size="middle"
+          style={{ marginBottom: 16 }}
+        />
+        <Button
+          type="dashed"
+          block
+          icon={<PlusOutlined />}
+          onClick={addAppConfig}
+          style={{ borderRadius: 8, height: 40 }}
+        >
+          添加应用
+        </Button>
+      </Drawer>
 
       <Drawer
         title="埋点数据仪表盘"
