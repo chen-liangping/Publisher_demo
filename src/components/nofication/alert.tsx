@@ -1,13 +1,13 @@
-// 消息配置页面 — 平铺表格样式，参考阿里云"基本接收管理"
+// 消息配置页面 — 平铺表格，按"告警/通知"分类
 'use client'
 
 import React, { useMemo, useState } from 'react'
 import {
   Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
-  Modal, message, Tabs, Drawer, Form, Select
+  Modal, message, Tabs, Drawer, Form
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, EditOutlined } from '@ant-design/icons'
+import { SearchOutlined } from '@ant-design/icons'
 import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
 
 const { Text } = Typography
@@ -28,74 +28,53 @@ interface Person {
   name: string
 }
 
-/** 消息类型分组 */
-type MessageCategory = '告警' | '自动开服' | '静态资源与CDN' | '运行时健康' | '客户端版本' | '配置变更' | '发布过程'
+/** 性质：告警 或 通知 */
+type MessageNature = '告警' | '通知'
 
 /** 平铺后的每一行 */
 interface MessageRow {
   key: string
+  /** MessageType 标识 */
+  messageType: string
+  /** 中文含义 */
   name: string
-  category: MessageCategory
-  /** 各接收渠道的开关状态，key = 渠道 id */
+  /** 性质 */
+  nature: MessageNature
+  /** 各接收渠道开关 */
   channels: Record<string, boolean>
-  /** 各联系人的开关状态，key = 人员 id */
+  /** 各联系人开关 */
   contacts: Record<string, boolean>
 }
 
-/* 所有消息类型（平铺，同级） */
-const allMessageTypes: { key: string; name: string; category: MessageCategory }[] = [
-  // 告警 - 自动开服
-  { key: 'autoOpenServerSuccess', name: '自动开服成功', category: '自动开服' },
-  { key: 'autoOpenServerFail', name: '自动开服失败', category: '自动开服' },
-  { key: 'notifyCPFail', name: '通知CP新预备服失败', category: '自动开服' },
-  { key: 'prepareDeployFail', name: '预备服部署失败', category: '自动开服' },
-  { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败', category: '自动开服' },
-  // 告警 - 静态资源与CDN
-  { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', category: '静态资源与CDN' },
-  { key: 's3UnzipFail', name: 'S3 zip解压失败', category: '静态资源与CDN' },
-  { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', category: '静态资源与CDN' },
-  { key: 'CDNDeployFail', name: 'CDN部署失败', category: '静态资源与CDN' },
-  { key: 'CDNDeploySuccess', name: 'CDN部署成功', category: '静态资源与CDN' },
-  // 告警 - 运行时健康
-  { key: 'podHealthCheckFail', name: 'pod健康检查失败', category: '运行时健康' },
-  { key: 'podFailure', name: 'Pod故障', category: '运行时健康' },
-  { key: 'podUpdateAbnormal', name: 'Pod更新异常', category: '运行时健康' },
-  // 通知 - 客户端版本
-  { key: 'clientNewVersion', name: '客户端创建新版本', category: '客户端版本' },
-  { key: 'clientVersionSwitch', name: '客户端版本切换', category: '客户端版本' },
-  { key: 's3UnzipSuccess', name: 'S3 zip解压成功', category: '客户端版本' },
-  // 通知 - 配置变更
-  { key: 'ossConfigChange', name: 'oss配置文件变更', category: '配置变更' },
-  { key: 'autoOpenPolicyChange', name: '自动开服策略变更', category: '配置变更' },
-  // 通知 - 发布过程
-  { key: 'serverDeployFail', name: '服务端部署失败', category: '发布过程' },
-  { key: 'serverDeploySuccess', name: '服务端部署成功', category: '发布过程' },
-  { key: 'grayRollback', name: '灰度回滚', category: '发布过程' },
-  { key: 'grayRollbackDone', name: '灰度回滚完成', category: '发布过程' },
-  { key: 'grayAppend', name: '追加灰度', category: '发布过程' },
-  { key: 'grayAppendDone', name: '灰度追加完成', category: '发布过程' },
-  { key: 'grayFullDeploy', name: '灰度全量部署', category: '发布过程' }
-]
-
-/* 分组对应的颜色 */
-const categoryColor: Record<string, string> = {
-  '自动开服': '#fa8c16',
-  '静态资源与CDN': '#1677ff',
-  '运行时健康': '#ff4d4f',
-  '客户端版本': '#52c41a',
-  '配置变更': '#722ed1',
-  '发布过程': '#13c2c2'
-}
-
-/* Tab 分类 */
-const categoryTabs = [
-  { key: 'all', label: '全部' },
-  { key: '自动开服', label: '自动开服' },
-  { key: '静态资源与CDN', label: '静态资源与CDN' },
-  { key: '运行时健康', label: '运行时健康' },
-  { key: '客户端版本', label: '客户端版本' },
-  { key: '配置变更', label: '配置变更' },
-  { key: '发布过程', label: '发布过程' }
+/* 完整消息类型列表，按性质分为"告警"和"通知" */
+const allMessageTypes: { key: string; messageType: string; name: string; nature: MessageNature }[] = [
+  { key: 'CheckStatusFailed', messageType: 'CheckStatusFailed', name: 'pod健康检查失败', nature: '告警' },
+  { key: 'AutoLaunchSuccess', messageType: 'AutoLaunchSuccess', name: '自动开服成功', nature: '通知' },
+  { key: 'AutoLaunchFailed', messageType: 'AutoLaunchFailed', name: '自动开服失败', nature: '告警' },
+  { key: 'NewServerFailed', messageType: 'NewServerFailed', name: '通知CP新预备服失败', nature: '告警' },
+  { key: 'NewServerDeployFailed', messageType: 'NewServerDeployFailed', name: '预备服部署失败', nature: '告警' },
+  { key: 'GetExecutionPlanFailed', messageType: 'GetExecutionPlanFailed', name: '自动开服执行计划获取失败', nature: '告警' },
+  { key: 'DeploySubmit', messageType: 'DeploySubmit', name: '服务端部署', nature: '通知' },
+  { key: 'DeployFinish', messageType: 'DeployFinish', name: '服务端部署完成', nature: '通知' },
+  { key: 'CanaryDeployRollback', messageType: 'CanaryDeployRollback', name: '灰度回滚', nature: '通知' },
+  { key: 'CanaryDeployRollbackFinish', messageType: 'CanaryDeployRollbackFinish', name: '灰度回滚完成', nature: '通知' },
+  { key: 'CanaryDeployMore', messageType: 'CanaryDeployMore', name: '追加灰度', nature: '通知' },
+  { key: 'CanaryContinuousDeploy', messageType: 'CanaryContinuousDeploy', name: '灰度追加完成', nature: '通知' },
+  { key: 'CanaryDeployAll', messageType: 'CanaryDeployAll', name: '灰度全量部署', nature: '通知' },
+  { key: 'ClientRelease', messageType: 'ClientRelease', name: '客户端创建新版本', nature: '通知' },
+  { key: 'CalculateFailedMsg', messageType: 'CalculateFailedMsg', name: 'flashlaunch静态资源计算阻塞', nature: '告警' },
+  { key: 'LimitUserChange', messageType: 'LimitUserChange', name: '自动开服策略变更', nature: '通知' },
+  { key: 'PodFailed', messageType: 'PodFailed', name: 'Pod故障', nature: '告警' },
+  { key: 'PodUpdatingAlert', messageType: 'PodUpdatingAlert', name: 'Pod更新异常', nature: '告警' },
+  { key: 'TranslateSyncCDNFailed', messageType: 'TranslateSyncCDNFailed', name: '翻译文本同步CDN失败', nature: '告警' },
+  { key: 'S3ZIPExtractFailure', messageType: 'S3ZIPExtractFailure', name: 'S3 zip解压失败', nature: '告警' },
+  { key: 'S3ZIPExtractSuccess', messageType: 'S3ZIPExtractSuccess', name: 'S3 zip解压成功', nature: '通知' },
+  { key: 'ReleasedVersionUpdated', messageType: 'ReleasedVersionUpdated', name: '客户端版本切换', nature: '通知' },
+  { key: 'OssResourceChange', messageType: 'OssResourceChange', name: 'oss配置文件变更', nature: '通知' },
+  { key: 'CDNDeployMsg', messageType: 'CDNDeployMsg', name: 'CDN 部署', nature: '通知' },
+  { key: 'HPAOpen', messageType: 'HPAOpen', name: '开启HPA', nature: '通知' },
+  { key: 'HPAClose', messageType: 'HPAClose', name: '关闭HPA', nature: '通知' },
+  { key: 'HPAUpdate', messageType: 'HPAUpdate', name: '更新HPA', nature: '通知' }
 ]
 
 /* ==============================
@@ -116,12 +95,12 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     { id: 'xuyin', name: '刘悦' }
   ]
 
-  // 初始化行数据：所有渠道和联系人默认关闭
   const [rows, setRows] = useState<MessageRow[]>(() =>
     allMessageTypes.map(t => ({
       key: t.key,
+      messageType: t.messageType,
       name: t.name,
-      category: t.category,
+      nature: t.nature,
       channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
       contacts: Object.fromEntries(people.map(p => [p.id, false]))
     }))
@@ -135,20 +114,20 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
-  /* 过滤 */
   const filteredRows = useMemo(() => {
     let result = rows
-    if (activeTab !== 'all') {
-      result = result.filter(r => r.category === activeTab)
-    }
+    if (activeTab === '告警') result = result.filter(r => r.nature === '告警')
+    else if (activeTab === '通知') result = result.filter(r => r.nature === '通知')
     if (searchText) {
       const s = searchText.toLowerCase()
-      result = result.filter(r => r.name.toLowerCase().includes(s) || r.category.toLowerCase().includes(s))
+      result = result.filter(r =>
+        r.name.toLowerCase().includes(s) ||
+        r.messageType.toLowerCase().includes(s)
+      )
     }
     return result
   }, [rows, activeTab, searchText])
 
-  /* 渠道开关切换 */
   const toggleChannel = (rowKey: string, channelId: string) => {
     setRows(prev => prev.map(r =>
       r.key === rowKey
@@ -157,7 +136,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     ))
   }
 
-  /* 打开编辑弹窗 */
   const openEdit = (row: MessageRow) => {
     setEditingRow(row)
     editForm.setFieldsValue({
@@ -167,7 +145,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     setEditModalOpen(true)
   }
 
-  /* 保存编辑 */
   const saveEdit = () => {
     if (!editingRow) return
     const values = editForm.getFieldsValue()
@@ -186,12 +163,8 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     message.success('配置已更新')
   }
 
-  /* 批量修改 */
   const batchModify = () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('请先选择需要修改的消息类型')
-      return
-    }
+    if (selectedRowKeys.length === 0) { message.warning('请先选择需要修改的消息类型'); return }
     Modal.confirm({
       title: `批量开启 ${selectedRowKeys.length} 项`,
       content: '将为选中的消息类型开启所有接收渠道',
@@ -210,7 +183,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     })
   }
 
-  /* 恢复默认 */
   const resetDefaults = () => {
     Modal.confirm({
       title: '恢复默认设置',
@@ -228,100 +200,115 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     })
   }
 
-  /* 联系人状态渲染 */
   const renderContactStatus = (row: MessageRow, person: Person) => {
     const channelOn = Object.values(row.channels).some(v => v)
-    const contactOn = row.contacts[person.id]
-    if (!channelOn) {
+    if (!channelOn || !row.contacts[person.id]) {
       return <Text type="secondary" style={{ fontSize: 12 }}>未开启</Text>
     }
-    if (contactOn) {
-      return <Tag color="blue" style={{ borderRadius: 999, border: 0, fontSize: 12 }}>{person.name}</Tag>
-    }
-    return <Text type="secondary" style={{ fontSize: 12 }}>未开启</Text>
+    return <Text style={{ fontSize: 12 }}>{person.name}</Text>
   }
 
-  /* 表格列 */
-  const columns: ColumnsType<MessageRow> = useMemo(() => {
-    const cols: ColumnsType<MessageRow> = [
-      {
-        title: '消息类型',
-        key: 'name',
-        width: 280,
-        fixed: 'left',
-        render: (_: unknown, row: MessageRow) => (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontWeight: 500 }}>{row.name}</Text>
-            <Tag
-              color={categoryColor[row.category] || '#8c8c8c'}
-              style={{ borderRadius: 999, border: 0, fontSize: 11, lineHeight: '18px', padding: '0 8px' }}
+  const columns: ColumnsType<MessageRow> = useMemo(() => [
+    {
+      title: 'MessageType消息类型',
+      key: 'messageType',
+      width: 240,
+      fixed: 'left',
+      render: (_: unknown, row: MessageRow) => (
+        <Text style={{ fontSize: 13 }}>{row.messageType}</Text>
+      )
+    },
+    {
+      title: '含义',
+      dataIndex: 'name',
+      key: 'name',
+      width: 220,
+      render: (text: string) => <Text style={{ fontSize: 13 }}>{text}</Text>
+    },
+    {
+      title: '性质',
+      dataIndex: 'nature',
+      key: 'nature',
+      width: 80,
+      render: (nature: MessageNature) => (
+        <Tag
+          style={{
+            borderRadius: 999,
+            border: 0,
+            fontSize: 12,
+            lineHeight: '22px',
+            padding: '0 10px',
+            background: nature === '告警' ? 'rgba(255,77,79,0.08)' : 'rgba(22,119,255,0.08)',
+            color: nature === '告警' ? '#ff4d4f' : '#1677ff'
+          }}
+        >
+          {nature}
+        </Tag>
+      )
+    },
+    {
+      title: '接收渠道',
+      key: 'channels',
+      width: 160,
+      render: (_: unknown, row: MessageRow) => (
+        <Space direction="vertical" size={2}>
+          {webhooks.map(w => (
+            <Checkbox
+              key={w.id}
+              checked={row.channels[w.id] || false}
+              onChange={() => toggleChannel(row.key, w.id)}
             >
-              {row.category}
-            </Tag>
-          </div>
-        )
-      },
-      {
-        title: '接收渠道',
-        key: 'channels',
-        width: 200,
-        render: (_: unknown, row: MessageRow) => (
-          <Space direction="vertical" size={4}>
-            {webhooks.map(w => (
-              <Checkbox
-                key={w.id}
-                checked={row.channels[w.id] || false}
-                onChange={() => toggleChannel(row.key, w.id)}
-              >
-                {w.name}
-              </Checkbox>
-            ))}
-          </Space>
-        )
-      },
-      {
-        title: '联系人',
-        key: 'contacts',
-        width: 260,
-        render: (_: unknown, row: MessageRow) => (
-          <Space direction="vertical" size={4}>
-            {people.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12, minWidth: 50 }}>{p.name}：</Text>
-                {renderContactStatus(row, p)}
-              </div>
-            ))}
-          </Space>
-        )
-      },
-      {
-        title: '操作',
-        key: 'action',
-        width: 140,
-        fixed: 'right',
-        render: (_: unknown, row: MessageRow) => (
-          <Space>
-            <Button type="link" style={{ padding: 0 }} onClick={() => openEdit(row)}>修改</Button>
-            <Button type="link" style={{ padding: 0, color: '#8c8c8c' }}>修订记录</Button>
-          </Space>
-        )
-      }
-    ]
-    return cols
-  }, [webhooks, people, rows])
+              <Text style={{ fontSize: 13 }}>{w.name}</Text>
+            </Checkbox>
+          ))}
+        </Space>
+      )
+    },
+    {
+      title: '联系人',
+      key: 'contacts',
+      width: 220,
+      render: (_: unknown, row: MessageRow) => (
+        <Space direction="vertical" size={2}>
+          {people.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Text type="secondary" style={{ fontSize: 12, minWidth: 44 }}>{p.name}：</Text>
+              {renderContactStatus(row, p)}
+            </div>
+          ))}
+        </Space>
+      )
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 130,
+      fixed: 'right',
+      render: (_: unknown, row: MessageRow) => (
+        <Space>
+          <Button type="link" style={{ padding: 0 }} onClick={() => openEdit(row)}>修改</Button>
+          <Button type="link" style={{ padding: 0, color: '#8c8c8c' }}>修订记录</Button>
+        </Space>
+      )
+    }
+  ], [webhooks, people, rows])
 
   return (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
       <Card>
-        {/* Tab 分类过滤 */}
+        {/* Tab：全部 / 告警 / 通知 */}
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
-          items={categoryTabs}
+          items={[
+            { key: 'all', label: '全部' },
+            { key: '告警', label: '告警' },
+            { key: '通知', label: '通知' }
+          ]}
           style={{ marginBottom: 16 }}
         />
 
-        {/* 工具栏：批量操作 + 搜索 */}
+        {/* 工具栏 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space>
             <Checkbox
@@ -342,17 +329,14 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           />
         </div>
 
-        {/* 平铺表格 */}
+        {/* 表格 */}
         <Table<MessageRow>
           rowKey="key"
           columns={columns}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 900 }}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: keys => setSelectedRowKeys(keys)
-          }}
+          scroll={{ x: 1050 }}
+          rowSelection={{ selectedRowKeys, onChange: keys => setSelectedRowKeys(keys) }}
           size="middle"
         />
       </Card>
@@ -390,7 +374,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
         </Form>
       </Modal>
 
-      {/* 数据看板 */}
       <Drawer
         title="埋点数据仪表盘"
         placement="left"
