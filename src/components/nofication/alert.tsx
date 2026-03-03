@@ -1,1185 +1,400 @@
-// 完整迁移自原来的 components/alert/alert.tsx，逻辑保持不变，仅文件路径调整到 Common 目录
-// 消息配置页面
-// 消息配置页面
+// 消息配置页面 — 平铺表格样式，参考阿里云"基本接收管理"
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
-import { 
-  Card,
-  Tabs,
-  Space,
-  Button,
-  Typography,
-  Drawer,
-  Form,
-  Input,
-  Table,
-  Tooltip,
-  message,
-  Switch,
-  Descriptions,
-  Empty,
-  Popconfirm,
-  Tag,
-  Modal,
-  Collapse,
-  Cascader,
-  Checkbox,
-  List,
-  Radio,
-  Select
+import {
+  Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
+  Modal, message, Tabs, Drawer, Form, Select
 } from 'antd'
-import type { TabsProps } from 'antd'
-import type { ColumnsType, ColumnType } from 'antd/es/table'
-import type { TableRowSelection } from 'antd/es/table/interface'
-import { 
-  PlusOutlined,
-  EditOutlined,
-  SendOutlined,
-  DeleteOutlined,
-  RobotOutlined,
-  TeamOutlined,
-  BellOutlined,
-  SettingOutlined,
-  SearchOutlined,
-  ReloadOutlined,
-  UndoOutlined,
-  FileSearchOutlined,
-  BarChartOutlined
-} from '@ant-design/icons'
+import type { ColumnsType } from 'antd/es/table'
+import { SearchOutlined, EditOutlined } from '@ant-design/icons'
+import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
-// 数据类型定义，避免使用 any
-interface Webhook {
+/* ==============================
+   数据定义
+   ============================== */
+
+interface WebhookItem {
+  id: string
   name: string
   url: string
   secret?: string
 }
 
-// 多个 webhook 项（包含唯一 id）
-interface WebhookItem extends Webhook {
-  id: string
-}
-
 interface Person {
   id: string
   name: string
-  dingId: string
 }
 
-// 通用矩阵行类型（用于“客户端告警”和“服务端告警”）
-type MatrixRowKind = 'webhook' | 'person' | 'empty'
-interface MatrixRow { kind: MatrixRowKind; id: string; label: string }
-const isEmptyMatrixRow = (row: MatrixRow): boolean => row.kind === 'empty'
+/** 消息类型分组 */
+type MessageCategory = '告警' | '自动开服' | '静态资源与CDN' | '运行时健康' | '客户端版本' | '配置变更' | '发布过程'
 
-interface NoticeItem {
+/** 平铺后的每一行 */
+interface MessageRow {
   key: string
   name: string
+  category: MessageCategory
+  /** 各接收渠道的开关状态，key = 渠道 id */
+  channels: Record<string, boolean>
+  /** 各联系人的开关状态，key = 人员 id */
+  contacts: Record<string, boolean>
 }
 
-// 合并后的告警行类型（按“告警 / 通知”归类）
-interface CombinedNotice {
-  key: string
-  name: string
-  category: '告警' | '通知'
+/* 所有消息类型（平铺，同级） */
+const allMessageTypes: { key: string; name: string; category: MessageCategory }[] = [
+  // 告警 - 自动开服
+  { key: 'autoOpenServerSuccess', name: '自动开服成功', category: '自动开服' },
+  { key: 'autoOpenServerFail', name: '自动开服失败', category: '自动开服' },
+  { key: 'notifyCPFail', name: '通知CP新预备服失败', category: '自动开服' },
+  { key: 'prepareDeployFail', name: '预备服部署失败', category: '自动开服' },
+  { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败', category: '自动开服' },
+  // 告警 - 静态资源与CDN
+  { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败', category: '静态资源与CDN' },
+  { key: 's3UnzipFail', name: 'S3 zip解压失败', category: '静态资源与CDN' },
+  { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞', category: '静态资源与CDN' },
+  { key: 'CDNDeployFail', name: 'CDN部署失败', category: '静态资源与CDN' },
+  { key: 'CDNDeploySuccess', name: 'CDN部署成功', category: '静态资源与CDN' },
+  // 告警 - 运行时健康
+  { key: 'podHealthCheckFail', name: 'pod健康检查失败', category: '运行时健康' },
+  { key: 'podFailure', name: 'Pod故障', category: '运行时健康' },
+  { key: 'podUpdateAbnormal', name: 'Pod更新异常', category: '运行时健康' },
+  // 通知 - 客户端版本
+  { key: 'clientNewVersion', name: '客户端创建新版本', category: '客户端版本' },
+  { key: 'clientVersionSwitch', name: '客户端版本切换', category: '客户端版本' },
+  { key: 's3UnzipSuccess', name: 'S3 zip解压成功', category: '客户端版本' },
+  // 通知 - 配置变更
+  { key: 'ossConfigChange', name: 'oss配置文件变更', category: '配置变更' },
+  { key: 'autoOpenPolicyChange', name: '自动开服策略变更', category: '配置变更' },
+  // 通知 - 发布过程
+  { key: 'serverDeployFail', name: '服务端部署失败', category: '发布过程' },
+  { key: 'serverDeploySuccess', name: '服务端部署成功', category: '发布过程' },
+  { key: 'grayRollback', name: '灰度回滚', category: '发布过程' },
+  { key: 'grayRollbackDone', name: '灰度回滚完成', category: '发布过程' },
+  { key: 'grayAppend', name: '追加灰度', category: '发布过程' },
+  { key: 'grayAppendDone', name: '灰度追加完成', category: '发布过程' },
+  { key: 'grayFullDeploy', name: '灰度全量部署', category: '发布过程' }
+]
+
+/* 分组对应的颜色 */
+const categoryColor: Record<string, string> = {
+  '自动开服': '#fa8c16',
+  '静态资源与CDN': '#1677ff',
+  '运行时健康': '#ff4d4f',
+  '客户端版本': '#52c41a',
+  '配置变更': '#722ed1',
+  '发布过程': '#13c2c2'
 }
 
-// 告警类 - 自动开服
-const alertAutoOpenNoticeList: NoticeItem[] = [
-  { key: 'autoOpenServerSuccess', name: '自动开服成功' },
-  { key: 'autoOpenServerFail', name: '自动开服失败' },
-  { key: 'notifyCPFail', name: '通知CP新预备服失败' },
-  { key: 'prepareDeployFail', name: '预备服部署失败' },
-  { key: 'scheduleFetchFail', name: '自动开服执行计划获取失败' }
+/* Tab 分类 */
+const categoryTabs = [
+  { key: 'all', label: '全部' },
+  { key: '自动开服', label: '自动开服' },
+  { key: '静态资源与CDN', label: '静态资源与CDN' },
+  { key: '运行时健康', label: '运行时健康' },
+  { key: '客户端版本', label: '客户端版本' },
+  { key: '配置变更', label: '配置变更' },
+  { key: '发布过程', label: '发布过程' }
 ]
 
-// 告警类 - 静态资源与 CDN
-const alertStaticCdnNoticeList: NoticeItem[] = [
-  { key: 'translateSyncCdnFail', name: '翻译文本同步CDN失败' },
-  { key: 's3UnzipFail', name: 'S3 zip解压失败' },
-  { key: 'flashlaunchBlocked', name: 'flashlaunch静态资源计算阻塞' },
-  { key: 'CDNDeployFail', name: 'CDN部署失败' },
-  { key: 'CDNDeploySuccess', name: 'CDN部署成功' }
-]
-
-// 告警类 - 运行时健康
-const alertRuntimeHealthNoticeList: NoticeItem[] = [
-  { key: 'podHealthCheckFail', name: 'pod健康检查失败' },
-  { key: 'podFailure', name: 'Pod故障' },
-  { key: 'podUpdateAbnormal', name: 'Pod更新异常' }
-]
-
-// 通知类 - 客户端版本
-const notificationClientVersionNoticeList: NoticeItem[] = [
-  { key: 'clientNewVersion', name: '客户端创建新版本' },
-  { key: 'clientVersionSwitch', name: '客户端版本切换' },
-  { key: 's3UnzipSuccess', name: 'S3 zip解压成功' }
-]
-
-// 通知类 - 配置变更
-const notificationConfigChangeNoticeList: NoticeItem[] = [
-  { key: 'ossConfigChange', name: 'oss配置文件变更' },
-  { key: 'autoOpenPolicyChange', name: '自动开服策略变更' }
-]
-
-// 通知类 - 发布过程
-const notificationReleaseProcessNoticeList: NoticeItem[] = [
-  { key: 'serverDeployFail', name: '服务端部署失败' },
-  { key: 'serverDeploySuccess', name: '服务端部署成功' },
-  { key: 'grayRollback', name: '灰度回滚' },
-  { key: 'grayRollbackDone', name: '灰度回滚完成' },
-  { key: 'grayAppend', name: '追加灰度' },
-  { key: 'grayAppendDone', name: '灰度追加完成' },
-  { key: 'grayFullDeploy', name: '灰度全量部署' }
-]
-
-// 所有“告警类”与“通知类”列表
-const alertNoticeList: NoticeItem[] = [
-  ...alertAutoOpenNoticeList,
-  ...alertStaticCdnNoticeList,
-  ...alertRuntimeHealthNoticeList
-]
-
-const notificationNoticeList: NoticeItem[] = [
-  ...notificationClientVersionNoticeList,
-  ...notificationConfigChangeNoticeList,
-  ...notificationReleaseProcessNoticeList
-]
-
-// 兼容原有结构：客户端 / 服务端列表（用于原有矩阵逻辑）
-// 客户端相关（含静态资源 & CDN）
-const alarmNoticeList: NoticeItem[] = [
-  ...alertStaticCdnNoticeList,
-  ...notificationClientVersionNoticeList,
-  // 配置变更中客户端相关：ossConfigChange
-  notificationConfigChangeNoticeList[0]
-]
-
-// 服务端相关
-const reminderNoticeList: NoticeItem[] = [
-  ...alertAutoOpenNoticeList,
-  ...alertRuntimeHealthNoticeList,
-  // 配置变更中服务端相关：autoOpenPolicyChange
-  notificationConfigChangeNoticeList[1],
-  ...notificationReleaseProcessNoticeList
-]
+/* ==============================
+   主组件
+   ============================== */
 
 interface AlertPageProps {
-  /** 来自“webhook管理”页面的机器人列表；如果不传则使用内置示例数据 */
   webhooks?: WebhookItem[]
 }
 
 export default function AlertPage(props: AlertPageProps): React.ReactElement {
-  // Webhook：来自父组件（人员配置 -> webhook 管理）；未传时使用一个默认示例
   const webhooks: WebhookItem[] = props.webhooks ?? [
-    { id: 'kumo_cp', name: 'cp 群', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
+    { id: 'cp_group', name: 'CP群', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
   ]
 
-  // 人员配置（默认包含一名联系人 yu.b）
-  const [people, setPeople] = useState<Person[]>([
-    { id: 'yu.b', name: 'yu.b', dingId: 'dingtalk:yu.b' },
-    { id: 'xuyin', name: '刘悦', dingId: 'dingtalk:xuyin' }
-  ])
-  const [addPersonOpen, setAddPersonOpen] = useState<boolean>(false)
-  const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
-  const [personForm] = Form.useForm<Person>()
+  const people: Person[] = [
+    { id: 'yu.b', name: 'yu.b' },
+    { id: 'xuyin', name: '刘悦' }
+  ]
 
-  // 客户端提醒矩阵：noticeKey -> { personId: boolean }，默认开启
-  const [reminderMatrix, setReminderMatrix] = useState<Record<string, Record<string, boolean>>>(
-    () => reminderNoticeList.reduce((acc, item) => ({ ...acc, [item.key]: {} }), {})
-  )
-
-  // 客户端告警类（人员 x 告警项）矩阵
-  const [alarmPersonMatrix, setAlarmPersonMatrix] = useState<Record<string, Record<string, boolean>>>(
-    () => alarmNoticeList.reduce((acc, item) => ({ ...acc, [item.key]: {} }), {})
-  )
-
-  // Webhook 配置（整行应用 + 每告警项专属配置）
-  const [webhookSelectionAlarmRow, setWebhookSelectionAlarmRow] = useState<string | undefined>('kumo_cp')
-  const [webhookSelectionReminderRow, setWebhookSelectionReminderRow] = useState<string | undefined>('kumo_cp')
-  const [webhookModalOpen, setWebhookModalOpen] = useState<boolean>(false)
-  const [webhookModalMode, setWebhookModalMode] = useState<'alarm' | 'reminder'>('alarm')
-  const [tempWebhookIds, setTempWebhookIds] = useState<string[]>([])
-  // 每告警项：选择触发的 webhook（null 表示不触发）
-  const [alarmWebhookByNotice, setAlarmWebhookByNotice] = useState<Record<string, string | null>>(
-    () => alarmNoticeList.reduce((acc, n) => ({ ...acc, [n.key]: 'kumo_cp' }), {} as Record<string, string | null>)
-  )
-  const [reminderWebhookByNotice, setReminderWebhookByNotice] = useState<Record<string, string | null>>(
-    () => reminderNoticeList.reduce((acc, n) => ({ ...acc, [n.key]: 'kumo_cp' }), {} as Record<string, string | null>)
-  )
-  const webhookOptions = useMemo(() => webhooks.map(w => ({ label: w.name, value: w.id })), [webhooks])
-
-  // 合并表：数据与工具方法
-  const alarmKeySet = useMemo(() => new Set(alarmNoticeList.map(n => n.key)), [])
-  const allNotices: CombinedNotice[] = useMemo(
-    () => [
-      ...alertNoticeList.map(n => ({ ...n, category: '告警' as const })),
-      ...notificationNoticeList.map(n => ({ ...n, category: '通知' as const }))
-    ],
-    []
-  )
-
-  const [configNoticeKey, setConfigNoticeKey] = useState<string | null>(null)
-
-  const getNoticeWebhook = (noticeKey: string): string | null => (
-    alarmKeySet.has(noticeKey) ? (alarmWebhookByNotice[noticeKey] ?? null) : (reminderWebhookByNotice[noticeKey] ?? null)
-  )
-  const setNoticeWebhook = (noticeKey: string, webhookId: string | null): void => {
-    if (alarmKeySet.has(noticeKey)) {
-      setAlarmWebhookByNotice(prev => ({ ...prev, [noticeKey]: webhookId }))
-    } else {
-      setReminderWebhookByNotice(prev => ({ ...prev, [noticeKey]: webhookId }))
-    }
-  }
-  const getPersonChecked = (noticeKey: string, personId: string): boolean => (
-    alarmKeySet.has(noticeKey) ? (alarmPersonMatrix[noticeKey]?.[personId] ?? true) : (reminderMatrix[noticeKey]?.[personId] ?? true)
-  )
-  const setPersonChecked = (noticeKey: string, personId: string, checked: boolean): void => {
-    if (alarmKeySet.has(noticeKey)) {
-      setAlarmPersonMatrix(prev => ({ ...prev, [noticeKey]: { ...(prev[noticeKey] ?? {}), [personId]: checked } }))
-    } else {
-      setReminderMatrix(prev => ({ ...prev, [noticeKey]: { ...(prev[noticeKey] ?? {}), [personId]: checked } }))
-    }
-  }
-  const handleWebhookSwitch = (noticeKey: string, on: boolean): void => {
-    if (on) {
-      if (webhooks.length <= 1) {
-        setNoticeWebhook(noticeKey, webhooks[0]?.id ?? null)
-      } else {
-        setConfigNoticeKey(noticeKey)
-        const preset = getNoticeWebhook(noticeKey)
-        setTempWebhookIds(preset ? [preset] : [])
-        setWebhookModalOpen(true)
-      }
-    } else {
-      // 关闭 webhook，则清空 webhook 且关闭所有人员开关
-      setNoticeWebhook(noticeKey, null)
-      people.forEach(p => setPersonChecked(noticeKey, p.id, false))
-    }
-  }
-  const handleWebhookConfig = (noticeKey: string): void => {
-    setConfigNoticeKey(noticeKey)
-    const preset = getNoticeWebhook(noticeKey)
-    setTempWebhookIds(preset ? [preset] : [])
-    setWebhookModalOpen(true)
-  }
-  const handleWebhookModalOk = (): void => {
-    if (!configNoticeKey) return
-    const picked = tempWebhookIds[0] ?? null
-    setNoticeWebhook(configNoticeKey, picked)
-    setWebhookModalOpen(false)
-    message.success('Webhook 配置已更新')
-  }
-
-  // 添加人员
-  const handleAddPerson = (): void => {
-    setAddPersonOpen(true)
-  }
-
-  const onSubmitAddPerson = async (): Promise<void> => {
-    try {
-      const values = await personForm.validateFields()
-      const newPerson: Person = {
-        id: Date.now().toString(),
-        name: values.name,
-        dingId: values.dingId
-      }
-      setPeople(prev => [newPerson, ...prev])
-      personForm.resetFields()
-      setAddPersonOpen(false)
-      message.success('人员已添加')
-    } catch {
-      // 校验失败不处理
-    }
-  }
-
-  // 删除人员
-  const onDeletePerson = (person: Person): void => {
-    setPeople(prev => prev.filter(p => p.id !== person.id))
-    // 同步移除矩阵记录
-    setReminderMatrix(prev => {
-      const next: Record<string, Record<string, boolean>> = {}
-      Object.keys(prev).forEach(k => {
-        const row = { ...prev[k] }
-        delete row[person.id]
-        next[k] = row
-      })
-      return next
-    })
-    message.success('人员已移除')
-  }
-
-  // 告警-人员矩阵切换
-  const onToggleAlarmPerson = (noticeKey: string, personId: string, checked: boolean): void => {
-    setAlarmPersonMatrix(prev => ({
-      ...prev,
-      [noticeKey]: { ...prev[noticeKey], [personId]: checked }
+  // 初始化行数据：所有渠道和联系人默认关闭
+  const [rows, setRows] = useState<MessageRow[]>(() =>
+    allMessageTypes.map(t => ({
+      key: t.key,
+      name: t.name,
+      category: t.category,
+      channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
+      contacts: Object.fromEntries(people.map(p => [p.id, false]))
     }))
-  }
-
-  // 提醒矩阵切换（单元格开关）
-  const onToggleReminder = (noticeKey: string, personId: string, checked: boolean): void => {
-    setReminderMatrix(prev => ({
-      ...prev,
-      [noticeKey]: { ...prev[noticeKey], [personId]: checked }
-    }))
-  }
-
-  // 人员配置
-  const peopleColumns: ColumnsType<Person> = useMemo(() => ([
-    { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
-    { title: '钉钉ID', dataIndex: 'dingId', key: 'dingId', width: 260 },
-    {
-      title: '操作', key: 'actions', width: 120,
-      render: (_, person) => (
-        <Space>
-          <Popconfirm
-            title="确认移除该人员？"
-            okText="确认"
-            cancelText="取消"
-            onConfirm={() => onDeletePerson(person)}
-          >
-            {/* 图标操作：仅显示图标，并用 Tooltip 解释含义 */}
-            <Tooltip title="删除人员">
-              <Button danger type="text" icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      )
-    }
-  ]), [])
-
-  const PeopleSection = (
-    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-      <Card
-        title={
-          <Space>
-            <TeamOutlined />
-            <span style={{ fontSize: 18 }}>人员配置</span>
-          </Space>
-        }
-        extra={
-          <Tooltip title="新增人员">
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddPerson} />
-          </Tooltip>
-        }
-        styles={{ body: { paddingTop: 8 } }}
-      >
-        <Table<Person>
-          rowKey="id"
-          columns={peopleColumns}
-          dataSource={people}
-          pagination={{ pageSize: 8 }}
-        />
-
-        {/* 新增人员抽屉 */}
-        <Drawer
-          title="新增人员"
-          open={addPersonOpen}
-          width={480}
-          onClose={() => setAddPersonOpen(false)}
-          destroyOnClose
-          footer={
-            <div style={{ textAlign: 'left' }}>
-              <Space>
-                <Button onClick={() => setAddPersonOpen(false)}>取消</Button>
-                <Button type="primary" onClick={onSubmitAddPerson}>保存</Button>
-              </Space>
-            </div>
-          }
-        >
-          <Form<Person> form={personForm} layout="vertical">
-            <Form.Item
-              label="钉钉名称"
-              name="name"
-              rules={[{ required: true, message: '请输入钉钉联系人名称' }]}
-            >
-              <Input placeholder="例如：王小明" />
-            </Form.Item>
-            <Form.Item
-              label="钉钉ID"
-              name="dingId"
-              rules={[{ required: true, message: '请输入 dingtalk ID' }]}
-            >
-              <Input placeholder="例如：dingtalk:123456" />
-            </Form.Item>
-          </Form>
-        </Drawer>
-      </Card>
-    </Space>
   )
 
-  // 旧的客户端告警矩阵已合并为统一表格
+  const [activeTab, setActiveTab] = useState('all')
+  const [searchText, setSearchText] = useState('')
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingRow, setEditingRow] = useState<MessageRow | null>(null)
+  const [editForm] = Form.useForm()
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
-  const alarmRows: MatrixRow[] = useMemo(() => {
-    const rows: MatrixRow[] = [{ kind: 'webhook' as const, id: '__webhook__', label: 'Webhook' }]
-    if (people.length === 0 && webhooks.length === 0) {
-      rows.push({ kind: 'empty' as const, id: '__empty__', label: '' })
-    } else {
-      rows.push(...people.map(p => ({ kind: 'person' as const, id: p.id, label: p.name })))
-      rows.push(...webhooks.map(w => ({ kind: 'person' as const, id: `robot:${w.id}`, label: w.name })))
+  /* 过滤 */
+  const filteredRows = useMemo(() => {
+    let result = rows
+    if (activeTab !== 'all') {
+      result = result.filter(r => r.category === activeTab)
     }
-    return rows
-  }, [people, webhooks])
-
-  // 旧的服务端告警矩阵已合并为统一表格
-
-  const reminderRows: MatrixRow[] = useMemo(() => {
-    const rows: MatrixRow[] = [{ kind: 'webhook' as const, id: '__webhook__', label: 'Webhook' }]
-    if (people.length === 0 && webhooks.length === 0) {
-      rows.push({ kind: 'empty' as const, id: '__empty__', label: '' })
-    } else {
-      rows.push(...people.map(p => ({ kind: 'person' as const, id: p.id, label: p.name })))
-      rows.push(...webhooks.map(w => ({ kind: 'person' as const, id: `robot:${w.id}`, label: w.name })))
+    if (searchText) {
+      const s = searchText.toLowerCase()
+      result = result.filter(r => r.name.toLowerCase().includes(s) || r.category.toLowerCase().includes(s))
     }
-    return rows
-  }, [people, webhooks])
+    return result
+  }, [rows, activeTab, searchText])
 
-  // 模拟“Element 风格”的树形表格（机器人 + 人员列）
-  type TriState = boolean | 'indeterminate'
-  interface TreeRow {
-    key: string
-    name: string
-    level: 1 | 2 | 3
-    robot: TriState
-    children?: TreeRow[]
+  /* 渠道开关切换 */
+  const toggleChannel = (rowKey: string, channelId: string) => {
+    setRows(prev => prev.map(r =>
+      r.key === rowKey
+        ? { ...r, channels: { ...r.channels, [channelId]: !r.channels[channelId] } }
+        : r
+    ))
   }
 
-  const renderChannelCheckbox = (value: TriState, onChange?: (checked: boolean) => void): React.ReactElement => (
-    <Checkbox
-      indeterminate={value === 'indeterminate'}
-      checked={value === true}
-      onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
-    />
-  )
-
-  // 每个“消息类型 x 参与者（人员/机器人）”的开关状态矩阵（仅 UI）
-  const [actorChannelMatrix, setActorChannelMatrix] = useState<Record<string, Record<string, boolean>>>({})
-  // 保留行级 webhook 选择结构（仅供弹窗展示使用，简化为 key -> webhookId 数组）
-  const [rowWebhookByKey, setRowWebhookByKey] = useState<Record<string, string[]>>({})
-
-  /**
-   * 方案 A：渠道 -> 联系人 绑定
-   * - 每个消息类型（nodeKey）下，每个接收渠道（robot actor）都可以配置一组联系人（person actor）
-   * - UI 入口放在“接收渠道”列中（每个渠道旁边“设置联系人”）
-   */
-  type ChannelReceiversByKey = Record<string, Record<string, string[]>>
-  const [channelReceiversByKey, setChannelReceiversByKey] = useState<ChannelReceiversByKey>({})
-  const [receiverModalOpen, setReceiverModalOpen] = useState<boolean>(false)
-  const [receiverEditing, setReceiverEditing] = useState<{ nodeKey: string; channelActorId: string } | null>(null)
-  const [tempReceiverIds, setTempReceiverIds] = useState<string[]>([])
-  
-  // 告警规则：每个节点可配置多条（服务端部署等）
-  interface AlertRule { id: string; app: string; frequency: string }
-  const [alertRulesByKey, setAlertRulesByKey] = useState<Record<string, AlertRule[]>>({})
-  const [rulesModalOpen, setRulesModalOpen] = useState<boolean>(false)
-  const [rulesEditingKey, setRulesEditingKey] = useState<string | null>(null)
-  const [tempRules, setTempRules] = useState<AlertRule[]>([])
-  
-  // 规则下拉：示例应用与频率（可按需扩展）
-  const appSelectOptions = useMemo(() => ([
-    { label: 'open-platform', value: 'open-platform' },
-    { label: 'flashlaunch', value: 'flashlaunch' },
-    { label: 'oss', value: 'oss' },
-    { label: 'server', value: 'server' },
-    { label: 'client', value: 'client' }
-  ]), [])
-  const freqSelectOptions = useMemo(() => ([
-    { label: '每5分钟', value: '5m' },
-    { label: '每1小时', value: '1h' },
-    { label: '每8小时', value: '8h' },
-    { label: '每12小时', value: '12h' },
-    { label: '每24小时', value: '24h' }
-
-  ]), [])
-  
-  // 默认规则：用于首次打开“服务端部署”等节点时预填
-  const makeDefaultRules = (): AlertRule[] => {
-    const ts = Date.now()
-    return [
-      { id: `def-${ts}-1`, app: 'open-platform', frequency: '1h' },
-      { id: `def-${ts}-2`, app: 'flashlaunch', frequency: '1h' }
-    ]
+  /* 打开编辑弹窗 */
+  const openEdit = (row: MessageRow) => {
+    setEditingRow(row)
+    editForm.setFieldsValue({
+      channels: Object.entries(row.channels).filter(([, v]) => v).map(([k]) => k),
+      contacts: Object.entries(row.contacts).filter(([, v]) => v).map(([k]) => k)
+    })
+    setEditModalOpen(true)
   }
-  // 当前配置中的节点 key
-  const [configKey, setConfigKey] = useState<string | null>(null)
 
-  // 客户端与服务端树数据（按“告警类 / 通知类”分组）
-  // 告警 / 通知树数据（Level1：告警 / 通知；Level2：业务场景；Level3：具体告警项）
-  const clientTreeDataA: TreeRow[] = useMemo(
-    () => [
-      {
-        key: 'alert-root',
-        name: '告警',
-        level: 1,
-        robot: false,
-        children: [
-          {
-            key: 'alert-auto-open',
-            name: '自动开服',
-            level: 2,
-            robot: false,
-            children: alertAutoOpenNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
-          },
-          {
-            key: 'alert-static-cdn',
-            name: '静态资源与 CDN',
-            level: 2,
-            robot: false,
-            children: alertStaticCdnNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
-          },
-          {
-            key: 'alert-runtime',
-            name: '运行时健康',
-            level: 2,
-            robot: false,
-            children: alertRuntimeHealthNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
+  /* 保存编辑 */
+  const saveEdit = () => {
+    if (!editingRow) return
+    const values = editForm.getFieldsValue()
+    const channelSet = new Set(values.channels || [])
+    const contactSet = new Set(values.contacts || [])
+    setRows(prev => prev.map(r =>
+      r.key === editingRow.key
+        ? {
+            ...r,
+            channels: Object.fromEntries(webhooks.map(w => [w.id, channelSet.has(w.id)])),
+            contacts: Object.fromEntries(people.map(p => [p.id, contactSet.has(p.id)]))
           }
-        ]
+        : r
+    ))
+    setEditModalOpen(false)
+    message.success('配置已更新')
+  }
+
+  /* 批量修改 */
+  const batchModify = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择需要修改的消息类型')
+      return
+    }
+    Modal.confirm({
+      title: `批量开启 ${selectedRowKeys.length} 项`,
+      content: '将为选中的消息类型开启所有接收渠道',
+      okText: '确认',
+      cancelText: '取消',
+      onOk: () => {
+        const keySet = new Set(selectedRowKeys as string[])
+        setRows(prev => prev.map(r =>
+          keySet.has(r.key)
+            ? { ...r, channels: Object.fromEntries(webhooks.map(w => [w.id, true])) }
+            : r
+        ))
+        setSelectedRowKeys([])
+        message.success('批量修改完成')
       }
-    ],
-    []
-  )
-
-  const serverTreeDataA: TreeRow[] = useMemo(
-    () => [
-      {
-        key: 'notification-root',
-        name: '通知',
-        level: 1,
-        robot: false,
-        children: [
-          {
-            key: 'notification-client-version',
-            name: '客户端版本',
-            level: 2,
-            robot: false,
-            children: notificationClientVersionNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
-          },
-          {
-            key: 'notification-config',
-            name: '配置变更',
-            level: 2,
-            robot: false,
-            children: notificationConfigChangeNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
-          },
-          {
-            key: 'notification-release',
-            name: '发布过程',
-            level: 2,
-            robot: false,
-            children: notificationReleaseProcessNoticeList.map((n: NoticeItem): TreeRow => ({
-              key: n.key,
-              name: n.name,
-              level: 3,
-              robot: false
-            }))
-          }
-        ]
-      }
-    ],
-    []
-  )
-
-  // CDN 与客户端、服务端同级（Level1）
-  /*const cdnTreeDataA: TreeRow[] = useMemo(() => ([
-    {
-      key: 'cdn-root', name: 'CDN 部署告警', level: 1, robot: false,
-      children: [
-        { key: 'CDNDeploySuccess', name: 'CDN部署成功', level: 2, robot: false },
-        { key: 'CDNDeployFail', name: 'CDN部署失败', level: 2, robot: false }
-      ]
-    }
-  ]), [])*/
-
-  // 辅助：构建 key -> node、父子关系，用于级联与三态计算
-  type NodeMaps = {
-    nodeByKey: Record<string, TreeRow>
-    childrenByKey: Record<string, string[]>
-    parentByKey: Record<string, string | null>
-    allKeys: string[]
-  }
-  const maps: NodeMaps = useMemo(() => {
-    const nodeByKey: Record<string, TreeRow> = {}
-    const childrenByKey: Record<string, string[]> = {}
-    const parentByKey: Record<string, string | null> = {}
-    const walk = (nodes: TreeRow[], parent: string | null) => {
-      nodes.forEach(n => {
-        nodeByKey[n.key] = n
-        parentByKey[n.key] = parent
-        if (n.children && n.children.length) {
-          childrenByKey[n.key] = n.children.map(c => c.key)
-          walk(n.children, n.key)
-        } else {
-          childrenByKey[n.key] = []
-        }
-      })
-    }
-    const allRoots: TreeRow[] = [...clientTreeDataA, ...serverTreeDataA] /*...cdnTreeDataA*/
-    walk(allRoots, null)
-    return { nodeByKey, childrenByKey, parentByKey, allKeys: Object.keys(nodeByKey) }
-  }, [clientTreeDataA, serverTreeDataA]) /*cdnTreeDataA*/
-
-  const getDescendants = (key: string): string[] => {
-    const out: string[] = []
-    const dfs = (k: string) => {
-      const kids = maps.childrenByKey[k] || []
-      kids.forEach(c => {
-        out.push(c)
-        dfs(c)
-      })
-    }
-    dfs(key)
-    return out
-  }
-
-  const getChannelReceivers = (nodeKey: string, channelActorId: string): string[] => (
-    channelReceiversByKey[nodeKey]?.[channelActorId] ?? []
-  )
-
-  const setChannelReceiversCascade = (nodeKey: string, channelActorId: string, receiverIds: string[]): void => {
-    // 交互逻辑：当对父级节点设置联系人时，同步应用到所有后代节点（与渠道开关级联保持一致）
-    const keys = [nodeKey, ...getDescendants(nodeKey)]
-    setChannelReceiversByKey(prev => {
-      const next: ChannelReceiversByKey = { ...prev }
-      keys.forEach(k => {
-        const row = { ...(next[k] ?? {}) }
-        row[channelActorId] = [...receiverIds]
-        next[k] = row
-      })
-      return next
     })
   }
 
-  const getAncestors = (key: string): string[] => {
-    const out: string[] = []
-    let cur: string | null = key
-    while (cur) {
-      const parentKey: string | null = maps.parentByKey[cur] ?? null
-      if (parentKey) out.push(parentKey)
-      cur = parentKey
-    }
-    return out
-  }
-
-  // 参与者：人员 + 机器人，在矩阵中每个参与者对应一列
-  interface Actor {
-    id: string
-    name: string
-    kind: 'person' | 'robot'
-  }
-
-  const actors: Actor[] = useMemo(
-    () => [
-      ...webhooks.map(w => ({ id: `robot:${w.id}`, name: w.name, kind: 'robot' as const })),
-      ...people.map(p => ({ id: p.id, name: p.name, kind: 'person' as const }))
-        ],
-    [people, webhooks]
-  )
-
-  const channelNameByActorId = useMemo(() => {
-    const m = new Map<string, string>()
-    actors.filter(a => a.kind === 'robot').forEach(a => m.set(a.id, a.name))
-    return m
-  }, [actors])
-
-  // 三态：某个节点及其所有子节点，对同一参与者的整体状态
-  const getActorTri = (key: string, actorId: string): TriState => {
-    const keys = [key, ...getDescendants(key)]
-    let hasTrue = false
-    let hasFalse = false
-    for (const k of keys) {
-      const base = actorChannelMatrix[k]?.[actorId] ?? false
-      if (base) hasTrue = true
-      else hasFalse = true
-      if (hasTrue && hasFalse) return 'indeterminate'
-    }
-    // 如果从未配置过，默认视为关闭
-    return hasTrue ? true : false
-  }
-
-  // 级联设置：父级任意开关影响全部子级（包括多级）
-  const setActorCascade = (key: string, actorId: string, checked: boolean): void => {
-    const keys = [key, ...getDescendants(key)]
-    setActorChannelMatrix(prev => {
-      const next: Record<string, Record<string, boolean>> = { ...prev }
-      keys.forEach(k => {
-        const row = { ...(next[k] ?? {}) }
-        row[actorId] = checked
-        next[k] = row
-      })
-      return next
+  /* 恢复默认 */
+  const resetDefaults = () => {
+    Modal.confirm({
+      title: '恢复默认设置',
+      content: '将清空所有接收渠道和联系人配置，是否继续？',
+      okText: '确认',
+      cancelText: '取消',
+      onOk: () => {
+        setRows(prev => prev.map(r => ({
+          ...r,
+          channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
+          contacts: Object.fromEntries(people.map(p => [p.id, false]))
+        })))
+        message.success('已恢复默认')
+      }
     })
   }
 
-  const treeColumns: ColumnsType<TreeRow> = useMemo(() => {
-    const base: ColumnsType<TreeRow> = [
+  /* 联系人状态渲染 */
+  const renderContactStatus = (row: MessageRow, person: Person) => {
+    const channelOn = Object.values(row.channels).some(v => v)
+    const contactOn = row.contacts[person.id]
+    if (!channelOn) {
+      return <Text type="secondary" style={{ fontSize: 12 }}>未开启</Text>
+    }
+    if (contactOn) {
+      return <Tag color="blue" style={{ borderRadius: 999, border: 0, fontSize: 12 }}>{person.name}</Tag>
+    }
+    return <Text type="secondary" style={{ fontSize: 12 }}>未开启</Text>
+  }
+
+  /* 表格列 */
+  const columns: ColumnsType<MessageRow> = useMemo(() => {
+    const cols: ColumnsType<MessageRow> = [
       {
-        title: '消息类型', dataIndex: 'name', key: 'name', width: 160, fixed: 'left',
-        render: (_: unknown, r: TreeRow) => (
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ paddingLeft: r.level === 1 ? 0 : r.level === 2 ? 16 : 24, flex: '0 1 auto' }}>{r.name}</div>
-            {r.key === 'server-deploy' && (
-              <Tooltip title="配置应用">
-                <Button
-                  size="small"
-                  type="link"
-                  color="primary"
-                  onClick={() => {
-                    setRulesEditingKey(r.key)
-                    setTempRules((alertRulesByKey[r.key] && alertRulesByKey[r.key].length > 0) ? alertRulesByKey[r.key] : makeDefaultRules())
-                    setRulesModalOpen(true)
-                  }}
-                >
-                  配置应用
-                </Button>
-              </Tooltip>
-            )}
-          </div>
-        )
-      }
-    ]
-
-    // 将参与者按类别分组：人员 / 机器人
-    const personActors = actors.filter(actor => actor.kind === 'person')
-    const robotActors = actors.filter(actor => actor.kind === 'robot')
-
-    const personNameById = new Map(personActors.map(p => [p.id, p.name]))
-    const channelNameById = new Map(robotActors.map(c => [c.id, c.name]))
-
-    const pickTagColor = (value: string, palette: string[]): string => {
-      // 展示逻辑：不同值的 tag 使用不同颜色（稳定映射）
-      let hash = 0
-      for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0
-      return palette[hash % palette.length] ?? 'default'
-    }
-    const peoplePalette = ['green', 'lime', 'gold', 'orange', 'volcano']
-
-    const renderActorChecklist = (
-      actorList: Actor[],
-      layout: 'vertical' | 'horizontal'
-    ) => (_: unknown, r: TreeRow): React.ReactElement => {
-      const content = actorList.map(actor => {
-        const tri = getActorTri(r.key, actor.id)
-        return (
-          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
-            <Checkbox
-              indeterminate={tri === 'indeterminate'}
-              checked={tri === true}
-              onChange={(e) => setActorCascade(r.key, actor.id, e.target.checked)}
+        title: '消息类型',
+        key: 'name',
+        width: 280,
+        fixed: 'left',
+        render: (_: unknown, row: MessageRow) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontWeight: 500 }}>{row.name}</Text>
+            <Tag
+              color={categoryColor[row.category] || '#8c8c8c'}
+              style={{ borderRadius: 999, border: 0, fontSize: 11, lineHeight: '18px', padding: '0 8px' }}
             >
-              {actor.name}
-            </Checkbox>
+              {row.category}
+            </Tag>
           </div>
         )
-      })
-
-      if (layout === 'horizontal') {
-        return (
-          <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
-            {content}
-          </Space>
-        )
-      }
-
-      return (
-        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-          {content}
-        </Space>
-      )
-    }
-
-    const renderChannelChecklistWithReceiverConfig = (_: unknown, r: TreeRow): React.ReactElement => {
-      if (robotActors.length === 0) return <Text type="secondary">—</Text>
-      const content = robotActors.map(actor => {
-        const tri = getActorTri(r.key, actor.id)
-        const checked = tri === true
-        const receiverCount = getChannelReceivers(r.key, actor.id).length
-        const canEditReceivers = checked && personActors.length > 0
-        return (
-          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <Checkbox
-              indeterminate={tri === 'indeterminate'}
-              checked={checked}
-              onChange={(e) => {
-                // 交互逻辑：渠道开关仍按树级联；关闭时同时清空该渠道在本节点及后代的联系人绑定
-                const nextChecked = e.target.checked
-                setActorCascade(r.key, actor.id, nextChecked)
-                if (!nextChecked) {
-                  setChannelReceiversCascade(r.key, actor.id, [])
-                } else if (personActors.length > 0 && getChannelReceivers(r.key, actor.id).length === 0) {
-                  // 交互逻辑：首次开启渠道且未设置联系人时，默认预置第一个联系人，减少“开了渠道但没人接收”的空状态
-                  setChannelReceiversCascade(r.key, actor.id, [personActors[0]!.id])
-                }
-              }}
-            >
-              <Space size={8} wrap>
-                <span>{actor.name}</span>
-
-                {/* 方案 A：只有已勾选的接收渠道，才展示联系人数量与编辑入口 */}
-                {checked && (
-                  <>
-                    <Tag
-                      bordered={false}
-                      color="default"
-                      style={{ borderRadius: 999, paddingInline: 10, opacity: 0.85 }}
-                    >
-                      联系人（{receiverCount}）
-                    </Tag>
-                    <Tooltip title="编辑联系人">
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        disabled={!canEditReceivers}
-                        aria-label="编辑联系人"
-                        onClick={(ev) => {
-                          // 交互逻辑：避免点击按钮触发 Checkbox 的切换
-                          ev.stopPropagation()
-                          // 交互逻辑：打开联系人配置弹窗（针对当前行的该渠道）
-                          setReceiverEditing({ nodeKey: r.key, channelActorId: actor.id })
-                          const preset = getChannelReceivers(r.key, actor.id)
-                          setTempReceiverIds(preset.length > 0 ? preset : (personActors[0] ? [personActors[0].id] : []))
-                          setReceiverModalOpen(true)
-                        }}
-                        style={{ width: 32, height: 32, paddingInline: 0 }}
-                      >
-                      </Button>
-                    </Tooltip>
-                  </>
-                )}
-              </Space>
-            </Checkbox>
-          </div>
-        )
-      })
-      return (
-        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-          {content}
-        </Space>
-      )
-    }
-
-    const renderContactsSummary = (_: unknown, r: TreeRow): React.ReactElement => {
-      if (robotActors.length === 0) return <Text type="secondary">—</Text>
-      return (
-        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-          {robotActors.map(channel => {
-            const tri = getActorTri(r.key, channel.id)
-            if (tri === false) {
-              return (
-                <div key={channel.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
-                  <Text type="secondary">{channel.name}：未开启</Text>
-                </div>
-              )
-            }
-
-            const receiverIds = getChannelReceivers(r.key, channel.id)
-            return (
-              <div key={channel.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Tag
-                  bordered={false}
-                  color="geekblue"
-                  style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
-                >
-                  {channel.name}
-                </Tag>
-                {receiverIds.length === 0 ? (
-                  <Tag bordered={false} color="default" style={{ borderRadius: 999, paddingInline: 10 }}>
-                    未设置
-                  </Tag>
-                ) : (
-                  receiverIds.map(pid => {
-                    const name = personNameById.get(pid) ?? pid
-                    return (
-                      <Tag
-                        key={`${channel.id}_${pid}`}
-                        bordered={false}
-                        color={pickTagColor(name, peoplePalette)}
-                        style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
-                      >
-                        {name}
-                      </Tag>
-                    )
-                  })
-                )}
-              </div>
-            )
-          })}
-        </Space>
-      )
-    }
-
-    const groupedActorCols: ColumnsType<TreeRow> = []
-
-    if (robotActors.length > 0) {
-      groupedActorCols.push({
+      },
+      {
         title: '接收渠道',
         key: 'channels',
-        width: 260,
-        render: renderChannelChecklistWithReceiverConfig
-      })
-    }
-
-    if (personActors.length > 0) {
-      groupedActorCols.push({
+        width: 200,
+        render: (_: unknown, row: MessageRow) => (
+          <Space direction="vertical" size={4}>
+            {webhooks.map(w => (
+              <Checkbox
+                key={w.id}
+                checked={row.channels[w.id] || false}
+                onChange={() => toggleChannel(row.key, w.id)}
+              >
+                {w.name}
+              </Checkbox>
+            ))}
+          </Space>
+        )
+      },
+      {
         title: '联系人',
         key: 'contacts',
-        width: 360,
-        // 展示逻辑：联系人不再作为独立“渠道列”让用户逐一勾选，而是作为“按渠道绑定联系人”的只读总览
-        render: renderContactsSummary
-      })
-    }
-
-    return [...base, ...groupedActorCols]
-  }, [actors, actorChannelMatrix, channelReceiversByKey])
-
-  const NoticeSection = (
-    <>
-      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-        <Space>
-          <Input placeholder="请输入消息类型" style={{ width: 240 }} suffix={<SearchOutlined />} />
-        </Space>
-      </div>
-      <Table
-        rowKey="key"
-        columns={treeColumns}
-        dataSource={[...clientTreeDataA, ...serverTreeDataA]} /*...cdnTreeDataA*/
-        pagination={false}
-        scroll={{ x: 1190, y: 420 }}
-        expandable={{ defaultExpandedRowKeys: ['alert-root', 'notification-root'] }}
-      />
-    </>
-  )
+        width: 260,
+        render: (_: unknown, row: MessageRow) => (
+          <Space direction="vertical" size={4}>
+            {people.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12, minWidth: 50 }}>{p.name}：</Text>
+                {renderContactStatus(row, p)}
+              </div>
+            ))}
+          </Space>
+        )
+      },
+      {
+        title: '操作',
+        key: 'action',
+        width: 140,
+        fixed: 'right',
+        render: (_: unknown, row: MessageRow) => (
+          <Space>
+            <Button type="link" style={{ padding: 0 }} onClick={() => openEdit(row)}>修改</Button>
+            <Button type="link" style={{ padding: 0, color: '#8c8c8c' }}>修订记录</Button>
+          </Space>
+        )
+      }
+    ]
+    return cols
+  }, [webhooks, people, rows])
 
   return (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-      {/* 告警矩阵主体：消息类型的配置 */}
-      <Card
+      <Card>
+        {/* Tab 分类过滤 */}
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={categoryTabs}
+          style={{ marginBottom: 16 }}
+        />
 
-        
-      >
-        {NoticeSection}
+        {/* 工具栏：批量操作 + 搜索 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Space>
+            <Checkbox
+              indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < filteredRows.length}
+              checked={selectedRowKeys.length === filteredRows.length && filteredRows.length > 0}
+              onChange={e => setSelectedRowKeys(e.target.checked ? filteredRows.map(r => r.key) : [])}
+            />
+            <Button size="small" disabled={selectedRowKeys.length === 0} onClick={batchModify}>批量修改</Button>
+            <Button size="small" onClick={resetDefaults}>恢复默认设置</Button>
+          </Space>
+          <Input
+            placeholder="请输入消息类型"
+            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            allowClear
+            style={{ width: 240 }}
+          />
+        </div>
+
+        {/* 平铺表格 */}
+        <Table<MessageRow>
+          rowKey="key"
+          columns={columns}
+          dataSource={filteredRows}
+          pagination={false}
+          scroll={{ x: 900 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: keys => setSelectedRowKeys(keys)
+          }}
+          size="middle"
+        />
       </Card>
 
-      {/* 渠道 -> 联系人 配置 Modal（方案 A） */}
+      {/* 修改弹窗 */}
       <Modal
-        title="设置联系人"
-        open={receiverModalOpen}
-        onCancel={() => setReceiverModalOpen(false)}
-        onOk={() => {
-          if (!receiverEditing) return
-          // 交互逻辑：保存“该节点及其后代”的渠道联系人绑定
-          setChannelReceiversCascade(receiverEditing.nodeKey, receiverEditing.channelActorId, tempReceiverIds)
-          setReceiverModalOpen(false)
-          const channelName = receiverEditing.channelActorId ? (channelNameByActorId.get(receiverEditing.channelActorId) ?? '接收渠道') : '接收渠道'
-          message.success(`${channelName} 联系人已更新`)
-        }}
+        title={editingRow ? `修改 — ${editingRow.name}` : '修改'}
+        open={editModalOpen}
+        onCancel={() => setEditModalOpen(false)}
+        onOk={saveEdit}
         okText="保存"
         cancelText="取消"
         destroyOnClose
+        width={480}
       >
-        <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-          <Text type="secondary">
-            选择该接收渠道的联系人（同一个“消息类型”下，不同渠道可配置不同联系人）。
-          </Text>
-
-          <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-            <Space>
-              <Button
-                onClick={() => {
-                  // 交互逻辑：全选联系人
-                  const personIds = actors.filter(a => a.kind === 'person').map(a => a.id)
-                  setTempReceiverIds(personIds)
-                }}
-              >
-                全选
-              </Button>
-              <Button
-                onClick={() => {
-                  // 交互逻辑：清空联系人
-                  setTempReceiverIds([])
-                }}
-              >
-                清空
-              </Button>
-            </Space>
-            <Tag bordered={false} color="blue" style={{ borderRadius: 999, paddingInline: 10 }}>
-              已选 {tempReceiverIds.length}
-            </Tag>
-          </Space>
-
-          <Checkbox.Group
-            style={{ width: '100%' }}
-            value={tempReceiverIds}
-            onChange={(vals) => {
-              // 交互逻辑：更新临时选择，不立即落库，点击保存后生效
-              setTempReceiverIds(vals as string[])
-            }}
-          >
-            <Space direction="vertical" size={8} style={{ display: 'flex' }}>
-              {actors.filter(a => a.kind === 'person').map(p => (
-                <Checkbox key={p.id} value={p.id}>
-                  {p.name}
-                </Checkbox>
-              ))}
-            </Space>
-          </Checkbox.Group>
-        </Space>
+        <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item name="channels" label="接收渠道">
+            <Checkbox.Group style={{ width: '100%' }}>
+              <Space direction="vertical" size={8}>
+                {webhooks.map(w => (
+                  <Checkbox key={w.id} value={w.id}>{w.name}</Checkbox>
+                ))}
+              </Space>
+            </Checkbox.Group>
+          </Form.Item>
+          <Form.Item name="contacts" label="联系人">
+            <Checkbox.Group style={{ width: '100%' }}>
+              <Space direction="vertical" size={8}>
+                {people.map(p => (
+                  <Checkbox key={p.id} value={p.id}>{p.name}</Checkbox>
+                ))}
+              </Space>
+            </Checkbox.Group>
+          </Form.Item>
+        </Form>
       </Modal>
 
-      {/* Webhook 配置 Modal：应用于被点击的节点（整行） */}
-      <Modal
-        title="配置 Webhook"
-        open={webhookModalOpen}
-        onCancel={() => setWebhookModalOpen(false)}
-        onOk={() => {
-          const key = configKey
-          if (key) {
-            const picked = [...tempWebhookIds]
-            const keysToApply = [key, ...getDescendants(key)]
-            setRowWebhookByKey((prev: Record<string, string[]>) => {
-              const next: Record<string, string[]> = { ...prev }
-              keysToApply.forEach(k => { next[k] = picked })
-              return next
-            })
-          }
-          setWebhookModalOpen(false)
-        }}
-      >
-        <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-          <Typography.Text type="secondary">选择一个或多个机器人（不选择=不触发）。</Typography.Text>
-          <Table
-            rowKey="id"
-            size="small"
-            dataSource={webhooks}
-            pagination={false}
-            columns={[
-              { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
-              { title: 'Webhook 地址', dataIndex: 'url', key: 'url', render: (v: string) => <Typography.Text ellipsis style={{ maxWidth: 520, display: 'inline-block' }}>{v}</Typography.Text> }
-            ]}
-            rowSelection={{
-              type: 'checkbox',
-              selectedRowKeys: tempWebhookIds,
-              onChange: (keys) => setTempWebhookIds(keys as string[])
-            }}
-            onRow={(record) => ({ onClick: () => {
-              const exists = tempWebhookIds.includes(record.id)
-              setTempWebhookIds(exists ? tempWebhookIds.filter(k => k !== record.id) : [...tempWebhookIds, record.id])
-            } })}
-            scroll={{ x: '100%' }}
-          />
-        </Space>
-      </Modal>
-
-      {/* 告警规则配置 Modal（例如：服务端部署） */}
-      <Modal
-        title="告警规则配置"
-        open={rulesModalOpen}
-        onCancel={() => setRulesModalOpen(false)}
-        onOk={() => {
-          if (!rulesEditingKey) return
-          // 校验：应用不可重复
-          const apps = tempRules.map(r => r.app).filter(Boolean) as string[]
-          const hasDup = new Set(apps).size !== apps.length
-          if (hasDup) {
-            message.error('告警应用不可重复选择')
-            return
-          }
-          // 保存到当前节点
-          setAlertRulesByKey(prev => ({ ...prev, [rulesEditingKey]: [...tempRules] }))
-          // 若为父级，按需可扩展：级联应用到后代
-          setRulesModalOpen(false)
-          message.success('告警规则已保存')
-        }}
-      >
-        <Space direction="vertical" size={12} style={{ display: 'flex' }}>
-          <Typography.Text type="secondary">可配置多条告警规则：选择“告警应用”和“报警频率”。</Typography.Text>
-          <Table
-            rowKey="id"
-            size="small"
-            pagination={false}
-            dataSource={tempRules}
-            columns={[
-              { title: '告警应用', dataIndex: 'app', key: 'app', width: 200, render: (_: unknown, r: AlertRule, idx: number) => {
-                const disabledSet = new Set((tempRules.map(it => it.app).filter(Boolean) as string[]))
-                // 当前行已选的值不禁用，允许保留
-                if (r.app) disabledSet.delete(r.app)
-                const opts = appSelectOptions.map(opt => ({ ...opt, disabled: disabledSet.has(opt.value) }))
-                return (
-                  <Select
-                    style={{ width: '100%' }}
-                    placeholder="请选择应用"
-                    options={opts}
-                    value={r.app}
-                    onChange={(v) => {
-                      setTempRules(list => list.map((it, i) => i === idx ? { ...it, app: v } : it))
-                    }}
-                  />
-                )
-              } },
-              { title: '报警频率', dataIndex: 'frequency', key: 'frequency', width: 200, render: (_: unknown, r: AlertRule, idx: number) => (
-                <Select
-                  style={{ width: '100%' }}
-                  placeholder="请选择频率"
-                  options={freqSelectOptions}
-                  value={r.frequency}
-                  onChange={(v) => {
-                    setTempRules(list => list.map((it, i) => i === idx ? { ...it, frequency: v } : it))
-                  }}
-                />
-              ) },
-              { title: '操作', key: 'actions', width: 120, render: (_: unknown, r: AlertRule, idx: number) => (
-                <Space>
-                  <Button size="small" onClick={() => {
-                    setTempRules(list => list.filter((_, i) => i !== idx))
-                  }}>删除</Button>
-                </Space>
-              ) }
-            ]}
-          />
-          <Button
-            type="dashed"
-            onClick={() => {
-              const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-              setTempRules(list => [...list, { id, app: undefined as unknown as string, frequency: undefined as unknown as string }])
-            }}
-          >新增规则</Button>
-        </Space>
-      </Modal>
-
-      {/* 数据看板 Drawer */}
+      {/* 数据看板 */}
       <Drawer
-        title={<span>埋点数据仪表盘</span>}
+        title="埋点数据仪表盘"
         placement="left"
-        width={'100%'}
+        width="100%"
         open={analyticsOpen}
         onClose={() => setAnalyticsOpen(false)}
         destroyOnClose
@@ -1189,6 +404,3 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     </Space>
   )
 }
-
-
-
