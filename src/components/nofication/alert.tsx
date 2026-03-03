@@ -39,6 +39,8 @@ interface MessageRow {
   messageType: string
   name: string
   nature: MessageNature
+  /** 该消息类型的通知总开关 */
+  enabled: boolean
   channels: Record<string, boolean>
   contacts: Record<string, boolean>
   /** 是否支持应用级高级配置（目前只有 PodFailed） */
@@ -126,6 +128,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       messageType: t.messageType,
       name: t.name,
       nature: t.nature,
+      enabled: false,
       channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
       contacts: Object.fromEntries(people.map(p => [p.id, false])),
       hasAdvancedConfig: t.hasAdvancedConfig
@@ -146,7 +149,22 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     { id: '3', appName: 'cpgame', channel: '钉钉大群消息', frequency: '5 分钟', enabled: true }
   ])
 
-  // 打开高级配置抽屉
+  // 切换某行通知总开关；Pod故障开启时自动打开配置抽屉
+  const toggleRowEnabled = (rowKey: string) => {
+    setRows(prev => {
+      const row = prev.find(r => r.key === rowKey)
+      if (!row) return prev
+      const nextEnabled = !row.enabled
+      // Pod故障：开启时自动打开抽屉
+      if (nextEnabled && row.hasAdvancedConfig) {
+        setConfigDrawerTitle(row.name)
+        setConfigDrawerOpen(true)
+      }
+      return prev.map(r => r.key === rowKey ? { ...r, enabled: nextEnabled } : r)
+    })
+  }
+
+  // 手动打开高级配置抽屉
   const openAdvancedConfig = (row: MessageRow) => {
     setConfigDrawerTitle(row.name)
     setConfigDrawerOpen(true)
@@ -337,12 +355,26 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
 
   const columns: ColumnsType<MessageRow> = useMemo(() => [
     {
+      title: '通知',
+      key: 'enabled',
+      width: 70,
+      fixed: 'left',
+      render: (_: unknown, row: MessageRow) => (
+        <Switch
+          checked={row.enabled}
+          onChange={() => toggleRowEnabled(row.key)}
+          checkedChildren="ON"
+          unCheckedChildren="OFF"
+          style={{ minWidth: 50 }}
+        />
+      )
+    },
+    {
       title: 'MessageType消息类型',
       key: 'messageType',
       width: 240,
-      fixed: 'left',
       render: (_: unknown, row: MessageRow) => (
-        <Text style={{ fontSize: 13 }}>{row.messageType}</Text>
+        <Text style={{ fontSize: 13, color: row.enabled ? undefined : '#bfbfbf' }}>{row.messageType}</Text>
       )
     },
     {
@@ -352,14 +384,15 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       width: 220,
       render: (text: string, row: MessageRow) => (
         <Space>
-          <Text style={{ fontSize: 13 }}>{text}</Text>
-          {/* 只有 Pod故障 等特定告警才显示「配置」按钮 */}
+          <Text style={{ fontSize: 13, color: row.enabled ? undefined : '#bfbfbf' }}>{text}</Text>
+          {/* Pod故障：开启时可配置，关闭时按钮置灰 */}
           {row.hasAdvancedConfig && (
-            <Tooltip title="告警应用配置">
+            <Tooltip title={row.enabled ? '告警应用配置' : '请先开启通知'}>
               <Button
                 type="link"
                 size="small"
                 icon={<SettingOutlined />}
+                disabled={!row.enabled}
                 onClick={() => openAdvancedConfig(row)}
                 style={{ padding: 0, fontSize: 13 }}
               >
@@ -375,13 +408,17 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       dataIndex: 'nature',
       key: 'nature',
       width: 80,
-      render: (nature: MessageNature) => (
+      render: (nature: MessageNature, row: MessageRow) => (
         <Tag
           style={{
             borderRadius: 999, border: 0, fontSize: 12,
             lineHeight: '22px', padding: '0 10px',
-            background: nature === '告警' ? 'rgba(255,77,79,0.08)' : 'rgba(22,119,255,0.08)',
-            color: nature === '告警' ? '#ff4d4f' : '#1677ff'
+            background: nature === '告警'
+              ? (row.enabled ? 'rgba(255,77,79,0.08)' : 'rgba(0,0,0,0.02)')
+              : (row.enabled ? 'rgba(22,119,255,0.08)' : 'rgba(0,0,0,0.02)'),
+            color: row.enabled
+              ? (nature === '告警' ? '#ff4d4f' : '#1677ff')
+              : '#bfbfbf'
           }}
         >
           {nature}
@@ -393,9 +430,14 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       key: 'channels',
       width: 160,
       render: (_: unknown, row: MessageRow) => (
-        <Space direction="vertical" size={2}>
+        <Space direction="vertical" size={2} style={{ opacity: row.enabled ? 1 : 0.35 }}>
           {webhooks.map(w => (
-            <Checkbox key={w.id} checked={row.channels[w.id] || false} onChange={() => toggleChannel(row.key, w.id)}>
+            <Checkbox
+              key={w.id}
+              checked={row.channels[w.id] || false}
+              disabled={!row.enabled}
+              onChange={() => toggleChannel(row.key, w.id)}
+            >
               <Text style={{ fontSize: 13 }}>{w.name}</Text>
             </Checkbox>
           ))}
@@ -407,9 +449,14 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       key: 'contacts',
       width: 200,
       render: (_: unknown, row: MessageRow) => (
-        <Space direction="vertical" size={2}>
+        <Space direction="vertical" size={2} style={{ opacity: row.enabled ? 1 : 0.35 }}>
           {people.map(p => (
-            <Checkbox key={p.id} checked={row.contacts[p.id] || false} onChange={() => toggleContact(row.key, p.id)}>
+            <Checkbox
+              key={p.id}
+              checked={row.contacts[p.id] || false}
+              disabled={!row.enabled}
+              onChange={() => toggleContact(row.key, p.id)}
+            >
               <Text style={{ fontSize: 13 }}>{p.name}</Text>
             </Checkbox>
           ))}
@@ -457,7 +504,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           columns={columns}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1050 }}
+          scroll={{ x: 1120 }}
           rowSelection={{ selectedRowKeys, onChange: keys => setSelectedRowKeys(keys) }}
           size="middle"
         />
