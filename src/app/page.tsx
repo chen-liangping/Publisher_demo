@@ -212,7 +212,7 @@ export default function Home() {
       case 'people-config':
         return <PeopleManagement initialActiveTab={searchParams.get('tab') ?? undefined} />
       case 'message-notification':
-        return <MessageNotification />
+        return <MessageNotification initialActiveTab={searchParams.get('tab') ?? undefined} />
       case 'cdn-alert':
         return <CdnAlert />
       case 'alert-system':

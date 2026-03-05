@@ -112,7 +112,11 @@ const buildMockAlertMessages = (): AlertMessage[] => {
   })
 }
 
-export default function MessageNotification(): React.ReactElement {
+interface MessageNotificationProps {
+  initialActiveTab?: string
+}
+
+export default function MessageNotification({ initialActiveTab }: MessageNotificationProps): React.ReactElement {
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(mockAnnouncements)
   const [keyword, setKeyword] = useState<string>('')
   const [range, setRange] = useState<[string | null, string | null]>([null, null])
@@ -404,7 +408,7 @@ export default function MessageNotification(): React.ReactElement {
         <Title level={2} style={{ margin: 0 }}>消息通知</Title>
       </div>
       <Card styles={{ body: { paddingTop: 8 } }}>
-        <Tabs items={tabItems} />
+        <Tabs defaultActiveKey={initialActiveTab ?? 'announcements'} items={tabItems} />
       </Card>
     </div>
   )
