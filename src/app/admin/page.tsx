@@ -111,7 +111,7 @@ export default function AdminPage() {
               {
                 key: 'resource-configuration',
                 icon: <DatabaseOutlined />,
-                label: '资源配置',
+                label: '存储配置',
                 onClick: () => handleMenuClick('resource-configuration')
               },
               {

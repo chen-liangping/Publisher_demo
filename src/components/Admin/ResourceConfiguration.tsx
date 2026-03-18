@@ -1,268 +1,216 @@
 'use client'
 
 import React, { useState } from 'react'
-import { 
-  Table, 
-  Button, 
-  Typography, 
+import {
+  Table,
+  Button,
+  Typography,
   Card,
   Modal,
   Form,
   InputNumber,
   message,
   Input,
-  Empty
+  Empty,
+  Select,
+  Switch,
+  Space
 } from 'antd'
-import { 
-  EditOutlined
-} from '@ant-design/icons'
+import { EditOutlined } from '@ant-design/icons'
 import type { TableColumnsType } from 'antd'
 
 const { Title } = Typography
 const { Search } = Input
 
-// 资源配额数据类型定义
-export interface ResourceQuota {
+const INSTANCE_SPEC_OPTIONS = ['2核4G', '2核8G', '4核8G', '4核16G', '8核16G', '8核32G', '12核48G']
+const MYSQL_VERSION_OPTIONS = ['5.7', '8.0']
+const REDIS_VERSION_OPTIONS = ['5.0', '6.0', '7.0']
+const MONGO_VERSION_OPTIONS = ['5.0', '6.0']
+const ZK_VERSION_OPTIONS = ['3.8', '3.9']
+const REDIS_SPEC_OPTIONS = ['1GB', '2GB', '4GB']
+
+export interface StorageQuota {
   id: string
   appId: string
-  // 内存单位：GB
-  memoryGB: number
-  cpuCores: number
-  mysqlInstances: number
-  mongoInstances: number
-  redisInstances: number
-  zookeeperInstances: number
+  storageInstancesLimit: number
+  storageBackupEnabled: boolean
+  vmAllowedSpecs: string[]
+  mysqlVersions: string[]
+  mysqlSpecs: string[]
+  redisMasterSlaveVersions: string[]
+  redisMasterSlaveSpecs: string[]
+  redisShardVersions: string[]
+  redisShardSpecs: string[]
+  redisShardCountMin: number
+  redisShardCountMax: number
+  mongoReplicaVersions: string[]
+  mongoReplicaSpecs: string[]
+  mongoShardedVersions: string[]
+  mongoShardMongosCountMin: number
+  mongoShardMongosCountMax: number
+  mongoShardMongosSpecs: string[]
+  mongoShardMongodCountMin: number
+  mongoShardMongodCountMax: number
+  mongoShardMongodSpecs: string[]
+  mongoShardConfigCountMin: number
+  mongoShardConfigCountMax: number
+  mongoShardConfigSpecs: string[]
+  zookeeperVersions: string[]
+  zookeeperSpecs: string[]
+  zookeeperNodeCount: number
 }
 
-// 模拟资源配额数据
-const mockResourceData: ResourceQuota[] = [
+const mockStorageData: StorageQuota[] = [
   {
-    id: 'resource-001',
+    id: 'storage-001',
     appId: 'gamedemo',
-    memoryGB: 256,
-    cpuCores: 64,
-    mysqlInstances: 1,
-    mongoInstances: 1,
-    redisInstances: 1,
-    zookeeperInstances: 1
+    storageInstancesLimit: 5,
+    storageBackupEnabled: true,
+    vmAllowedSpecs: ['2核4G', '2核8G', '4核8G', '4核16G', '8核16G', '8核32G', '12核48G'],
+    mysqlVersions: ['5.7', '8.0'],
+    mysqlSpecs: ['2核8G', '4核16G'],
+    redisMasterSlaveVersions: ['5.0', '6.0', '7.0'],
+    redisMasterSlaveSpecs: ['1GB', '2GB'],
+    redisShardVersions: ['5.0', '6.0', '7.0'],
+    redisShardSpecs: ['1GB', '2GB', '4GB'],
+    redisShardCountMin: 2,
+    redisShardCountMax: 3,
+    mongoReplicaVersions: ['5.0'],
+    mongoReplicaSpecs: ['2核8G'],
+    mongoShardedVersions: ['5.0'],
+    mongoShardMongosCountMin: 2,
+    mongoShardMongosCountMax: 6,
+    mongoShardMongosSpecs: ['2核8G'],
+    mongoShardMongodCountMin: 2,
+    mongoShardMongodCountMax: 6,
+    mongoShardMongodSpecs: ['2核8G'],
+    mongoShardConfigCountMin: 1,
+    mongoShardConfigCountMax: 1,
+    mongoShardConfigSpecs: ['4核8G'],
+    zookeeperVersions: ['3.8'],
+    zookeeperSpecs: ['1核2G', '2核4G'],
+    zookeeperNodeCount: 3
   },
   {
-    id: 'resource-002',
+    id: 'storage-002',
     appId: 'testgame',
-    memoryGB: 256,
-    cpuCores: 64,
-    mysqlInstances: 2,
-    mongoInstances: 1,
-    redisInstances: 2,
-    zookeeperInstances: 1
-  },
-  {
-    id: 'resource-003',
-    appId: 'demogame',
-    memoryGB: 256,
-    cpuCores: 64,
-    mysqlInstances: 1,
-    mongoInstances: 1,
-    redisInstances: 1,
-    zookeeperInstances: 1
+    storageInstancesLimit: 5,
+    storageBackupEnabled: false,
+    vmAllowedSpecs: ['2核4G', '2核8G', '4核8G'],
+    mysqlVersions: ['5.7', '8.0'],
+    mysqlSpecs: ['2核8G'],
+    redisMasterSlaveVersions: ['5.0', '6.0', '7.0'],
+    redisMasterSlaveSpecs: ['1GB'],
+    redisShardVersions: ['5.0', '6.0', '7.0'],
+    redisShardSpecs: ['1GB'],
+    redisShardCountMin: 2,
+    redisShardCountMax: 3,
+    mongoReplicaVersions: ['5.0'],
+    mongoReplicaSpecs: ['2核8G'],
+    mongoShardedVersions: ['5.0'],
+    mongoShardMongosCountMin: 2,
+    mongoShardMongosCountMax: 2,
+    mongoShardMongosSpecs: ['2核8G'],
+    mongoShardMongodCountMin: 2,
+    mongoShardMongodCountMax: 2,
+    mongoShardMongodSpecs: ['2核8G'],
+    mongoShardConfigCountMin: 1,
+    mongoShardConfigCountMax: 1,
+    mongoShardConfigSpecs: ['4核8G'],
+    zookeeperVersions: ['3.8'],
+    zookeeperSpecs: ['1核2G'],
+    zookeeperNodeCount: 1
   }
 ]
 
-// 表单提交的值类型（仅包含可编辑字段）
-type ResourceFormValues = Pick<
-  ResourceQuota,
-  'memoryGB' | 'cpuCores' | 'mysqlInstances' | 'mongoInstances' | 'redisInstances' | 'zookeeperInstances'
->
+type StorageFormValues = Omit<StorageQuota, 'id' | 'appId'>
 
 export default function ResourceConfiguration() {
-  const [resourceList, setResourceList] = useState<ResourceQuota[]>(mockResourceData)
-  const [filteredList, setFilteredList] = useState<ResourceQuota[]>(mockResourceData)
+  const [storageList, setStorageList] = useState<StorageQuota[]>(mockStorageData)
+  const [filteredList, setFilteredList] = useState<StorageQuota[]>(mockStorageData)
   const [loading, setLoading] = useState<boolean>(false)
   const [editModalVisible, setEditModalVisible] = useState<boolean>(false)
-  const [currentResource, setCurrentResource] = useState<ResourceQuota | null>(null)
-  const [form] = Form.useForm()
+  const [currentStorage, setCurrentStorage] = useState<StorageQuota | null>(null)
+  const [form] = Form.useForm<StorageFormValues>()
 
-  // 搜索过滤
   const handleSearch = (value: string): void => {
     if (!value.trim()) {
-      setFilteredList(resourceList)
-    } else {
-      const filtered = resourceList.filter(item => 
-        item.appId.toLowerCase().includes(value.toLowerCase())
-      )
-      setFilteredList(filtered)
+      setFilteredList(storageList)
+      return
     }
+    setFilteredList(storageList.filter(item => item.appId.toLowerCase().includes(value.toLowerCase())))
   }
 
-  // 打开编辑弹窗
-  const handleEditQuota = (resource: ResourceQuota): void => {
-    setCurrentResource(resource)
-    form.setFieldsValue(resource)
+  const handleEditQuota = (record: StorageQuota): void => {
+    setCurrentStorage(record)
+    form.setFieldsValue(record)
     setEditModalVisible(true)
   }
 
-  // 表单提交处理
-  const handleUpdateQuota = async (values: ResourceFormValues): Promise<void> => {
-    if (!currentResource) return
+  const submitUpdate = (values: StorageFormValues): void => {
+    if (!currentStorage) return
+    setLoading(true)
+    setTimeout(() => {
+      const updated = storageList.map(item =>
+        item.id === currentStorage.id ? { ...item, ...values } : item
+      )
+      setStorageList(updated)
+      setFilteredList(updated)
+      setEditModalVisible(false)
+      setCurrentStorage(null)
+      setLoading(false)
+      form.resetFields()
+      message.success('存储配额修改成功')
+    }, 600)
+  }
 
-    // 前端校验
-    const errors: string[] = []
-    
-    if (
-      values.memoryGB === undefined ||
-      values.cpuCores === undefined ||
-      values.mysqlInstances === undefined ||
-      values.mongoInstances === undefined ||
-      values.redisInstances === undefined ||
-      values.zookeeperInstances === undefined
-    ) {
-      errors.push('请完整填写所有配额')
-    }
-
-    if (values.memoryGB < 1 || values.memoryGB > 1024) {
-      errors.push('内存需在 1–1024 GB 之间')
-    }
-
-    if (values.cpuCores < 1 || values.cpuCores > 64) {
-      errors.push('CPU核数需在 1–64 之间')
-    }
-
-    if (values.mysqlInstances < 0 || values.mongoInstances < 0 || 
-        values.redisInstances < 0 || values.zookeeperInstances < 0) {
-      errors.push('实例数量不能为负数')
-    }
-
-    if (values.mysqlInstances > 10 || values.mongoInstances > 10 || 
-        values.redisInstances > 10 || values.zookeeperInstances > 10) {
-      errors.push('实例数量不能超过10')
-    }
-
-    if (errors.length > 0) {
-      message.error(errors[0])
+  const handleSubmit = async (values: StorageFormValues): Promise<void> => {
+    if (values.redisShardCountMax < values.redisShardCountMin) {
+      message.error('Redis 分片数量：结束值需大于等于起始值')
       return
     }
-
-    // 检查关键实例数量是否设为0
-    const needsConfirmation = (
-      (currentResource.mysqlInstances >= 1 && values.mysqlInstances === 0) ||
-      (currentResource.redisInstances >= 1 && values.redisInstances === 0)
-    )
-
-    if (needsConfirmation) {
-      Modal.confirm({
-        title: '重要提示',
-        content: '将 MySQL/Redis 实例数设为 0 可能影响线上功能，是否继续？',
-        okText: '继续',
-        cancelText: '取消',
-        onOk: () => submitUpdate(values)
-      })
-    } else {
-      submitUpdate(values)
+    if (values.mongoShardMongosCountMax < values.mongoShardMongosCountMin) {
+      message.error('Mongo Mongos 数量：结束值需大于等于起始值')
+      return
     }
+    if (values.mongoShardMongodCountMax < values.mongoShardMongodCountMin) {
+      message.error('Mongo Mongod 数量：结束值需大于等于起始值')
+      return
+    }
+    if (values.mongoShardConfigCountMax < values.mongoShardConfigCountMin) {
+      message.error('Mongo Config 数量：结束值需大于等于起始值')
+      return
+    }
+    submitUpdate(values)
   }
 
-  // 提交更新
-  const submitUpdate = async (values: ResourceFormValues): Promise<void> => {
-    setLoading(true)
-
-    // 模拟API调用
-    setTimeout(() => {
-      // 模拟成功/失败（90%概率成功）
-      const isSuccess = Math.random() > 0.1
-
-      if (isSuccess) {
-        // 更新资源列表
-        const updatedList = resourceList.map(item => {
-          if (item.id === currentResource?.id) {
-            return { ...item, ...values }
-          }
-          return item
-        })
-
-        setResourceList(updatedList)
-        setFilteredList(updatedList)
-        setEditModalVisible(false)
-        setCurrentResource(null)
-        setLoading(false)
-        form.resetFields()
-        message.success('配额修改成功')
-      } else {
-        // 修改失败
-        setLoading(false)
-        Modal.error({
-          title: '配额修改失败',
-          content: '原因：当前租户剩余 CPU 额度不足，请联系管理员提升额度',
-          onOk: () => {
-            // 保留弹窗内已填数据，可再次提交
-          }
-        })
-      }
-    }, 2000)
-  }
-
-  // 表格列配置
-  const columns: TableColumnsType<ResourceQuota> = [
-    {
-      title: 'appid',
-      dataIndex: 'appId',
-      key: 'appId',
-      render: (appId: string) => (
-        <span style={{ fontWeight: 500 }}>{appId}</span>
-      )
-    },
-    {
-      title: '内存(GB)',
-      dataIndex: 'memoryGB',
-      key: 'memoryGB',
-      render: (m: number) => `${m} GB`
-    },
-    {
-      title: '应用资源CPU核数',
-      dataIndex: 'cpuCores',
-      key: 'cpuCores',
-      render: (cores: number) => `${cores} C`
-    },
-    {
-      title: 'MySQL实例数量',
-      dataIndex: 'mysqlInstances',
-      key: 'mysqlInstances'
-    },
-    {
-      title: 'Mongo实例数量',
-      dataIndex: 'mongoInstances',
-      key: 'mongoInstances'
-    },
-    {
-      title: 'Redis实例数量',
-      dataIndex: 'redisInstances',
-      key: 'redisInstances'
-    },
-    {
-      title: 'Zookeeper实例数量',
-      dataIndex: 'zookeeperInstances',
-      key: 'zookeeperInstances'
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      render: (_: unknown, record: ResourceQuota) => (
-        <Button
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => handleEditQuota(record)}
-        >
-          修改配额
-        </Button>
-      )
-    }
+  const columns: TableColumnsType<StorageQuota> = [
+    { title: 'appid', dataIndex: 'appId', key: 'appId', render: (appId: string) => <span style={{ fontWeight: 500 }}>{appId}</span> },
+    { title: '存储实例上限', dataIndex: 'storageInstancesLimit', key: 'storageInstancesLimit' },
+    { title: '生产备份', dataIndex: 'storageBackupEnabled', key: 'storageBackupEnabled', render: (v: boolean) => (v ? '开启' : '关闭') },
+    { title: '允许的虚机规格', key: 'vmAllowedSpecs', render: (_: unknown, r) => r.vmAllowedSpecs.join('/') },
+    { title: 'MySQL', key: 'mysql', render: (_: unknown, r) => `${r.mysqlVersions.join('/')} | ${r.mysqlSpecs.join('/')}` },
+    { title: 'Redis', key: 'redis', render: (_: unknown, r) => `主从:${r.redisMasterSlaveSpecs.join('/')} 分片:${r.redisShardCountMin}~${r.redisShardCountMax}` },
+    { title: 'Mongo', key: 'mongo', render: (_: unknown, r) => `副本:${r.mongoReplicaSpecs.join('/')} 分片Mongos:${r.mongoShardMongosCountMin}~${r.mongoShardMongosCountMax}` },
+    { title: '操作', key: 'action', render: (_: unknown, r) => <Button size="small" icon={<EditOutlined />} onClick={() => handleEditQuota(r)}>修改配额</Button> }
   ]
+
+  const rangeRow = (minName: keyof StorageFormValues, maxName: keyof StorageFormValues, min = 0, max = 128) => (
+    <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+      <Form.Item name={minName} noStyle rules={[{ required: true }, { type: 'number', min, max }]}>
+        <InputNumber style={{ width: 'calc((100% - 48px) / 2)' }} min={min} max={max} placeholder="起始值" />
+      </Form.Item>
+      <div style={{ width: 48, height: 32, lineHeight: '30px', textAlign: 'center', borderTop: '1px solid #d9d9d9', borderBottom: '1px solid #d9d9d9', background: '#fafafa' }}>~</div>
+      <Form.Item name={maxName} noStyle rules={[{ required: true }, { type: 'number', min, max }]}>
+        <InputNumber style={{ width: 'calc((100% - 48px) / 2)' }} min={min} max={max} placeholder="结束值" />
+      </Form.Item>
+    </div>
+  )
 
   return (
     <Card>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          游戏管理 / 初始化配置
-        </Title>
+        <Title level={4} style={{ margin: 0 }}>全局存储配置</Title>
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -271,160 +219,107 @@ export default function ResourceConfiguration() {
           allowClear
           style={{ width: 300 }}
           onSearch={handleSearch}
-          onChange={(e) => {
-            if (!e.target.value) {
-              handleSearch('')
-            }
-          }}
+          onChange={e => !e.target.value && handleSearch('')}
         />
       </div>
-      
+
       <Table
         columns={columns}
         dataSource={filteredList}
         rowKey="id"
         loading={loading}
-        locale={{
-          emptyText: <Empty description="暂无数据" />
-        }}
-        pagination={{
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total) => `共 ${total} 个应用`
-        }}
+        locale={{ emptyText: <Empty description="暂无数据" /> }}
+        pagination={{ showSizeChanger: true, showQuickJumper: true, showTotal: total => `共 ${total} 个应用` }}
       />
 
-      {/* 修改配额弹窗 */}
       <Modal
-        title="应用资源配额"
+        title={`存储配额 - ${currentStorage?.appId ?? ''}`}
         open={editModalVisible}
         onCancel={() => {
           setEditModalVisible(false)
-          setCurrentResource(null)
+          setCurrentStorage(null)
           form.resetFields()
         }}
         footer={null}
-        width={500}
+        width={760}
         destroyOnHidden
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleUpdateQuota}
-        >
-          <Form.Item
-            label="内存 (GB)"
-            name="memoryGB"
-            rules={[
-              { required: true, message: '请输入内存大小' },
-              {
-                type: 'number',
-                min: 1,
-                max: 1024,
-                message: '内存需在 1–1024 GB 之间'
-              }
-            ]}
-          >
-            <InputNumber
-              min={1}
-              max={1024}
-              style={{ width: '100%' }}
-              placeholder="请输入内存大小"
-            />
+        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <Form.Item label="每游戏存储实例上限" name="storageInstancesLimit" rules={[{ required: true }, { type: 'number', min: 0, max: 100 }]}>
+            <InputNumber style={{ width: '100%' }} min={0} max={100} />
+          </Form.Item>
+          <Form.Item label="生产存储实例备份功能开关" name="storageBackupEnabled" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item label="允许的虚机规格" name="vmAllowedSpecs" rules={[{ required: true, message: '请选择允许的虚机规格' }]}>
+            <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
           </Form.Item>
 
-          <Form.Item
-            label="CPU最大核数"
-            name="cpuCores"
-            rules={[
-              { required: true, message: '请输入CPU核数' },
-              { type: 'number', min: 1, max: 64, message: 'CPU核数需在 1–64 之间' }
-            ]}
-          >
-            <InputNumber 
-              min={1} 
-              max={64} 
-              style={{ width: '100%' }}
-              placeholder="请输入CPU核数"
-            />
-          </Form.Item>
+          <Card size="small" title="MySQL" style={{ marginBottom: 12 }}>
+            <Form.Item label="版本" name="mysqlVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={MYSQL_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="规格" name="mysqlSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+          </Card>
 
-          <Form.Item
-            label="Mongo实例数量"
-            name="mongoInstances"
-            rules={[
-              { required: true, message: '请输入Mongo实例数量' },
-              { type: 'number', min: 0, max: 10, message: '实例数量需在 0–10 之间' }
-            ]}
-          >
-            <InputNumber 
-              min={0} 
-              max={10} 
-              style={{ width: '100%' }}
-              placeholder="请输入Mongo实例数量"
-            />
-          </Form.Item>
+          <Card size="small" title="Redis" style={{ marginBottom: 12 }}>
+            <Form.Item label="主从版本" name="redisMasterSlaveVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={REDIS_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="主从规格" name="redisMasterSlaveSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={REDIS_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="分片版本" name="redisShardVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={REDIS_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="分片规格" name="redisShardSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={REDIS_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="分片数量范围">{rangeRow('redisShardCountMin', 'redisShardCountMax', 1, 128)}</Form.Item>
+          </Card>
 
-          <Form.Item
-            label="MySQL实例数量"
-            name="mysqlInstances"
-            rules={[
-              { required: true, message: '请输入MySQL实例数量' },
-              { type: 'number', min: 0, max: 10, message: '实例数量需在 0–10 之间' }
-            ]}
-          >
-            <InputNumber 
-              min={0} 
-              max={10} 
-              style={{ width: '100%' }}
-              placeholder="请输入MySQL实例数量"
-            />
-          </Form.Item>
+          <Card size="small" title="MongoDB" style={{ marginBottom: 12 }}>
+            <Form.Item label="副本集版本" name="mongoReplicaVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={MONGO_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="副本集规格" name="mongoReplicaSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="分片版本" name="mongoShardedVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={MONGO_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="Mongos 数量范围">{rangeRow('mongoShardMongosCountMin', 'mongoShardMongosCountMax', 0, 20)}</Form.Item>
+            <Form.Item label="Mongos 规格" name="mongoShardMongosSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="Mongod 数量范围">{rangeRow('mongoShardMongodCountMin', 'mongoShardMongodCountMax', 0, 20)}</Form.Item>
+            <Form.Item label="Mongod 规格" name="mongoShardMongodSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="Config 数量范围">{rangeRow('mongoShardConfigCountMin', 'mongoShardConfigCountMax', 0, 20)}</Form.Item>
+            <Form.Item label="Config 规格" name="mongoShardConfigSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+          </Card>
 
-          <Form.Item
-            label="Redis实例数量"
-            name="redisInstances"
-            rules={[
-              { required: true, message: '请输入Redis实例数量' },
-              { type: 'number', min: 0, max: 10, message: '实例数量需在 0–10 之间' }
-            ]}
-          >
-            <InputNumber 
-              min={0} 
-              max={10} 
-              style={{ width: '100%' }}
-              placeholder="请输入Redis实例数量"
-            />
-          </Form.Item>
+          <Card size="small" title="Zookeeper" style={{ marginBottom: 12 }}>
+            <Form.Item label="版本" name="zookeeperVersions" rules={[{ required: true }]}>
+              <Select mode="multiple" options={ZK_VERSION_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="规格" name="zookeeperSpecs" rules={[{ required: true }]}>
+              <Select mode="multiple" options={INSTANCE_SPEC_OPTIONS.map(v => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="节点数" name="zookeeperNodeCount" rules={[{ required: true }, { type: 'number', min: 1, max: 9 }]}>
+              <InputNumber style={{ width: '100%' }} min={1} max={9} />
+            </Form.Item>
+          </Card>
 
-          <Form.Item
-            label="Zookeeper实例数量"
-            name="zookeeperInstances"
-            rules={[
-              { required: true, message: '请输入Zookeeper实例数量' },
-              { type: 'number', min: 0, max: 10, message: '实例数量需在 0–10 之间' }
-            ]}
-          >
-            <InputNumber 
-              min={0} 
-              max={10} 
-              style={{ width: '100%' }}
-              placeholder="请输入Zookeeper实例数量"
-            />
-          </Form.Item>
-          
-          <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
+          <Form.Item style={{ marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Button onClick={() => {
-                setEditModalVisible(false)
-                setCurrentResource(null)
-                form.resetFields()
-              }}>
-                取消
-              </Button>
-              <Button type="primary" htmlType="submit" loading={loading}>
-                确认
-              </Button>
+              <Button onClick={() => { setEditModalVisible(false); setCurrentStorage(null); form.resetFields() }}>取消</Button>
+              <Button type="primary" htmlType="submit" loading={loading}>确认</Button>
             </div>
           </Form.Item>
         </Form>
