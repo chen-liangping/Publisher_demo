@@ -1118,16 +1118,6 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
                             </>
                           )}
                         </div>
-                        {!isContainer && (
-                          <div style={{ marginTop: 12 }}>
-                            <Text type="secondary">允许的虚机规格：{envQuota.vmAllowedSpecs.join('、') || '-'}</Text>
-                          </div>
-                        )}
-                        {isContainer && (
-                          <div style={{ marginTop: 12 }}>
-                            <Text type="secondary">优雅停机阈值：{envQuota.gracefulShutdownThresholdSec} 秒</Text>
-                          </div>
-                        )}
                       </Card>
 
                       {false && <Card

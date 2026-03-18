@@ -111,27 +111,27 @@ export default function AdminPage() {
               {
                 key: 'resource-configuration',
                 icon: <DatabaseOutlined />,
-                label: '存储配置',
+                label: '资源全局配置',
                 onClick: () => handleMenuClick('resource-configuration')
               },
-              {
+             /* {
                 key: 'test-initialization',
                 icon: <ExperimentOutlined />,
                 label: '测试初始化',
                 onClick: () => handleMenuClick('test-initialization')
-              },
+              },*/
               {
                 key: 'announcement',
                 icon: <NotificationOutlined />,
                 label: '公告管理',
                 onClick: () => handleMenuClick('announcement')
               },
-              {
+              /*{
                 key: 'notification-control',
                 icon: <BellOutlined />,
                 label: '通知总开关',
                 onClick: () => handleMenuClick('notification-control')
-              },
+              },*/
               {
                 key: 'yaml',
                 icon: <FileTextOutlined />,
