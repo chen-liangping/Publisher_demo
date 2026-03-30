@@ -1,23 +1,22 @@
 'use client'
 
 /**
- * 这段代码实现了「游戏环境配置列表视图」，用于按 appId 查看：
- * - 生产环境资源限额汇总
- * - 是否支持自动开服配置 / 自动回退
+ * 这段代码实现了「平台游戏列表视图」，用于按 appId 查看测试/正式环境的基础开通状态，
+ * 并在同一个菜单内在「列表视图 / 详情视图」之间切换（不做路由跳转）。
  *
  * 在同一个菜单中采用 VirtualMachineList 相同的交互模式：
- * - 默认展示「游戏环境配置列表」
- * - 点击某一行的 APP ID /「配置」后，切换为「环境详情页」
+ * - 默认展示「平台游戏」
+ * - 点击某一行的 App ID 后，切换为「环境详情页」
  * - 详情页顶部提供「返回列表」按钮，回到列表视图
  *
- * 不做路由跳转、不切换左侧菜单，只在当前菜单内在「列表视图 / 详情视图」之间切换。
+ * 备注：数据均为前端 mock，用于原型展示。
  */
 
 import React, { useState } from 'react'
-import { Card, Table, Input, Typography, Button, Space, Tag, Modal, message, Select } from 'antd'
+import { Card, Table, Input, Typography, Button, Space, Modal, message, Select, Avatar } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import GameEnvDetail from './GameEnvDetail'
-import { DeleteOutlined, PoweroffOutlined } from '@ant-design/icons'
+import { PlusOutlined, CheckOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
 
@@ -31,40 +30,54 @@ interface EnvironmentConfig {
   deployType: 'vm' | 'cloud-native' | ''
 }
 
-const tagBaseStyle = {
-  borderRadius: 999,
-  border: 'none',
-  fontWeight: 500,
-  padding: '0 12px',
-  minHeight: 32,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 14
+const deployTypeLabel: Record<EnvironmentConfig['deployType'], string> = {
+  vm: '云虚拟机部署',
+  'cloud-native': '云原生部署',
+  '': '-'
 }
 
-const deploymentTypeMeta: Record<
-  EnvironmentConfig['deployType'],
-  { label: string; background: string; textColor: string }
-> = {
-  vm: { label: '虚机', background: '#e6f7ff', textColor: '#1d39c4' },
-  'cloud-native': { label: '云原生', background: '#f6ffed', textColor: '#135200' },
-  '': { label: '待配置', background: '#fafafa', textColor: '#8c8c8c' }
+function StatusDot({ active }: { active: boolean }) {
+  return (
+    <span
+      style={{
+        width: 14,
+        height: 14,
+        borderRadius: 999,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: `1px solid ${active ? '#52c41a' : '#d9d9d9'}`,
+        background: active ? '#52c41a' : 'transparent',
+        color: active ? '#fff' : 'transparent',
+        flex: '0 0 auto'
+      }}
+      aria-label={active ? 'enabled' : 'disabled'}
+    >
+      {active ? <CheckOutlined style={{ fontSize: 10, lineHeight: 1 }} /> : null}
+    </span>
+  )
 }
 
-const initStatusMeta: Record<
-  EnvironmentConfig['initStatus'],
-  { label: string; background: string; textColor: string }
-> = {
-  completed: { label: '初始化完成', background: '#f6ffed', textColor: '#237804' },
-  not_initialized: { label: '待初始化', background: '#fff7e6', textColor: '#ad6800' }
+function EnvStatusBlock({
+  clientEnabled,
+  serverEnabled
+}: {
+  clientEnabled: boolean
+  serverEnabled: boolean
+}) {
+  return (
+    <Space direction="vertical" size={6}>
+      <Space size={8}>
+        <StatusDot active={clientEnabled} />
+        <Text type="secondary">客户端</Text>
+      </Space>
+      <Space size={8}>
+        <StatusDot active={serverEnabled} />
+        <Text type="secondary">服务端</Text>
+      </Space>
+    </Space>
+  )
 }
-
-const renderTag = (label: string, palette: { background: string; textColor: string }) => (
-  <Tag style={{ ...tagBaseStyle, backgroundColor: palette.background, color: palette.textColor }}>
-    {label}
-  </Tag>
-)
 
 // 游戏数据类型定义（列表只用到部分字段，其他字段为后续扩展保留）
 interface Game {
@@ -89,8 +102,10 @@ interface EnvListRow {
   appId: string
   description: string
   serverDeployType: EnvironmentConfig['deployType']
-  testInitStatus: EnvironmentConfig['initStatus']
-  prodInitStatus: EnvironmentConfig['initStatus']
+  testClientEnabled: boolean
+  testServerEnabled: boolean
+  prodClientEnabled: boolean
+  prodServerEnabled: boolean
   aliyunAccountName: string
   mseInstanceType: Game['mseInstanceType']
 }
@@ -123,7 +138,7 @@ const mockGameData: Game[] = [
       globalAcceleration: true,
       grafanaConfig: false,
       initStatus: 'completed',
-      deployType: 'cloud-native'
+      deployType: 'vm'
     },
     createTime: '2024-01-15 10:30:00',
     prodQuotaSummary: '内存 256GB / CPU 64C / MySQL 2 / Mongo 1 / Redis 2 / ZK 1',
@@ -261,8 +276,10 @@ export default function GameManagement() {
     appId: game.appId,
     description: game.description,
     serverDeployType: game.prodEnv.deployType,
-    testInitStatus: game.testEnv.initStatus,
-    prodInitStatus: game.prodEnv.initStatus,
+    testClientEnabled: game.testEnv.clientResource,
+    testServerEnabled: game.testEnv.serverResource,
+    prodClientEnabled: game.prodEnv.clientResource,
+    prodServerEnabled: game.prodEnv.serverResource,
     aliyunAccountName: game.aliyunAccountName,
     mseInstanceType: game.mseInstanceType
   }))
@@ -277,81 +294,57 @@ export default function GameManagement() {
     })
   }
 
-  // 列定义：APP ID + 服务端部署方式 + 测试/正式初始化状态 + 操作
+  // 列定义：App ID + 部署方式 + 测试/正式环境（客户端/服务端状态）
   const envColumns: ColumnsType<EnvListRow> = [
     {
-      title: 'APP ID',
+      title: 'App ID',
       dataIndex: 'appId',
+      width: 260,
       render: (_value, record) => (
-        <Button
-          type="link"
-          style={{ padding: 0 }}
-          onClick={() => handleEnterConfig(record)}
-        >
-          {record.appId}
-        </Button>
+        <Space size={12}>
+          <Avatar
+            shape="square"
+            size={32}
+            style={{
+              borderRadius: 8,
+              background: '#f5f5f5',
+              color: '#595959',
+              fontWeight: 700
+            }}
+          >
+            {record.appId.slice(0, 1).toUpperCase()}
+          </Avatar>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+            <Button type="link" style={{ padding: 0, height: 20 }} onClick={() => handleEnterConfig(record)}>
+              {record.appId}
+            </Button>
+          </div>
+        </Space>
       )
     },
     {
       title: '部署方式',
       dataIndex: 'serverDeployType',
-      render: (deployType: EnvironmentConfig['deployType']) => {
-        const meta = deploymentTypeMeta[deployType]
-        return renderTag(meta.label, { background: meta.background, textColor: meta.textColor })
-      }
+      width: 220,
+      render: (deployType: EnvironmentConfig['deployType']) => (
+        <Text type={deployType ? undefined : 'secondary'}>{deployTypeLabel[deployType]}</Text>
+      )
     },
     {
       title: '测试环境',
-      dataIndex: 'testInitStatus',
-      render: (status: EnvironmentConfig['initStatus']) => {
-        const meta = initStatusMeta[status]
-        return renderTag(meta.label, { background: meta.background, textColor: meta.textColor })
-      }
+      key: 'testEnv',
+      width: 220,
+      render: (_value, record) => (
+        <EnvStatusBlock clientEnabled={record.testClientEnabled} serverEnabled={record.testServerEnabled} />
+      )
     },
     {
       title: '正式环境',
-      dataIndex: 'prodInitStatus',
-      render: (status: EnvironmentConfig['initStatus']) => {
-        const meta = initStatusMeta[status]
-        return renderTag(meta.label, { background: meta.background, textColor: meta.textColor })
-      }
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_value, record) => {
-        const isOffline = record.appId === 'rpgworld'
-        const handleOffline = (): void => {
-          // TODO: 接入真实下线逻辑（仅示例）
-        }
-        const handleDelete = (): void => {
-          if (!isOffline) return
-          // TODO: 接入真实删除逻辑（仅示例）
-        }
-        return (
-          <Space>
-            <Button
-              type="text"
-              icon={<PoweroffOutlined />}
-              danger
-              style={{ padding: '0 8px', minHeight: 32 }}
-              onClick={handleOffline}
-            >
-              下线
-            </Button>
-            <Button
-              type="text"
-              icon={<DeleteOutlined />}
-              danger
-              style={{ padding: '0 8px', minHeight: 32 }}
-              disabled={!isOffline}
-              onClick={handleDelete}
-            >
-              删除
-            </Button>
-          </Space>
-        )
-      }
+      key: 'prodEnv',
+      width: 220,
+      render: (_value, record) => (
+        <EnvStatusBlock clientEnabled={record.prodClientEnabled} serverEnabled={record.prodServerEnabled} />
+      )
     }
   ]
 
@@ -371,7 +364,7 @@ export default function GameManagement() {
   // 列表视图
   return (
     <Card>
-      {/* 顶部：标题 + 搜索框 */}
+      {/* 顶部：标题 + 筛选 + 新增 */}
       <div
         style={{
           marginBottom: 16,
@@ -382,23 +375,23 @@ export default function GameManagement() {
           flexWrap: 'wrap'
         }}
       >
-        <Title level={4} style={{ margin: 0 }}>
-          游戏环境配置列表
-        </Title>
-        <Space>
-          <Button onClick={() => setIsAddModalVisible(true)} type="primary">
-            新增游戏
-          </Button>
-          <Input.Search
-            placeholder="搜索 appId"
-            allowClear
-            onSearch={v => setKeyword(v)}
-            onChange={e => {
-              if (!e.target.value) setKeyword('')
-            }}
-            style={{ width: 240 }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            平台游戏
+          </Title>
+          <Select
+            value={keyword || 'ALL'}
+            onChange={v => setKeyword(v === 'ALL' ? '' : v)}
+            style={{ width: 160 }}
+            options={[
+              { label: '全部游戏', value: 'ALL' },
+              ...Array.from(new Set(games.map(g => g.appId))).map(appId => ({ label: appId, value: appId }))
+            ]}
           />
-        </Space>
+        </div>
+        <Button onClick={() => setIsAddModalVisible(true)} type="primary" icon={<PlusOutlined />}>
+          添加游戏
+        </Button>
       </div>
 
       {/* 列表本体 */}
@@ -408,10 +401,11 @@ export default function GameManagement() {
         size="middle"
         pagination={{ pageSize: 10 }}
         rowKey="key"
+        scroll={{ x: 920 }}
       />
 
       <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
-        点击 APP ID 或「配置」，将在当前菜单内进入环境详情页，配置测试 / 生产环境的初始化、限额与自动开服策略。
+        点击 App ID 可在当前菜单内进入环境详情页，继续配置测试 / 正式环境资源与策略。
       </Text>
 
       <Modal

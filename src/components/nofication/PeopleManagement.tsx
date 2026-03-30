@@ -306,7 +306,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
         </Space>
       ),
       children: (
-        <Card styles={{ body: { paddingTop: 8 } }} bordered={false}>
+        <Card styles={{ body: { paddingTop: 8 } }} variant="borderless">
           {/* 人员 Tab：筛选渠道 + 新增人员 */}
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <Space>
@@ -461,7 +461,7 @@ export default function PeopleManagement({ initialActiveTab }: PeopleManagementP
       ),
       children: (
         <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-          <Card styles={{ body: { paddingTop: 8 } }} bordered={false}>
+          <Card styles={{ body: { paddingTop: 8 } }} variant="borderless">
             <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
               <Typography.Text type="secondary">
                 支持配置多个自建接收渠道，用于将告警/提醒发送到不同群。

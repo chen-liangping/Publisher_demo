@@ -1,415 +1,384 @@
-'use client'//系统公告页面
+'use client'
 
-import React, { useState, useMemo } from 'react'
-import { Card, Space, Table, Tag, Typography, Input, DatePicker, Tabs, Button } from 'antd'
-import type { TabsProps } from 'antd'
+import React, { useMemo, useState } from 'react'
+import { Button, DatePicker, Drawer, Input, Select, Space, Table, Tag, Tabs, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { 
-  SearchOutlined, 
-  BellOutlined, 
-  NotificationOutlined, 
-  SettingOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  InfoCircleOutlined
-} from '@ant-design/icons'
+import type { TabsProps } from 'antd'
+import { CloseOutlined, SearchOutlined } from '@ant-design/icons'
+import dayjs, { type Dayjs } from 'dayjs'
 import { BUSINESS_DEFAULT_PAGINATION } from '../Common/GlobalPagination'
-import AlertPage from './alert'
-import AdminNotificationGate from './AdminNotificationGate'
 
 const { RangePicker } = DatePicker
-const { Text, Title } = Typography
+const { Title, Text } = Typography
 
-// 系统公告数据类型
-interface SystemAnnouncement {
+type NoticeType = '异常告警' | '系统公告' | 'AI Bot'
+
+interface SiteNotice {
   id: string
   title: string
+  type: NoticeType
   content: string
-  time: string
+  time: string // YYYY-MM-DD HH:mm:ss
   read: boolean
 }
 
-// 告警消息数据类型（复用alert_history的HistoryRecord）
-interface AlertMessage {
-  id: string
-  category: '通知' | '告警' // 类型：通知 / 告警
-  type: string // 告警名称（告警项）
-  content: string // 消息内容
-  channels: string[] // 通知渠道：自建接收渠道名称、小包
-  people: string[] // 相关人员名称
-  time: string // 时间（ISO 或可读字符串）
-}
+type StatusFilter = 'unread' | 'all' | 'read'
+type TabKey = 'all' | 'alert' | 'announcement' | 'ai'
 
-// 模拟系统公告数据
-const mockAnnouncements: SystemAnnouncement[] = [
-  {
-    id: '1',
-    title: '系统维护通知',
-    content: '系统将于2025年10月25日凌晨2:00-4:00进行例行维护，期间可能影响部分功能使用，请提前做好相关准备。',
-    time: '2025-10-23 14:30:00',
-    read: false
-  },
-  {
-    id: '2', 
-    title: '新功能上线',
-    content: 'HPA弹性伸缩功能已正式上线，支持基于CPU和内存指标的自动扩缩容，欢迎体验使用。',
-    time: '2025-10-22 10:15:00',
-    read: true
-  },
-  {
-    id: '3',
-    title: '安全提醒',
-    content: '请定期更新您的访问密钥，建议每90天更换一次，确保账户安全。',
-    time: '2025-10-21 16:45:00',
-    read: true
-  },
-  {
-    id: '4',
-    title: '紧急通知',
-    content: '检测到异常访问行为，已自动启用安全防护，如有疑问请联系管理员。',
-    time: '2025-10-20 09:20:00',
-    read: false
-  }
-]
-
-// 模拟告警消息数据（从alert_history复制）
-const allMessageTypes: string[] = [
-  // 客户端
-  '客户端创建新版本', '客户端版本切换', '翻译文本同步CDN失败',
-  'S3 zip解压成功', 'S3 zip解压失败', 'flashlaunch静态资源计算阻塞', 'oss配置文件变更',
-  // 服务端
-  '自动开服成功', '自动开服失败', '通知CP新预备服失败', '预备服部署失败', '自动开服执行计划获取失败', '自动开服策略变更',
-  '服务端部署失败', '服务端部署成功',
-  '灰度回滚', '灰度回滚完成', '追加灰度', '灰度追加完成', '灰度全量部署',
-  'pod健康检查失败', 'Pod故障', 'Pod更新异常',
-  // CDN
-  'CDN部署成功', 'CDN部署失败'
-]
-
-const buildMockAlertMessages = (): AlertMessage[] => {
-  const baseTime = new Date('2025-08-20T10:00:00').getTime()
-  return allMessageTypes.map((t, idx) => {
-    const fail = t.includes('失败')
-    const success = t.includes('成功')
-    const isAlert = fail || t.includes('故障') || t.includes('异常') || t.includes('阻塞')
-    const channels: string[] = fail ? [ '小包'] : ['cp 群']
-    const people = fail ? ['刘悦', 'yu.b'] : (success ? ['yu.b'] : ['chen.z'])
-    const time = new Date(baseTime + idx * 7 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
-    const content = success
-      ? `${t}：操作已完成，系统运行正常`
-      : fail
-        ? `${t}：请查看日志与错误码，及时处理`
-        : `${t}：已触发事件，系统已记录`
-    return {
-      id: String(idx + 1),
-      category: isAlert ? '告警' : '通知',
-      type: t,
-      content,
-      channels,
-      people,
-      time
-    }
-  })
-}
-
-interface MessageNotificationProps {
-  initialActiveTab?: string
-}
-
-export default function MessageNotification({ initialActiveTab }: MessageNotificationProps): React.ReactElement {
-  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(mockAnnouncements)
-  const [keyword, setKeyword] = useState<string>('')
-  const [range, setRange] = useState<[string | null, string | null]>([null, null])
-  
-  // 消息配置中用到的机器人列表（与“人员配置”中的 webhook 管理保持示例一致）
-  interface WebhookItem {
-    id: string
-    name: string
-    url: string
-    secret?: string
-  }
-  const [webhooks] = useState<WebhookItem[]>([
+function createMockNotices(): SiteNotice[] {
+  return [
     {
-      id: 'robot-1',
-      name: 'CP群',
-      url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-1'
+      id: 'n-1001',
+      title: '定时任务模块优化',
+      type: '系统公告',
+      content: '支持了创建 cronjob 单次任务、多行的场景请进行展示，文本示例是这样的，最多展示 2 行，如果超出的请就需要…',
+      time: '2026-03-20 18:43:00',
+      read: false
     },
     {
-      id: 'robot-2',
-      name: '小包',
-      url: 'https://oapi.dingtalk.com/robot/send?access_token=dummy-token-2'
-    }
-  ])
-  const alertMessages = useMemo(() => buildMockAlertMessages(), [])
-
-  // 系统公告表格列定义
-  const announcementColumns: ColumnsType<SystemAnnouncement> = useMemo(() => [
-    {
-      title: '状态',
-      dataIndex: 'read',
-      key: 'read',
-      width: 80,
-      render: (read: boolean) => (
-        read ? (
-          <Tag bordered={false} color="default">已读</Tag>
-        ) : (
-          <Tag bordered={false} color="red">未读</Tag>
-        )
-      )
+      id: 'n-1002',
+      title: '定时任务模块优化',
+      type: '系统公告',
+      content: '支持了创建 cronjob 单次任务、多行的场景请进行展示，文本示例是这样的，最多展示 2 行，如果超出的请就需要…',
+      time: '2026-03-20 18:43:00',
+      read: false
     },
     {
-      title: '标题',
-      dataIndex: 'title',
-      key: 'title',
-      render: (title: string, record: SystemAnnouncement) => (
-        <Text strong={!record.read}>{title}</Text>
-      )
+      id: 'n-1003',
+      title: '定时任务模块优化',
+      type: '系统公告',
+      content: '支持了创建 cronjob 单次任务、多行的场景请进行展示，文本示例是这样的，最多展示 2 行，如果超出的请就需要…',
+      time: '2026-03-20 18:43:00',
+      read: true
     },
     {
-      title: '内容',
-      dataIndex: 'content',
-      key: 'content',
-      ellipsis: true
+      id: 'n-2001',
+      title: '翻译文本同步 CDN 失败',
+      type: '异常告警',
+      content: '请查看日志与错误码，及时处理。',
+      time: '2026-03-20 14:16:08',
+      read: false
     },
     {
-      title: '时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 160,
-      sorter: (a: SystemAnnouncement, b: SystemAnnouncement) => 
-        new Date(a.time).getTime() - new Date(b.time).getTime()
+      id: 'n-2002',
+      title: '翻译文本同步 CDN 失败',
+      type: '异常告警',
+      content: '请查看日志与错误码，及时处理。',
+      time: '2026-03-20 14:16:08',
+      read: true
     },
     {
-      title: '操作',
-      key: 'action',
-      width: 100,
-      render: (_, record: SystemAnnouncement) => (
-        <Space>
-          {!record.read && (
-            <Button 
-              type="link" 
-              size="small"
-              onClick={() => {
-                setAnnouncements(prev => 
-                  prev.map(item => 
-                    item.id === record.id ? { ...item, read: true } : item
-                  )
-                )
-              }}
-            >
-              标记已读
-            </Button>
-          )}
-        </Space>
-      )
-    }
-  ], [])
-
-  // 告警消息表格列定义（复用alert_history的逻辑）
-  const pickTagColor = (value: string, palette: string[]): string => {
-    // 交互/展示逻辑：不同值的标签用不同颜色（稳定映射，避免每次渲染变色）
-    let hash = 0
-    for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0
-    return palette[hash % palette.length] ?? 'default'
-  }
-  const channelPalette = ['geekblue', 'cyan', 'blue', 'purple', 'magenta']
-  const peoplePalette = ['green', 'lime', 'gold', 'orange', 'volcano']
-
-  const alertColumns: ColumnsType<AlertMessage> = useMemo(() => [
-    {
-      title: '类型',
-      dataIndex: 'category',
-      key: 'category',
-      width: 100,
-      render: (category: AlertMessage['category']) => (
-        <Tag
-          bordered={false}
-          color={category === '告警' ? 'red' : 'blue'}
-          style={{ borderRadius: 999, paddingInline: 10 }}
-        >
-          {category}
-        </Tag>
-      )
-    },
-    {
-      title: '告警名称',
-      dataIndex: 'type',
-      key: 'type',
-      width: 200,
-      render: (value: unknown) => {
-        // 交互/展示逻辑：表格字段可能为空，需做兜底，避免运行时 includes 报错
-        const type = typeof value === 'string' ? value : ''
-        const isError = type.includes('失败') || type.includes('故障') || type.includes('异常')
-        const isSuccess = type.includes('成功')
-        const color = isError ? 'red' : isSuccess ? 'green' : 'blue'
-        return (
-          <Tag bordered={false} color={color} style={{ borderRadius: 999, paddingInline: 10 }}>
-            {type}
-          </Tag>
-        )
-      }
-    },
-    {
-      title: '消息内容',
-      dataIndex: 'content',
-      key: 'content',
-      ellipsis: true
-    },
-    {
-      title: '通知渠道 / 相关人员',
-      key: 'receivers',
-      width: 260,
-      render: (_: unknown, record: AlertMessage) => (
-        <Space direction="vertical" size={6} style={{ display: 'flex' }}>
-          <Space size={6} wrap>
-            {(record.channels ?? []).map(ch => (
-              <Tag
-                key={`ch_${ch}`}
-                bordered={false}
-                color={pickTagColor(ch, channelPalette)}
-                style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
-              >
-                {ch}
-              </Tag>
-            ))}
-          </Space>
-          <Space size={6} wrap>
-            {(record.people ?? []).map(p => (
-              <Tag
-                key={`p_${p}`}
-                bordered={false}
-                color={pickTagColor(p, peoplePalette)}
-                style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
-              >
-                {p}
-              </Tag>
-            ))}
-            {(record.people ?? []).length === 0 && (
-              <Text type="secondary">—</Text>
-            )}
-          </Space>
-        </Space>
-      )
-    },
-    {
-      title: '时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 160,
-      sorter: (a: AlertMessage, b: AlertMessage) => 
-        new Date(a.time).getTime() - new Date(b.time).getTime()
-    }
-  ], [])
-
-  // 过滤告警消息数据
-  const filteredAlertMessages = useMemo(() => {
-    let filtered = alertMessages
-
-    // 关键词过滤
-    if (keyword) {
-      filtered = filtered.filter(item => 
-        item.type.toLowerCase().includes(keyword.toLowerCase()) ||
-        item.content.toLowerCase().includes(keyword.toLowerCase()) ||
-        (item.channels ?? []).join(' ').toLowerCase().includes(keyword.toLowerCase()) ||
-        (item.people ?? []).join(' ').toLowerCase().includes(keyword.toLowerCase()) ||
-        (item.category ?? '').includes(keyword)
-      )
-    }
-
-    // 时间范围过滤
-    if (range[0] && range[1]) {
-      filtered = filtered.filter(item => {
-        const itemTime = new Date(item.time).getTime()
-        const startTime = new Date(range[0]!).getTime()
-        const endTime = new Date(range[1]!).getTime()
-        return itemTime >= startTime && itemTime <= endTime
-      })
-    }
-
-    return filtered
-  }, [alertMessages, keyword, range])
-
-  const tabItems: TabsProps['items'] = [
-    {
-      key: 'announcements',
-      label: (
-        <Space>
-          <NotificationOutlined />
-          <span>系统公告</span>
-        </Space>
-      ),
-      children: (
-        <Table<SystemAnnouncement>
-          rowKey="id"
-          columns={announcementColumns}
-          dataSource={announcements}
-          pagination={BUSINESS_DEFAULT_PAGINATION}
-        />
-      )
-    },
-    {
-      key: 'alerts',
-      label: (
-        <Space>
-          <BellOutlined />
-          <span>告警消息</span>
-        </Space>
-      ),
-      children: (
-        <>
-          <div style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
-            <Input
-              allowClear
-              placeholder="搜索告警名称或消息内容"
-              prefix={<SearchOutlined />}
-              style={{ width: 280 }}
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-            <RangePicker
-              showTime
-              onChange={(vals) => setRange([
-                vals?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? null,
-                vals?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? null
-              ])}
-            />
-          </div>
-          <Table<AlertMessage>
-            rowKey="id"
-            columns={alertColumns}
-            dataSource={filteredAlertMessages}
-            pagination={BUSINESS_DEFAULT_PAGINATION}
-          />
-        </>
-      )
-    },
-    {
-      key: 'message-config',
-      label: (
-        <Space>
-          <SettingOutlined />
-          <span>消息配置</span>
-        </Space>
-      ),
-      children: (
-        <div style={{ marginTop: 8 }}>
-          {/* 交互逻辑：消息配置同样受管理员“通知总开关”控制（关闭时只读且不可操作）。 */}
-          <AdminNotificationGate>
-            <AlertPage webhooks={webhooks} />
-          </AdminNotificationGate>
-        </div>
-      )
+      id: 'n-3001',
+      title: 'AI Bot：发布进度提醒',
+      type: 'AI Bot',
+      content: '检测到你有 2 个发布任务接近截止时间，建议优先处理资源校验与灰度配置。',
+      time: '2026-03-19 11:05:22',
+      read: false
     }
   ]
+}
+
+function badge(count: number): React.ReactElement | null {
+  if (count <= 0) return null
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 18,
+        height: 18,
+        paddingInline: 6,
+        fontSize: 12,
+        lineHeight: '18px',
+        background: '#ff4d4f',
+        color: '#fff',
+        borderRadius: 999
+      }}
+    >
+      {count}
+    </span>
+  )
+}
+
+function pickTypeTag(type: NoticeType): { color: string; label: string } {
+  if (type === '异常告警') return { color: 'red', label: '异常告警' }
+  if (type === 'AI Bot') return { color: 'purple', label: 'AI Bot' }
+  return { color: 'blue', label: '系统公告' }
+}
+
+export default function MessageNotification(props: {
+  initialActiveTab?: TabKey
+  onClose?: () => void
+  containerPadding?: number
+}): React.ReactElement {
+  const [tabKey, setTabKey] = useState<TabKey>(props.initialActiveTab ?? 'all')
+  const [status, setStatus] = useState<StatusFilter>('unread')
+  const [keyword, setKeyword] = useState<string>('')
+  const [range, setRange] = useState<[Dayjs | null, Dayjs | null]>([null, null])
+  const [notices, setNotices] = useState<SiteNotice[]>(() => createMockNotices())
+  const [detailId, setDetailId] = useState<string | null>(null)
+
+  const counts = useMemo(() => {
+    const byType = (t: NoticeType): number => notices.filter((x) => x.type === t && !x.read).length
+    const unreadAll = notices.filter((x) => !x.read).length
+    return {
+      allUnread: unreadAll,
+      alertUnread: byType('异常告警'),
+      announcementUnread: byType('系统公告'),
+      aiUnread: byType('AI Bot')
+    }
+  }, [notices])
+
+  const filtered = useMemo(() => {
+    const matchTab = (n: SiteNotice): boolean => {
+      if (tabKey === 'all') return true
+      if (tabKey === 'alert') return n.type === '异常告警'
+      if (tabKey === 'announcement') return n.type === '系统公告'
+      return n.type === 'AI Bot'
+    }
+
+    const matchStatus = (n: SiteNotice): boolean => {
+      if (status === 'all') return true
+      if (status === 'unread') return !n.read
+      return n.read
+    }
+
+    const kw = keyword.trim().toLowerCase()
+    const [start, end] = range
+
+    return notices.filter((n) => {
+      if (!matchTab(n)) return false
+      if (!matchStatus(n)) return false
+      if (kw) {
+        const hay = `${n.id} ${n.title} ${n.content} ${n.type}`.toLowerCase()
+        if (!hay.includes(kw)) return false
+      }
+      if (start && end) {
+        const t = dayjs(n.time)
+        if (t.isBefore(start) || t.isAfter(end)) return false
+      }
+      return true
+    })
+  }, [keyword, notices, range, status, tabKey])
+
+  const unreadVisibleCount = useMemo(() => filtered.filter((x) => !x.read).length, [filtered])
+
+  const columns: ColumnsType<SiteNotice> = useMemo(
+    () => [
+      {
+        title: '名称',
+        dataIndex: 'title',
+        key: 'title',
+        width: 220,
+        render: (value: string, record: SiteNotice) => (
+          <Button
+            type="link"
+            style={{ padding: 0, fontWeight: record.read ? 400 : 600 }}
+            onClick={() => {
+              // 交互逻辑：点击“名称”进入详情（同时将该条标记为已读），符合“标题字段进入详情页”的规范。
+              setDetailId(record.id)
+              setNotices((prev) => prev.map((x) => (x.id === record.id ? { ...x, read: true } : x)))
+            }}
+          >
+            {value}
+          </Button>
+        )
+      },
+      {
+        title: '类型',
+        dataIndex: 'type',
+        key: 'type',
+        width: 140,
+        render: (type: NoticeType) => {
+          const t = pickTypeTag(type)
+          return (
+            <Tag bordered={false} color={t.color} style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
+              {t.label}
+            </Tag>
+          )
+        }
+      },
+      {
+        title: '消息内容',
+        dataIndex: 'content',
+        key: 'content',
+        ellipsis: true
+      },
+      {
+        title: '时间',
+        dataIndex: 'time',
+        key: 'time',
+        width: 180
+      },
+      {
+        title: '操作',
+        key: 'action',
+        width: 120,
+        align: 'right',
+        render: (_: unknown, record: SiteNotice) => (
+          <Button
+            type="link"
+            disabled={record.read}
+            style={{ padding: 0 }}
+            onClick={() => {
+              // 交互逻辑：将单条消息标记为已读（真实业务效果：状态变化 + 列表更新）。
+              setNotices((prev) => prev.map((x) => (x.id === record.id ? { ...x, read: true } : x)))
+            }}
+          >
+            标记已读
+          </Button>
+        )
+      }
+    ],
+    []
+  )
+
+  const tabItems: TabsProps['items'] = useMemo(
+    () => [
+      { key: 'all', label: <Space size={8}>全部消息 {badge(counts.allUnread)}</Space> },
+      { key: 'alert', label: <Space size={8}>异常告警 {badge(counts.alertUnread)}</Space> },
+      { key: 'announcement', label: <Space size={8}>系统公告 {badge(counts.announcementUnread)}</Space> },
+      { key: 'ai', label: <Space size={8}>AI Bot {badge(counts.aiUnread)}</Space> }
+    ],
+    [counts]
+  )
+
+  const detailNotice = useMemo(() => notices.find((x) => x.id === detailId) ?? null, [detailId, notices])
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>消息通知</Title>
+    <div style={{ padding: props.containerPadding ?? 24, background: '#fff', minHeight: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <Title level={3} style={{ margin: 0 }}>
+          站内通知
+        </Title>
+        {props.onClose && (
+          <Button
+            type="text"
+            icon={<CloseOutlined />}
+            aria-label="关闭站内通知"
+            onClick={() => {
+              // 交互逻辑：关闭弹层/抽屉，返回到原页面。
+              props.onClose?.()
+            }}
+            style={{ width: 36, height: 36, borderRadius: 999 }}
+          />
+        )}
       </div>
-      <Card styles={{ body: { paddingTop: 8 } }}>
-        <Tabs defaultActiveKey={initialActiveTab ?? 'announcements'} items={tabItems} />
-      </Card>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <Select<StatusFilter>
+          value={status}
+          style={{ width: 160 }}
+          onChange={(v) => {
+            // 交互逻辑：按“未读/已读/全部”切换过滤条件，默认落在“未读消息”与设计保持一致。
+            setStatus(v)
+          }}
+          options={[
+            { value: 'unread', label: '未读消息' },
+            { value: 'read', label: '已读消息' },
+            { value: 'all', label: '全部消息' }
+          ]}
+        />
+
+        <Input.Search
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          onSearch={(v) => {
+            // 交互逻辑：点击搜索按钮/回车触发查询（原型中即为更新关键字状态并实时过滤）。
+            setKeyword(v)
+          }}
+          placeholder="搜索关键词"
+          allowClear
+          enterButton={<SearchOutlined />}
+          style={{ width: 260 }}
+        />
+
+        <RangePicker
+          showTime
+          value={range}
+          allowClear
+          placeholder={['开始时间', '结束时间']}
+          onChange={(vals) => {
+            // 交互逻辑：按时间范围过滤列表，便于快速定位某一时段内的通知。
+            setRange([vals?.[0] ?? null, vals?.[1] ?? null])
+          }}
+        />
+      </div>
+
+      <div style={{ border: '1px solid rgba(148, 163, 184, 0.24)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', background: 'rgba(15, 23, 42, 0.02)' }}>
+          <Tabs
+            activeKey={tabKey}
+            items={tabItems}
+            onChange={(k) => {
+              // 交互逻辑：切换消息分类（全部/告警/公告/AI Bot），同时保持筛选条件不变。
+              setTabKey(k as TabKey)
+            }}
+            tabBarExtraContent={{
+              right: (
+                <Button
+                  onClick={() => {
+                    // 交互逻辑：“全部已读”仅对当前筛选可见的未读消息生效（真实业务效果：批量更新状态）。
+                    const visibleUnreadIds = new Set(filtered.filter((x) => !x.read).map((x) => x.id))
+                    setNotices((prev) => prev.map((x) => (visibleUnreadIds.has(x.id) ? { ...x, read: true } : x)))
+                  }}
+                  disabled={unreadVisibleCount === 0}
+                  style={{ borderRadius: 999 }}
+                >
+                  全部已读
+                </Button>
+              )
+            }}
+          />
+        </div>
+
+        <Table<SiteNotice>
+          rowKey="id"
+          columns={columns}
+          dataSource={filtered}
+          pagination={BUSINESS_DEFAULT_PAGINATION}
+          size="middle"
+          rowClassName={(record) => (record.read ? 'pp-notice-read-row' : '')}
+        />
+      </div>
+
+      <Drawer
+        title="通知详情"
+        open={detailId !== null}
+        onClose={() => setDetailId(null)}
+        width={520}
+        destroyOnClose
+      >
+        {detailNotice ? (
+          <div style={{ lineHeight: 1.7 }}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{detailNotice.title}</div>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Tag
+                  bordered={false}
+                  color={pickTypeTag(detailNotice.type).color}
+                  style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
+                >
+                  {detailNotice.type}
+                </Tag>
+                <Text type="secondary">{detailNotice.time}</Text>
+                <Text type="secondary">ID: {detailNotice.id}</Text>
+              </div>
+            </div>
+            <div style={{ color: '#111827' }}>{detailNotice.content}</div>
+          </div>
+        ) : (
+          <Text type="secondary">未找到该通知</Text>
+        )}
+      </Drawer>
+
+      <style>{`
+        /* 视觉细节：已读行略微降低对比度，但不使用 link 视觉误导 */
+        .pp-notice-read-row td {
+          color: rgba(17, 24, 39, 0.55);
+        }
+      `}</style>
     </div>
   )
 }
