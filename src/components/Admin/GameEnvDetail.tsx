@@ -25,7 +25,10 @@ import {
   Radio,
   Select,
   Row,
-  Col
+  Col,
+  Progress,
+  Popconfirm,
+  Alert
 } from 'antd'
 import {
   CheckCircleFilled,
@@ -33,10 +36,33 @@ import {
   CloudServerOutlined,
   RadarChartOutlined,
   PlusOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  PoweroffOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons'
 
 const { Title, Text } = Typography
+
+// 下线资源类型
+interface OfflineResource {
+  id: string
+  name: string
+  category: string
+  type: string
+  count: number
+  status: 'pending' | 'deleting' | 'completed' | 'failed'
+  details?: string[]
+}
+
+// 下线进度状态
+interface OfflineProgress {
+  environment: 'test' | 'prod'
+  appId: string
+  isOfflineInProgress: boolean
+  resources: OfflineResource[]
+  currentStep: number
+  totalSteps: number
+}
 
 // 自动开服模版步骤配置（用于展示和勾选）
 const autoLaunchStepOptions: { key: string; label: string }[] = [
@@ -348,8 +374,8 @@ const mockVmGameConfig: GameEnvConfig = {
     deployType: 'vm'
   },
   prodInit: {
-    clientStatus: 'not_initialized',
-    serverStatus: 'not_initialized',
+    clientStatus: 'completed',
+    serverStatus: 'completed',
     clientResource: true,
     serverResource: true,
     globalAcceleration: true,
@@ -467,36 +493,140 @@ const mockVmGameConfig: GameEnvConfig = {
   }
 }
 
-// 模拟数据：容器架构示例
+
+// 模拟数据：云原生架构示例
 const mockContainerGameConfig: GameEnvConfig = {
-  ...mockVmGameConfig,
   appId: 'testgame',
-  description: '容器部署示例应用，用于演示环境配置详情页',
+  description: '云原生部署示例应用，用于演示容器化环境配置',
+  createdAt: '2024-01-14 15:20:00',
   testInit: {
-    ...mockVmGameConfig.testInit,
+    clientStatus: 'completed',
+    serverStatus: 'completed',
+    clientResource: true,
+    serverResource: true,
+    globalAcceleration: false,
     deployType: 'container'
   },
   prodInit: {
-    ...mockVmGameConfig.prodInit,
+    clientStatus: 'completed',
+    serverStatus: 'not_initialized',
+    clientResource: true,
+    serverResource: false,
+    globalAcceleration: false,
     deployType: 'container'
   },
   testQuota: {
-    ...mockVmGameConfig.testQuota,
-    cpuCores: 2,
-    maxPodReplicasPerPod: 9,
-    maxAppsPerGame: 50,
-    maxCronJobsPerGame: 20,
-    maxImagesPerGame: 100,
-    gracefulShutdownThresholdSec: 30
+    cpuCores: 4,
+    vmCpuCores: 0,
+    memoryGB: 64,
+    vmDiskTotalSizeGB: 0,
+    vmAllowedSpecs: [],
+    maxPodReplicasPerPod: 15,
+    maxAppsPerGame: 80,
+    maxCronJobsPerGame: 30,
+    maxImagesPerGame: 200,
+    gracefulShutdownThresholdSec: 45,
+    storageInstancesLimit: 8,
+    storageBackupEnabled: true,
+    mysqlVersions: ['8.0'],
+    mysqlSpecs: ['4核8G'],
+    redisMasterSlaveVersions: ['6.0', '7.0'],
+    redisMasterSlaveSpecs: ['2GB'],
+    redisShardVersions: ['6.0', '7.0'],
+    redisShardSpecs: ['2GB'],
+    redisShardCountMin: 3,
+    redisShardCountMax: 6,
+    mongoReplicaVersions: ['5.0', '6.0'],
+    mongoReplicaSpecs: ['4核8G'],
+    mongoShardedVersions: ['5.0', '6.0'],
+    mongoShardMongosCountMin: 3,
+    mongoShardMongosCountMax: 3,
+    mongoShardMongodCountMin: 3,
+    mongoShardMongodCountMax: 3,
+    mongoShardConfigCountMin: 1,
+    mongoShardConfigCountMax: 1,
+    mongoShardMongosSpecs: ['4核8G'],
+    mongoShardMongodSpecs: ['4核8G'],
+    mongoShardConfigSpecs: ['4核8G'],
+    zookeeperVersions: ['3.8', '3.9'],
+    zookeeperSpecs: ['2核4G'],
+    zookeeperNodeCount: 3
   },
   prodQuota: {
-    ...mockVmGameConfig.prodQuota,
-    cpuCores: 4,
-    maxPodReplicasPerPod: 20,
-    maxAppsPerGame: 200,
-    maxCronJobsPerGame: 80,
-    maxImagesPerGame: 500,
-    gracefulShutdownThresholdSec: 60
+    cpuCores: 16,
+    vmCpuCores: 0,
+    memoryGB: 512,
+    vmDiskTotalSizeGB: 0,
+    vmAllowedSpecs: [],
+    maxPodReplicasPerPod: 50,
+    maxAppsPerGame: 300,
+    maxCronJobsPerGame: 100,
+    maxImagesPerGame: 800,
+    gracefulShutdownThresholdSec: 60,
+    storageInstancesLimit: 20,
+    storageBackupEnabled: true,
+    mysqlVersions: ['8.0'],
+    mysqlSpecs: ['8核16G', '16核32G'],
+    redisMasterSlaveVersions: ['7.0'],
+    redisMasterSlaveSpecs: ['4GB', '8GB'],
+    redisShardVersions: ['7.0'],
+    redisShardSpecs: ['4GB', '8GB'],
+    redisShardCountMin: 6,
+    redisShardCountMax: 12,
+    mongoReplicaVersions: ['6.0'],
+    mongoReplicaSpecs: ['8核16G'],
+    mongoShardedVersions: ['6.0'],
+    mongoShardMongosCountMin: 3,
+    mongoShardMongosCountMax: 6,
+    mongoShardMongodCountMin: 6,
+    mongoShardMongodCountMax: 12,
+    mongoShardConfigCountMin: 3,
+    mongoShardConfigCountMax: 3,
+    mongoShardMongosSpecs: ['8核16G'],
+    mongoShardMongodSpecs: ['8核16G'],
+    mongoShardConfigSpecs: ['8核16G'],
+    zookeeperVersions: ['3.9'],
+    zookeeperSpecs: ['4核8G'],
+    zookeeperNodeCount: 5
+  },
+  testFailure: {
+    rollbackEnabled: true,
+    steps: ['strategy', 'monitor', 'notify']
+  },
+  prodFailure: {
+    rollbackEnabled: true,
+    steps: ['strategy', 'monitor', 'notify', 'reserve']
+  },
+  testMse: {
+    enabled: true,
+    gatewayName: 'testgame-test-gateway',
+    namespace: 'testgame-test',
+    serviceName: 'testgame-test-service',
+    routePrefix: '/api/test'
+  },
+  prodMse: {
+    enabled: false,
+    gatewayName: '',
+    namespace: '',
+    serviceName: '',
+    routePrefix: ''
+  },
+  testHealthCheck: {
+    enabled: true,
+    intervalSeconds: 30,
+    appThresholds: [
+      { appName: 'testgame-server', thresholdPercent: 85 },
+      { appName: 'testgame-gateway', thresholdPercent: 90 }
+    ]
+  },
+  prodHealthCheck: {
+    enabled: false,
+    intervalSeconds: 60,
+    appThresholds: []
+  },
+  globalMonitoring: {
+    grafanaConfig: false,
+    cdnConfig: false
   }
 }
 
@@ -510,6 +640,309 @@ const resolveMockGameConfig = (nextAppId?: string): GameEnvConfig => {
     return mockGameConfigByAppId[nextAppId]
   }
   return mockVmGameConfig
+}
+
+// 根据环境和部署类型获取下线资源列表
+const getOfflineResources = (appId: string, environment: 'test' | 'prod', deployType: 'vm' | 'container' | ''): OfflineResource[] => {
+  const envPrefix = environment === 'test' ? 'test' : 'prod'
+  const isProd = environment === 'prod'
+  
+  // AWS 资源（所有部署类型都有）
+  const awsResources: OfflineResource[] = [
+    { 
+      id: 'aws-iam', 
+      name: 'IAM', 
+      type: 'IAM User',
+      category: 'AWS', 
+      count: 1,
+      status: 'pending',
+      details: [`${appId}-${envPrefix}-user`]
+    },
+    { 
+      id: 'aws-cloudfront', 
+      name: 'CloudFront', 
+      type: 'CDN 分发',
+      category: 'AWS', 
+      count: isProd ? 2 : 1,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-main-dist`, `${appId}-${envPrefix}-backup-dist`]
+        : [`${appId}-${envPrefix}-distribution`]
+    },
+    { 
+      id: 'aws-s3', 
+      name: 'S3', 
+      type: 'S3 Bucket',
+      category: 'AWS', 
+      count: isProd ? 4 : 2,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-logs`, `${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-temp`]
+        : [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-logs`]
+    },
+    { 
+      id: 'aws-route53', 
+      name: 'Route53', 
+      type: 'DNS 记录',
+      category: 'AWS', 
+      count: isProd ? 3 : 2,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}.example.com`, `api-${appId}-${envPrefix}.example.com`, `cdn-${appId}-${envPrefix}.example.com`]
+        : [`${appId}-${envPrefix}.example.com`, `api-${appId}-${envPrefix}.example.com`]
+    }
+  ]
+
+  // 阿里云基础资源
+  const aliBaseResources: OfflineResource[] = [
+    { 
+      id: 'ali-ram', 
+      name: 'RAM', 
+      type: 'RAM User',
+      category: 'AliCloud', 
+      count: 2,
+      status: 'pending',
+      details: [`${appId}-${envPrefix}-oss-user`, `${appId}-${envPrefix}-ecs-user`]
+    },
+    { 
+      id: 'ali-tair', 
+      name: 'Tair', 
+      type: 'Redis 缓存',
+      category: 'AliCloud', 
+      count: isProd ? 3 : 2,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-session`, `${appId}-${envPrefix}-data`, `${appId}-${envPrefix}-cache`]
+        : [`${appId}-${envPrefix}-session`, `${appId}-${envPrefix}-data`]
+    },
+    { 
+      id: 'ali-acr', 
+      name: 'ACR_NS', 
+      type: 'ACR Namespace',
+      category: 'AliCloud', 
+      count: isProd ? 5 : 3,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-tools`, `${appId}-${envPrefix}-monitor`, `${appId}-${envPrefix}-backup`]
+        : [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-tools`]
+    },
+    { 
+      id: 'ali-polardb', 
+      name: 'PolarDB', 
+      type: '数据库集群',
+      category: 'AliCloud', 
+      count: isProd ? 2 : 1,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-main-cluster`, `${appId}-${envPrefix}-backup-cluster`]
+        : [`${appId}-${envPrefix}-cluster`]
+    },
+    { 
+      id: 'ali-mongodb', 
+      name: 'MongoDB', 
+      type: 'MongoDB 集群',
+      category: 'AliCloud', 
+      count: isProd ? 2 : 1,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-replica-set`, `${appId}-${envPrefix}-shard-cluster`]
+        : [`${appId}-${envPrefix}-replica-set`]
+    },
+    { 
+      id: 'ali-mse', 
+      name: 'MSE', 
+      type: 'MSE Gateway',
+      category: 'AliCloud', 
+      count: isProd ? 4 : 2,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-nacos`, `${appId}-${envPrefix}-ingress`, `${appId}-${envPrefix}-config`]
+        : [`${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-nacos`]
+    },
+    { 
+      id: 'ali-oss', 
+      name: 'OSS', 
+      type: 'OSS Bucket',
+      category: 'AliCloud', 
+      count: isProd ? 3 : 2,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-logs`]
+        : [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-backup`]
+    },
+    { 
+      id: 'ali-ga', 
+      name: 'GA', 
+      type: '全球加速',
+      category: 'AliCloud', 
+      count: isProd ? 2 : 1,
+      status: 'pending',
+      details: isProd 
+        ? [`${appId}-${envPrefix}-accelerator`, `${appId}-${envPrefix}-backup-acc`]
+        : [`${appId}-${envPrefix}-accelerator`]
+    }
+  ]
+
+  if (deployType === 'vm') {
+    // VM 部署架构资源
+    const vmResources: OfflineResource[] = [
+      { 
+        id: 'ali-ecs', 
+        name: 'ECS', 
+        type: '虚拟机实例',
+        category: 'AliCloud', 
+        count: isProd ? 6 : 3,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-01`, `${appId}-${envPrefix}-app-02`, `${appId}-${envPrefix}-app-03`, `${appId}-${envPrefix}-gateway-01`, `${appId}-${envPrefix}-gateway-02`, `${appId}-${envPrefix}-monitor`]
+          : [`${appId}-${envPrefix}-app-01`, `${appId}-${envPrefix}-gateway-01`, `${appId}-${envPrefix}-monitor`]
+      },
+      { 
+        id: 'ali-clb', 
+        name: 'CLB', 
+        type: '经典负载均衡',
+        category: 'AliCloud', 
+        count: isProd ? 2 : 1,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-clb`, `${appId}-${envPrefix}-gateway-clb`]
+          : [`${appId}-${envPrefix}-main-clb`]
+      }
+    ]
+    return [...awsResources, ...aliBaseResources, ...vmResources]
+  } else if (deployType === 'container') {
+    // 云原生 Kubernetes 资源
+    const k8sResources: OfflineResource[] = [
+      { 
+        id: 'k8s-deployment', 
+        name: 'K8sDeployment', 
+        type: 'Deployment',
+        category: 'Kubernetes', 
+        count: isProd ? 8 : 5,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-worker`, `${appId}-${envPrefix}-scheduler`, `${appId}-${envPrefix}-monitor`, `${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-cache`, `${appId}-${envPrefix}-proxy`]
+          : [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-worker`, `${appId}-${envPrefix}-scheduler`, `${appId}-${envPrefix}-monitor`]
+      },
+      { 
+        id: 'k8s-hpa', 
+        name: 'K8sHPA', 
+        type: 'HPA 自动扩缩',
+        category: 'Kubernetes', 
+        count: isProd ? 6 : 4,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-server-hpa`, `${appId}-${envPrefix}-gateway-hpa`, `${appId}-${envPrefix}-worker-hpa`, `${appId}-${envPrefix}-scheduler-hpa`, `${appId}-${envPrefix}-cache-hpa`, `${appId}-${envPrefix}-proxy-hpa`]
+          : [`${appId}-${envPrefix}-server-hpa`, `${appId}-${envPrefix}-gateway-hpa`, `${appId}-${envPrefix}-worker-hpa`, `${appId}-${envPrefix}-scheduler-hpa`]
+      },
+      { 
+        id: 'k8s-cronjob', 
+        name: 'K8sCronJob', 
+        type: 'CronJob 定时任务',
+        category: 'Kubernetes', 
+        count: isProd ? 4 : 2,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-cleanup`, `${appId}-${envPrefix}-report`, `${appId}-${envPrefix}-health-check`]
+          : [`${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-cleanup`]
+      },
+      { 
+        id: 'k8s-job', 
+        name: 'K8sJob', 
+        type: 'Job 任务',
+        category: 'Kubernetes', 
+        count: isProd ? 3 : 2,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-init-db`, `${appId}-${envPrefix}-migrate`, `${appId}-${envPrefix}-seed-data`]
+          : [`${appId}-${envPrefix}-init-db`, `${appId}-${envPrefix}-migrate`]
+      },
+      { 
+        id: 'k8s-service', 
+        name: 'K8sService', 
+        type: 'Service 服务',
+        category: 'Kubernetes', 
+        count: isProd ? 8 : 5,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-server-svc`, `${appId}-${envPrefix}-gateway-svc`, `${appId}-${envPrefix}-worker-svc`, `${appId}-${envPrefix}-scheduler-svc`, `${appId}-${envPrefix}-monitor-svc`, `${appId}-${envPrefix}-cache-svc`, `${appId}-${envPrefix}-proxy-svc`, `${appId}-${envPrefix}-backup-svc`]
+          : [`${appId}-${envPrefix}-server-svc`, `${appId}-${envPrefix}-gateway-svc`, `${appId}-${envPrefix}-worker-svc`, `${appId}-${envPrefix}-scheduler-svc`, `${appId}-${envPrefix}-monitor-svc`]
+      },
+      { 
+        id: 'k8s-ingress', 
+        name: 'K8sIngress', 
+        type: 'Ingress 路由',
+        category: 'Kubernetes', 
+        count: isProd ? 3 : 2,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-api-ingress`, `${appId}-${envPrefix}-web-ingress`, `${appId}-${envPrefix}-admin-ingress`]
+          : [`${appId}-${envPrefix}-api-ingress`, `${appId}-${envPrefix}-web-ingress`]
+      },
+      { 
+        id: 'k8s-configmap', 
+        name: 'K8sConfigMap', 
+        type: 'ConfigMap 配置',
+        category: 'Kubernetes', 
+        count: isProd ? 6 : 4,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-config`, `${appId}-${envPrefix}-db-config`, `${appId}-${envPrefix}-cache-config`, `${appId}-${envPrefix}-monitor-config`, `${appId}-${envPrefix}-log-config`, `${appId}-${envPrefix}-backup-config`]
+          : [`${appId}-${envPrefix}-app-config`, `${appId}-${envPrefix}-db-config`, `${appId}-${envPrefix}-cache-config`, `${appId}-${envPrefix}-monitor-config`]
+      },
+      { 
+        id: 'k8s-pvc', 
+        name: 'K8sPVC', 
+        type: 'PVC 存储卷',
+        category: 'Kubernetes', 
+        count: isProd ? 5 : 3,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-data-pvc`, `${appId}-${envPrefix}-logs-pvc`, `${appId}-${envPrefix}-backup-pvc`, `${appId}-${envPrefix}-cache-pvc`, `${appId}-${envPrefix}-temp-pvc`]
+          : [`${appId}-${envPrefix}-data-pvc`, `${appId}-${envPrefix}-logs-pvc`, `${appId}-${envPrefix}-backup-pvc`]
+      },
+      { 
+        id: 'k8s-pv', 
+        name: 'K8sPV', 
+        type: 'PV 持久卷',
+        category: 'Kubernetes', 
+        count: isProd ? 5 : 3,
+        status: 'pending',
+        details: isProd 
+          ? [`${appId}-${envPrefix}-data-pv`, `${appId}-${envPrefix}-logs-pv`, `${appId}-${envPrefix}-backup-pv`, `${appId}-${envPrefix}-cache-pv`, `${appId}-${envPrefix}-temp-pv`]
+          : [`${appId}-${envPrefix}-data-pv`, `${appId}-${envPrefix}-logs-pv`, `${appId}-${envPrefix}-backup-pv`]
+      },
+      { 
+        id: 'k8s-namespace', 
+        name: 'K8sNamespace', 
+        type: 'Namespace 命名空间',
+        category: 'Kubernetes', 
+        count: 1,
+        status: 'pending',
+        details: [`${appId}-${envPrefix}`]
+      }
+    ]
+
+    // 平台内部数据
+    const platformResources: OfflineResource[] = [
+      { 
+        id: 'platform-appdata', 
+        name: 'AppData', 
+        type: '应用数据',
+        category: '平台内部数据', 
+        count: isProd ? 8 : 5,
+        status: 'pending',
+        details: isProd 
+          ? [`用户数据表`, `游戏配置表`, `统计数据表`, `日志数据表`, `缓存数据表`, `备份数据表`, `监控数据表`, `审计数据表`]
+          : [`用户数据表`, `游戏配置表`, `统计数据表`, `日志数据表`, `缓存数据表`]
+      }
+    ]
+
+    return [...awsResources, ...aliBaseResources, ...k8sResources, ...platformResources]
+  }
+
+  // 默认返回基础资源
+  return [...awsResources, ...aliBaseResources]
 }
 
 interface GameEnvDetailProps {
@@ -565,6 +998,10 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
     lambdaEditingEnv ??
     healthCheckEditingEnv ??
     'test'
+
+  // 下线相关状态
+  const [offlineProgress, setOfflineProgress] = useState<OfflineProgress | null>(null)
+  const [isOfflineModalVisible, setIsOfflineModalVisible] = useState(false)
 
   // 限额表单实例（每次切换环境复用同一个表单）
   const [quotaForm] = Form.useForm<EnvironmentQuota>()
@@ -658,8 +1095,215 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
     }
   }
 
+  // 开始环境下线
+  const handleStartOffline = (environment: 'test' | 'prod'): void => {
+    const envData = getEnvData(environment)
+    const deployType = envData.init.deployType as 'vm' | 'container' | ''
+    const resources = getOfflineResources(gameConfig.appId, environment, deployType)
+    const totalResourceCount = resources.reduce((sum, resource) => sum + resource.count, 0)
+    
+    const progress: OfflineProgress = {
+      environment,
+      appId: gameConfig.appId,
+      isOfflineInProgress: true,
+      resources,
+      currentStep: 0,
+      totalSteps: totalResourceCount
+    }
+    setOfflineProgress(progress)
+    setIsOfflineModalVisible(true)
+    
+    // 开始异步删除资源
+    startResourceDeletion(progress)
+  }
+
+  // 模拟资源删除过程
+  const startResourceDeletion = (progress: OfflineProgress): void => {
+    let currentIndex = 0
+    let completedResourceCount = 0
+    
+    const deleteNextResource = () => {
+      if (currentIndex >= progress.resources.length) {
+        // 所有资源删除完成
+        setOfflineProgress(prev => prev ? {
+          ...prev,
+          isOfflineInProgress: false,
+          currentStep: progress.totalSteps
+        } : null)
+        
+        // 更新游戏配置，标记环境为未初始化
+        setGameConfig(prev => {
+          if (progress.environment === 'test') {
+            return {
+              ...prev,
+              testInit: { 
+                ...prev.testInit, 
+                clientStatus: 'not_initialized',
+                serverStatus: 'not_initialized'
+              }
+            }
+          } else {
+            return {
+              ...prev,
+              prodInit: { 
+                ...prev.prodInit, 
+                clientStatus: 'not_initialized',
+                serverStatus: 'not_initialized'
+              }
+            }
+          }
+        })
+        
+        message.success(`${progress.environment === 'test' ? '测试' : '正式'}环境已成功下线`)
+        
+        setTimeout(() => {
+          setIsOfflineModalVisible(false)
+          setOfflineProgress(null)
+        }, 2000)
+        return
+      }
+
+      const resource = progress.resources[currentIndex]
+      
+      // 更新当前资源状态为删除中
+      setOfflineProgress(prev => prev ? {
+        ...prev,
+        resources: prev.resources.map(r => 
+          r.id === resource.id ? { ...r, status: 'deleting' } : r
+        )
+      } : null)
+
+      // 模拟删除时间（2-4秒，根据资源数量调整）
+      const deleteTime = Math.random() * 2000 + 2000 + (resource.count * 200)
+      
+      setTimeout(() => {
+        // 模拟删除成功/失败（90%成功率）
+        const isSuccess = Math.random() > 0.1
+        
+        setOfflineProgress(prev => prev ? {
+          ...prev,
+          currentStep: completedResourceCount + (isSuccess ? resource.count : 0),
+          resources: prev.resources.map(r => 
+            r.id === resource.id ? { 
+              ...r, 
+              status: isSuccess ? 'completed' : 'failed' 
+            } : r
+          )
+        } : null)
+
+        if (isSuccess) {
+          completedResourceCount += resource.count
+          currentIndex++
+          // 继续删除下一个资源
+          setTimeout(deleteNextResource, 800)
+        } else {
+          message.error(`删除 ${resource.type} 失败，请重试`)
+        }
+      }, deleteTime)
+    }
+
+    deleteNextResource()
+  }
+
+  // 重试失败的资源
+  const retryFailedResource = (resourceId: string): void => {
+    if (!offlineProgress) return
+    
+    const resource = offlineProgress.resources.find(r => r.id === resourceId)
+    if (!resource) return
+
+    setOfflineProgress(prev => prev ? {
+      ...prev,
+      resources: prev.resources.map(r => 
+        r.id === resourceId ? { ...r, status: 'deleting' } : r
+      )
+    } : null)
+
+    // 模拟重试删除
+    const retryTime = Math.random() * 1500 + 1500 + (resource.count * 150)
+    
+    setTimeout(() => {
+      const isSuccess = Math.random() > 0.15 // 重试时85%成功率
+      
+      setOfflineProgress(prev => {
+        if (!prev) return null
+        
+        const updatedResources = prev.resources.map(r => 
+          r.id === resourceId ? { 
+            ...r, 
+            status: (isSuccess ? 'completed' : 'failed') as OfflineResource['status']
+          } : r
+        )
+        
+        // 重新计算当前步骤
+        const completedCount = updatedResources
+          .filter(r => r.status === 'completed')
+          .reduce((sum, r) => sum + r.count, 0)
+        
+        return {
+          ...prev,
+          currentStep: completedCount,
+          resources: updatedResources
+        }
+      })
+
+      if (isSuccess) {
+        message.success(`${resource.type} 删除成功`)
+        
+        // 检查是否所有资源都删除完成
+        setTimeout(() => {
+          if (!offlineProgress) return
+          
+          const allCompleted = offlineProgress.resources.every(r => 
+            r.status === 'completed'
+          )
+          
+          if (allCompleted) {
+            setOfflineProgress(prev => prev ? {
+              ...prev,
+              isOfflineInProgress: false,
+              currentStep: prev.totalSteps
+            } : null)
+            
+            // 更新游戏配置，标记环境为未初始化
+            setGameConfig(prev => {
+              if (offlineProgress.environment === 'test') {
+                return {
+                  ...prev,
+                  testInit: { 
+                    ...prev.testInit, 
+                    clientStatus: 'not_initialized',
+                    serverStatus: 'not_initialized'
+                  }
+                }
+              } else {
+                return {
+                  ...prev,
+                  prodInit: { 
+                    ...prev.prodInit, 
+                    clientStatus: 'not_initialized',
+                    serverStatus: 'not_initialized'
+                  }
+                }
+              }
+            })
+            
+            message.success(`${offlineProgress.environment === 'test' ? '测试' : '正式'}环境已成功下线`)
+            
+            setTimeout(() => {
+              setIsOfflineModalVisible(false)
+              setOfflineProgress(null)
+            }, 2000)
+          }
+        }, 100)
+      } else {
+        message.error(`重试删除 ${resource.type} 失败`)
+      }
+    }, retryTime)
+  }
+
   const getDeployLabel = (deployType: string) =>
-    deployType === 'vm' ? '虚机部署' : deployType === 'container' ? '容器部署' : '待配置'
+    deployType === 'vm' ? '虚机部署' : deployType === 'container' ? '云原生部署' : '待配置'
   const deployLabel = getDeployLabel(gameConfig.testInit.deployType)
 
   const mseInstanceTypeLabel =
@@ -788,6 +1432,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
           {onBack && (
             <Button
               type="link"
+              icon={<ArrowLeftOutlined />}
               onClick={onBack}
               style={{ paddingLeft: 0 }}
             >
@@ -903,50 +1548,97 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
                   </div>
                 ),
                 children: (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, minmax(200px, 1fr))',
-                      gap: '14px 24px',
-                      paddingBottom: 6
-                    }}
-                  >
-                    <div>
-                      <Text strong style={{ fontSize: 13 }}>客户端</Text>
-                      <div style={{ marginTop: 6 }}><Text type="secondary">{envClientInitialized ? '已初始化' : '待开始'}</Text></div>
-                    </div>
-                    <div>
-                      <Text strong style={{ fontSize: 13 }}>服务端</Text>
-                      <div style={{ marginTop: 6 }}><Text type="secondary">{envServerInitialized ? '已初始化' : '待开始'}</Text></div>
-                    </div>
-                    <div>
-                      <Text strong style={{ fontSize: 13 }}>MSE 实例类型</Text>
-                      <div style={{ marginTop: 6 }}><Text type="secondary">{mseInstanceTypeLabel}</Text></div>
-                    </div>
-                    <div>
-                      <Text strong style={{ fontSize: 13 }}>客户端全球加速(GA)</Text>
-                      <div style={{ marginTop: 8 }}>
-                        <Switch
-                          checked={envInit.globalAcceleration}
-                          disabled={initConfirmVisible}
-                          onChange={checked =>
-                            handleInitToggle(env.envKey, 'globalAcceleration', '客户端全球加速(GA)', checked)
-                          }
-                        />
+                  <div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(200px, 1fr))',
+                        gap: '14px 24px',
+                        paddingBottom: 16
+                      }}
+                    >
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>客户端</Text>
+                        <div style={{ marginTop: 6 }}><Text type="secondary">{envClientInitialized ? '已初始化' : '待开始'}</Text></div>
+                      </div>
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>服务端</Text>
+                        <div style={{ marginTop: 6 }}><Text type="secondary">{envServerInitialized ? '已初始化' : '待开始'}</Text></div>
+                      </div>
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>MSE 实例类型</Text>
+                        <div style={{ marginTop: 6 }}><Text type="secondary">{mseInstanceTypeLabel}</Text></div>
+                      </div>
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>客户端全球加速(GA)</Text>
+                        <div style={{ marginTop: 8 }}>
+                          <Switch
+                            checked={envInit.globalAcceleration}
+                            disabled={initConfirmVisible}
+                            onChange={checked =>
+                              handleInitToggle(env.envKey, 'globalAcceleration', '客户端全球加速(GA)', checked)
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>服务端全球加速(GA)</Text>
+                        <div style={{ marginTop: 8 }}>
+                          <Switch
+                            checked={envInit.globalAcceleration}
+                            disabled={initConfirmVisible}
+                            onChange={checked =>
+                              handleInitToggle(env.envKey, 'globalAcceleration', '服务端全球加速(GA)', checked)
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <Text strong style={{ fontSize: 13 }}>服务端全球加速(GA)</Text>
-                      <div style={{ marginTop: 8 }}>
-                        <Switch
-                          checked={envInit.globalAcceleration}
-                          disabled={initConfirmVisible}
-                          onChange={checked =>
-                            handleInitToggle(env.envKey, 'globalAcceleration', '服务端全球加速(GA)', checked)
+                    
+                    {/* 环境管理操作区 */}
+                    {(envClientInitialized || envServerInitialized) && (
+                      <div style={{ 
+                        borderTop: '1px solid #f0f0f0', 
+                        paddingTop: 16,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <Text strong style={{ fontSize: 13 }}>环境管理</Text>
+                          <div style={{ marginTop: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              下线将删除该环境的所有资源，包括云服务、存储、网络配置等
+                            </Text>
+                          </div>
+                        </div>
+                        <Popconfirm
+                          title={`确认下线${env.envKey === 'test' ? '测试' : '正式'}环境`}
+                          description={
+                            <div>
+                              <div style={{ marginBottom: 8 }}>
+                                下线操作将删除 <strong>{gameConfig.appId}</strong> {env.envKey === 'test' ? '测试' : '正式'}环境的所有相关资源。
+                              </div>
+                              <div style={{ color: '#ff4d4f', fontWeight: 500 }}>
+                                ⚠️ 此操作不可撤销，请谨慎操作！
+                              </div>
+                            </div>
                           }
-                        />
+                          onConfirm={() => handleStartOffline(env.envKey)}
+                          okText="确认下线"
+                          cancelText="取消"
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button 
+                            icon={<PoweroffOutlined />}
+                            danger
+                            size="small"
+                          >
+                            下线环境
+                          </Button>
+                        </Popconfirm>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               }
@@ -1090,7 +1782,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
                           <Space direction="vertical" size={0}>
                             <Text strong>计算资源</Text>
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              {isContainer ? '云机部署' : '虚机部署'}
+                              {isContainer ? '云原生部署' : '虚机部署'}
                             </Text>
                           </Space>
                         }
@@ -1277,7 +1969,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
                             <Space direction="vertical" size={0}>
                               <Text strong>计算资源</Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {isContainer ? '云机部署' : '虚机部署'}
+                                {isContainer ? '云原生部署' : '虚机部署'}
                               </Text>
                             </Space>
                           }
@@ -2606,6 +3298,139 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
         >
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{initLogModalContent}</pre>
         </div>
+      </Modal>
+
+      {/* 环境下线进度弹窗 */}
+      <Modal
+        title={`${offlineProgress?.environment === 'test' ? '测试' : '正式'}环境下线进度 - ${offlineProgress?.appId || ''}`}
+        open={isOfflineModalVisible}
+        footer={
+          offlineProgress?.isOfflineInProgress ? (
+            <Button onClick={() => setIsOfflineModalVisible(false)}>
+              后台运行
+            </Button>
+          ) : (
+            <Button type="primary" onClick={() => setIsOfflineModalVisible(false)}>
+              关闭
+            </Button>
+          )
+        }
+        closable={!offlineProgress?.isOfflineInProgress}
+        maskClosable={false}
+        width={700}
+      >
+        {offlineProgress && (
+          <div>
+            <Alert
+              message={`正在下线 ${offlineProgress.environment === 'test' ? '测试' : '正式'} 环境`}
+              description={`将删除 ${offlineProgress.appId} ${offlineProgress.environment === 'test' ? '测试' : '正式'}环境的所有相关资源，包括云服务、存储、网络配置等。`}
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span>整体进度</span>
+                <span>{offlineProgress.currentStep} / {offlineProgress.totalSteps}</span>
+              </div>
+              <Progress 
+                percent={Math.round((offlineProgress.currentStep / offlineProgress.totalSteps) * 100)}
+                status={offlineProgress.isOfflineInProgress ? 'active' : 'success'}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <Typography.Title level={5}>资源删除详情</Typography.Title>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {offlineProgress.resources.map(resource => (
+                  <div 
+                    key={resource.id}
+                    style={{
+                      padding: '12px',
+                      marginBottom: 12,
+                      border: '1px solid #f0f0f0',
+                      borderRadius: 8,
+                      background: resource.status === 'completed' ? '#f6ffed' : 
+                                 resource.status === 'failed' ? '#fff2f0' :
+                                 resource.status === 'deleting' ? '#e6f7ff' : '#fafafa'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 14 }}>{resource.name}</span>
+                          <span style={{ 
+                            background: '#f0f0f0', 
+                            padding: '2px 6px', 
+                            borderRadius: 4, 
+                            fontSize: 11,
+                            color: '#666'
+                          }}>
+                            {resource.count} 个
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>
+                          {resource.category} · {resource.type}
+                        </div>
+                        {resource.details && (
+                          <div style={{ fontSize: 11, color: '#999' }}>
+                            {resource.details.slice(0, 3).map((detail, index) => (
+                              <div key={index} style={{ marginBottom: 2 }}>• {detail}</div>
+                            ))}
+                            {resource.details.length > 3 && (
+                              <div style={{ fontStyle: 'italic' }}>... 等 {resource.details.length} 个资源</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 12 }}>
+                        {resource.status === 'pending' && (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>等待中</Typography.Text>
+                        )}
+                        {resource.status === 'deleting' && (
+                          <Typography.Text style={{ color: '#1890ff', fontSize: 12 }}>删除中...</Typography.Text>
+                        )}
+                        {resource.status === 'completed' && (
+                          <Typography.Text style={{ color: '#52c41a', fontSize: 12, fontWeight: 500 }}>
+                            ✓ 已完成
+                          </Typography.Text>
+                        )}
+                        {resource.status === 'failed' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Typography.Text type="danger" style={{ fontSize: 12 }}>删除失败</Typography.Text>
+                            <Button 
+                              size="small" 
+                              type="link"
+                              style={{ padding: '0 4px', height: 20, fontSize: 11 }}
+                              onClick={() => retryFailedResource(resource.id)}
+                            >
+                              重试
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {!offlineProgress.isOfflineInProgress && (
+              <div style={{ 
+                padding: 12, 
+                background: '#f6ffed', 
+                border: '1px solid #b7eb8f',
+                borderRadius: 6,
+                textAlign: 'center'
+              }}>
+                <Typography.Text style={{ color: '#52c41a', fontWeight: 500 }}>
+                  🎉 {offlineProgress.environment === 'test' ? '测试' : '正式'}环境下线完成！所有资源已成功删除。
+                </Typography.Text>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </Card>
   )

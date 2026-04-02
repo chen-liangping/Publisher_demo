@@ -6,7 +6,6 @@ import {
   ArrowLeftOutlined,
   AppstoreOutlined,
   DatabaseOutlined,
-  ExperimentOutlined,
   FileTextOutlined,
   BellOutlined
 } from '@ant-design/icons'
@@ -16,8 +15,8 @@ import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
 import TestInitialization from '../../components/Admin/TestInitialization'
 import Announcement from '../../components/Admin/Announcement'
 import YamlViewer from '../../components/Admin/yaml'
-import GameEnvDetail from '../../components/Admin/GameEnvDetail'
 import NotificationControl from '../../components/Admin/NotificationControl'
+import GlobalNoticeConfig from '../../components/Admin/GlobalNoticeConfig'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -27,6 +26,7 @@ type AdminMenuKey =
   | 'resource-configuration'
   | 'test-initialization'
   | 'announcement'
+  | 'global-notice-config'
   | 'yaml'
   | 'notification-control'
 
@@ -58,6 +58,8 @@ export default function AdminPage() {
         return <TestInitialization />
       case 'announcement':
         return <Announcement />
+      case 'global-notice-config':
+        return <GlobalNoticeConfig />
       case 'yaml':
         // YAML 备份页面
         return <YamlViewer />
@@ -111,7 +113,7 @@ export default function AdminPage() {
               {
                 key: 'resource-configuration',
                 icon: <DatabaseOutlined />,
-                label: '资源全局配置',
+                label: '游戏资源配置',
                 onClick: () => handleMenuClick('resource-configuration')
               },
              /* {
@@ -125,6 +127,12 @@ export default function AdminPage() {
                 icon: <NotificationOutlined />,
                 label: '公告管理',
                 onClick: () => handleMenuClick('announcement')
+              },
+              {
+                key: 'global-notice-config',
+                icon: <BellOutlined />,
+                label: '游戏通知配置',
+                onClick: () => handleMenuClick('global-notice-config')
               },
               /*{
                 key: 'notification-control',

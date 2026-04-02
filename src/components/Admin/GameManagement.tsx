@@ -13,12 +13,31 @@
  */
 
 import React, { useState } from 'react'
-import { Card, Table, Input, Typography, Button, Space, Modal, message, Select, Avatar } from 'antd'
+import { Card, Table, Input, Typography, Button, Space, Modal, message, Select, Avatar, Radio, Progress, Alert } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import GameEnvDetail from './GameEnvDetail'
-import { PlusOutlined, CheckOutlined } from '@ant-design/icons'
+import { PlusOutlined, CheckOutlined, FileSearchOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
+
+// 资源盘点相关类型
+interface ResourceItem {
+  id: string
+  name: string
+  category: string
+  type: string
+  count: number
+  details?: string[]
+}
+
+interface ResourceInventory {
+  gameId: string
+  appId: string
+  environment: 'test' | 'prod'
+  deployType: 'vm' | 'container' | ''
+  resources: ResourceItem[]
+  totalCount: number
+}
 
 // 环境配置类型（保留以便后续扩展，目前仅在 Game 类型中使用）
 interface EnvironmentConfig {
@@ -110,10 +129,157 @@ interface EnvListRow {
   mseInstanceType: Game['mseInstanceType']
 }
 
+
 const aliyunAccountOptions: Array<{ label: string; value: string }> = [
   { label: 'g123-jp', value: 'g123-jp' },
   { label: 'cp-g123', value: 'cp-g123' }
 ]
+
+// 获取游戏资源清单（用于资源盘点）
+const getGameResources = (appId: string, environment: 'test' | 'prod', deployType: 'vm' | 'container' | ''): ResourceItem[] => {
+  const envPrefix = environment === 'test' ? 'test' : 'prod'
+  const isProd = environment === 'prod'
+  
+  // AWS 资源（所有部署类型都有）
+  const awsResources: ResourceItem[] = [
+    { 
+      id: 'aws-iam', 
+      name: 'IAM', 
+      type: 'IAM User',
+      category: 'AWS', 
+      count: 1,
+      details: [`${appId}-${envPrefix}-user`]
+    },
+    { 
+      id: 'aws-cloudfront', 
+      name: 'CloudFront', 
+      type: 'CDN 分发',
+      category: 'AWS', 
+      count: isProd ? 2 : 1,
+      details: isProd 
+        ? [`${appId}-${envPrefix}-main-dist`, `${appId}-${envPrefix}-backup-dist`]
+        : [`${appId}-${envPrefix}-distribution`]
+    },
+    { 
+      id: 'aws-s3', 
+      name: 'S3', 
+      type: 'S3 Bucket',
+      category: 'AWS', 
+      count: isProd ? 4 : 2,
+      details: isProd 
+        ? [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-logs`, `${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-temp`]
+        : [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-logs`]
+    },
+    { 
+      id: 'aws-route53', 
+      name: 'Route53', 
+      type: 'DNS 记录',
+      category: 'AWS', 
+      count: isProd ? 3 : 2,
+      details: isProd 
+        ? [`${appId}-${envPrefix}.example.com`, `api-${appId}-${envPrefix}.example.com`, `cdn-${appId}-${envPrefix}.example.com`]
+        : [`${appId}-${envPrefix}.example.com`, `api-${appId}-${envPrefix}.example.com`]
+    }
+  ]
+
+  // 阿里云基础资源
+  const aliBaseResources: ResourceItem[] = [
+    { 
+      id: 'ali-ram', 
+      name: 'RAM', 
+      type: 'RAM User',
+      category: 'AliCloud', 
+      count: 2,
+      details: [`${appId}-${envPrefix}-oss-user`, `${appId}-${envPrefix}-ecs-user`]
+    },
+    { 
+      id: 'ali-tair', 
+      name: 'Tair', 
+      type: 'Redis 缓存',
+      category: 'AliCloud', 
+      count: isProd ? 3 : 2,
+      details: isProd 
+        ? [`${appId}-${envPrefix}-session`, `${appId}-${envPrefix}-data`, `${appId}-${envPrefix}-cache`]
+        : [`${appId}-${envPrefix}-session`, `${appId}-${envPrefix}-data`]
+    },
+    { 
+      id: 'ali-oss', 
+      name: 'OSS', 
+      type: 'OSS Bucket',
+      category: 'AliCloud', 
+      count: isProd ? 3 : 2,
+      details: isProd 
+        ? [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-backup`, `${appId}-${envPrefix}-logs`]
+        : [`${appId}-${envPrefix}-assets`, `${appId}-${envPrefix}-backup`]
+    }
+  ]
+
+  if (deployType === 'vm') {
+    // VM 部署架构资源
+    const vmResources: ResourceItem[] = [
+      { 
+        id: 'ali-ecs', 
+        name: 'ECS', 
+        type: '虚拟机实例',
+        category: 'AliCloud', 
+        count: isProd ? 6 : 3,
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-01`, `${appId}-${envPrefix}-app-02`, `${appId}-${envPrefix}-app-03`, `${appId}-${envPrefix}-gateway-01`, `${appId}-${envPrefix}-gateway-02`, `${appId}-${envPrefix}-monitor`]
+          : [`${appId}-${envPrefix}-app-01`, `${appId}-${envPrefix}-gateway-01`, `${appId}-${envPrefix}-monitor`]
+      },
+      { 
+        id: 'ali-clb', 
+        name: 'CLB', 
+        type: '经典负载均衡',
+        category: 'AliCloud', 
+        count: isProd ? 2 : 1,
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-clb`, `${appId}-${envPrefix}-gateway-clb`]
+          : [`${appId}-${envPrefix}-main-clb`]
+      }
+    ]
+    return [...awsResources, ...aliBaseResources, ...vmResources]
+  } else if (deployType === 'container') {
+    // 云原生 Kubernetes 资源
+    const k8sResources: ResourceItem[] = [
+      { 
+        id: 'k8s-deployment', 
+        name: 'K8sDeployment', 
+        type: 'Deployment',
+        category: 'Kubernetes', 
+        count: isProd ? 8 : 5,
+        details: isProd 
+          ? [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-worker`, `${appId}-${envPrefix}-scheduler`, `${appId}-${envPrefix}-monitor`]
+          : [`${appId}-${envPrefix}-server`, `${appId}-${envPrefix}-gateway`, `${appId}-${envPrefix}-worker`]
+      },
+      { 
+        id: 'k8s-service', 
+        name: 'K8sService', 
+        type: 'Service 服务',
+        category: 'Kubernetes', 
+        count: isProd ? 8 : 5,
+        details: isProd 
+          ? [`${appId}-${envPrefix}-server-svc`, `${appId}-${envPrefix}-gateway-svc`, `${appId}-${envPrefix}-worker-svc`]
+          : [`${appId}-${envPrefix}-server-svc`, `${appId}-${envPrefix}-gateway-svc`]
+      },
+      { 
+        id: 'k8s-configmap', 
+        name: 'K8sConfigMap', 
+        type: 'ConfigMap 配置',
+        category: 'Kubernetes', 
+        count: isProd ? 6 : 4,
+        details: isProd 
+          ? [`${appId}-${envPrefix}-app-config`, `${appId}-${envPrefix}-db-config`, `${appId}-${envPrefix}-cache-config`]
+          : [`${appId}-${envPrefix}-app-config`, `${appId}-${envPrefix}-db-config`]
+      }
+    ]
+
+    return [...awsResources, ...aliBaseResources, ...k8sResources]
+  }
+
+  // 默认返回基础资源
+  return [...awsResources, ...aliBaseResources]
+}
 
 // 模拟游戏数据：仅用于前端原型
 const mockGameData: Game[] = [
@@ -200,6 +366,7 @@ const mockGameData: Game[] = [
   }
 ]
 
+
 export default function GameManagement() {
   const [games, setGames] = useState<Game[]>(mockGameData)
   const [isAddModalVisible, setIsAddModalVisible] = useState(false)
@@ -210,6 +377,14 @@ export default function GameManagement() {
   const [selectedMseInstanceType, setSelectedMseInstanceType] = useState<Game['mseInstanceType']>(
     'dedicated'
   )
+
+  // 资源盘点相关状态
+  const [isInventoryModalVisible, setIsInventoryModalVisible] = useState(false)
+  const [selectedGameForInventory, setSelectedGameForInventory] = useState<Game | null>(null)
+  const [selectedEnvironment, setSelectedEnvironment] = useState<'test' | 'prod'>('test')
+  const [inventoryData, setInventoryData] = useState<ResourceInventory | null>(null)
+  const [isInventoryLoading, setIsInventoryLoading] = useState(false)
+
 
   const createInitEnv = (): EnvironmentConfig => ({
     clientResource: false,
@@ -254,6 +429,51 @@ export default function GameManagement() {
     setIsAddModalVisible(false)
     message.success('已新增游戏')
   }
+
+  // 开始资源盘点
+  const handleStartInventory = (game: Game): void => {
+    setSelectedGameForInventory(game)
+    setSelectedEnvironment('test')
+    setInventoryData(null)
+    setIsInventoryModalVisible(true)
+  }
+
+  // 执行资源盘点
+  const handleExecuteInventory = (): void => {
+    if (!selectedGameForInventory) return
+
+    setIsInventoryLoading(true)
+    
+    // 模拟盘点过程
+    setTimeout(() => {
+      const envConfig = selectedEnvironment === 'test' ? selectedGameForInventory.testEnv : selectedGameForInventory.prodEnv
+      const deployType = envConfig.deployType as 'vm' | 'container' | ''
+      const resources = getGameResources(selectedGameForInventory.appId, selectedEnvironment, deployType)
+      const totalCount = resources.reduce((sum, resource) => sum + resource.count, 0)
+      
+      const inventory: ResourceInventory = {
+        gameId: selectedGameForInventory.id,
+        appId: selectedGameForInventory.appId,
+        environment: selectedEnvironment,
+        deployType,
+        resources,
+        totalCount
+      }
+      
+      setInventoryData(inventory)
+      setIsInventoryLoading(false)
+      message.success(`${selectedEnvironment === 'test' ? '测试' : '正式'}环境资源盘点完成`)
+    }, 2000)
+  }
+
+  // 关闭资源盘点弹窗
+  const handleCloseInventory = (): void => {
+    setIsInventoryModalVisible(false)
+    setSelectedGameForInventory(null)
+    setInventoryData(null)
+    setIsInventoryLoading(false)
+  }
+
   // 搜索关键字（按 appId 过滤）
   const [keyword, setKeyword] = useState<string>('')
 
@@ -345,6 +565,29 @@ export default function GameManagement() {
       render: (_value, record) => (
         <EnvStatusBlock clientEnabled={record.prodClientEnabled} serverEnabled={record.prodServerEnabled} />
       )
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 120,
+      render: (_value, record) => {
+        const game = games.find(g => g.appId === record.appId)
+        if (!game) return null
+        
+        return (
+          <Space size={8}>
+            <Button 
+              type="text" 
+              icon={<FileSearchOutlined />} 
+              size="small"
+              onClick={() => handleStartInventory(game)}
+              title="资源盘点"
+            >
+              盘点
+            </Button>
+          </Space>
+        )
+      }
     }
   ]
 
@@ -450,6 +693,176 @@ export default function GameManagement() {
           ]}
           style={{ width: '100%' }}
         />
+      </Modal>
+
+      {/* 资源盘点弹窗 */}
+      <Modal
+        title={`资源盘点 - ${selectedGameForInventory?.appId || ''}`}
+        open={isInventoryModalVisible}
+        onCancel={handleCloseInventory}
+        footer={
+          inventoryData ? (
+            <Button type="primary" onClick={handleCloseInventory}>
+              关闭
+            </Button>
+          ) : (
+            <Space>
+              <Button onClick={handleCloseInventory}>取消</Button>
+              <Button 
+                type="primary" 
+                onClick={handleExecuteInventory}
+                loading={isInventoryLoading}
+                disabled={!selectedGameForInventory}
+              >
+                开始盘点
+              </Button>
+            </Space>
+          )
+        }
+        width={700}
+        destroyOnHidden
+      >
+        {!inventoryData ? (
+          <div>
+            <Alert
+              message="资源盘点"
+              description={`将统计游戏 ${selectedGameForInventory?.appId} 在指定环境中的所有资源使用情况，包括云服务、存储、网络配置等。`}
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>选择盘点环境：</Text>
+              <div style={{ marginTop: 8 }}>
+                <Radio.Group 
+                  value={selectedEnvironment} 
+                  onChange={(e) => setSelectedEnvironment(e.target.value)}
+                >
+                  <Radio value="test">测试环境</Radio>
+                  <Radio value="prod">正式环境</Radio>
+                </Radio.Group>
+              </div>
+            </div>
+
+            {selectedGameForInventory && (
+              <div style={{ 
+                padding: 12, 
+                background: '#f5f5f5', 
+                borderRadius: 6,
+                marginBottom: 16
+              }}>
+                <div><Text strong>游戏信息：</Text></div>
+                <div style={{ marginTop: 4 }}>
+                  <Text>App ID: {selectedGameForInventory.appId}</Text>
+                </div>
+                <div>
+                  <Text>部署方式: {deployTypeLabel[
+                    (selectedEnvironment === 'test' ? selectedGameForInventory.testEnv : selectedGameForInventory.prodEnv).deployType
+                  ]}</Text>
+                </div>
+                <div>
+                  <Text>创建时间: {selectedGameForInventory.createTime}</Text>
+                </div>
+              </div>
+            )}
+
+            {isInventoryLoading && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <Progress type="circle" percent={66} size={80} />
+                <div style={{ marginTop: 12 }}>
+                  <Text>正在盘点资源...</Text>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <Alert
+              message={`${inventoryData.environment === 'test' ? '测试' : '正式'}环境资源盘点完成`}
+              description={`共发现 ${inventoryData.totalCount} 个资源实例，分布在 ${inventoryData.resources.length} 个资源类型中。`}
+              type="success"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>资源汇总统计：</Text>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  {['AWS', 'AliCloud', 'Kubernetes'].map(category => {
+                    const categoryResources = inventoryData.resources.filter(r => r.category === category)
+                    const categoryCount = categoryResources.reduce((sum, r) => sum + r.count, 0)
+                    return (
+                      <div key={category} style={{ 
+                        padding: 8, 
+                        background: '#fafafa', 
+                        borderRadius: 4,
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontWeight: 500 }}>{category}</div>
+                        <div style={{ fontSize: 18, color: '#1890ff', fontWeight: 600 }}>
+                          {categoryCount}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666' }}>
+                          {categoryResources.length} 类型
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>资源详情列表：</Text>
+              <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
+                {inventoryData.resources.map(resource => (
+                  <div 
+                    key={resource.id}
+                    style={{
+                      padding: '12px',
+                      marginBottom: 8,
+                      border: '1px solid #f0f0f0',
+                      borderRadius: 6,
+                      background: '#fff'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 14 }}>{resource.name}</span>
+                          <span style={{ 
+                            background: '#e6f7ff', 
+                            padding: '2px 6px', 
+                            borderRadius: 4, 
+                            fontSize: 11,
+                            color: '#1890ff'
+                          }}>
+                            {resource.count} 个
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+                          {resource.category} · {resource.type}
+                        </div>
+                        {resource.details && (
+                          <div style={{ fontSize: 11, color: '#999' }}>
+                            {resource.details.slice(0, 2).map((detail, index) => (
+                              <div key={index} style={{ marginBottom: 1 }}>• {detail}</div>
+                            ))}
+                            {resource.details.length > 2 && (
+                              <div style={{ fontStyle: 'italic' }}>... 等 {resource.details.length} 个实例</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </Card>
   )
