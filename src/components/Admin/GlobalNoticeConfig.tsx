@@ -32,19 +32,19 @@ const createInitialRules = (): NoticeRuleRow[] => [
     id: 'r1',
     topic: 'HPA',
     typeName: '开启HPA ',
-    channelEnabled: { 'publisher-group': true, 'monitor-group': true }
+    channelEnabled: { 'publisher-project': true, 'GameMonitoring': true }
   },
   {
     id: 'r2',
     topic: 'HPA',
     typeName: '关闭HPA ',
-    channelEnabled: { 'publisher-group': true, 'monitor-group': true }
+    channelEnabled: { 'publisher-project': true, 'GameMonitoring': true }
   },
   {
     id: 'r3',
     topic: '静态资源与CDN',
     typeName: '翻译文本同步 CDN 失败',
-    channelEnabled: { 'publisher-group': true, 'monitor-group': true }
+    channelEnabled: { 'publisher-project': true, 'GameMonitoring': true }
   }
 ]
 
