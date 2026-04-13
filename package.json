@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "notify:hooks:install": "bash scripts/install-openclaw-hooks.sh",
+    "notify:send:test": "OPENCLAW_NOTIFY_DRY_RUN=1 OPENCLAW_FEISHU_TARGET=${OPENCLAW_FEISHU_TARGET:-dry-run-target} bash scripts/notify-feishu-update.sh commit"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

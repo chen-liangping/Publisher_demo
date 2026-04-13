@@ -43,13 +43,13 @@ function getMethodStatus(m: NotificationMethod): HealthStatus {
 function statusTag(status: HealthStatus): React.ReactElement {
   if (status === 'normal') {
     return (
-      <Tag bordered={false} color="green" style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
+      <Tag color="green" style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
         正常
       </Tag>
     )
   }
   return (
-    <Tag bordered={false} color="red" style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
+    <Tag color="red" style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
       异常
     </Tag>
   )
@@ -228,7 +228,7 @@ export default function SiteNoticeConfig(): React.ReactElement {
               {uniqOwners.map((o) => (
                 <Tag
                   key={o}
-                  bordered={false}
+                  
                   style={{
                     borderRadius: 999,
                     paddingInline: 10,

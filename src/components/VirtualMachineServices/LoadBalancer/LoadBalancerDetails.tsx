@@ -371,7 +371,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
       key: 'protocolPort',
       render: (_: unknown, record: ListenerRule) => (
         <span>
-          <Tag bordered={false}>{record.protocol}</Tag>
+          <Tag >{record.protocol}</Tag>
           <span style={{ margin: '0 4px' }}>:</span>
           <span>{record.port}</span>
         </span>
@@ -384,7 +384,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
       render: (protocol: string) => {
         // HTTP 和 HTTPS 的后端协议都是 HTTP，其他协议保持不变
         const backendProtocol = (protocol === 'HTTP' || protocol === 'HTTPS') ? 'HTTP' : protocol
-        return <Tag bordered={false}>{backendProtocol}</Tag>
+        return <Tag >{backendProtocol}</Tag>
       }
     },
     {
@@ -397,7 +397,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
       dataIndex: 'healthCheck',
       key: 'healthCheck',
       render: (healthCheck: string) => (
-        <Tag color={healthCheck === 'enabled' ? 'success' : 'default'} bordered={false}>
+        <Tag color={healthCheck === 'enabled' ? 'success' : 'default'} >
           {healthCheck === 'enabled' ? '已启用' : '未启用'}
         </Tag>
       )
@@ -413,7 +413,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
             status === 'stopped' ? 'default' :
             'processing'
           } 
-          bordered={false}
+          
         >
           {status === 'running' ? '运行中' :
            status === 'stopped' ? '已停止' :
@@ -554,7 +554,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
         return relatedPolicies.length > 0 ? (
           <Space size={[0, 4]} wrap>
             {relatedPolicies.map(policy => (
-              <Tag key={policy} bordered={false}>{policy}</Tag>
+              <Tag key={policy} >{policy}</Tag>
             ))}
           </Space>
         ) : (
@@ -571,7 +571,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
         return relatedListeners.length > 0 ? (
           <Space size={[0, 4]} wrap>
             {relatedListeners.map(listener => (
-              <Tag key={listener} bordered={false}>{listener}</Tag>
+              <Tag key={listener} >{listener}</Tag>
             ))}
           </Space>
         ) : (
@@ -694,7 +694,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
       render: (_: unknown, record: ServerConfig) => (
         <Space size={[0, 4]} wrap>
           {record.ports.map(port => (
-            <Tag key={port.id} bordered={false}>{port.weight}</Tag>
+            <Tag key={port.id} >{port.weight}</Tag>
           ))}
         </Space>
       )
@@ -1630,15 +1630,15 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#666', marginBottom: 8 }}>
                                       <Text type="secondary">├─</Text>
                                       <Text type="secondary">转发策略{index + 1}:</Text>
-                                      <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                      <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                                         {policy.domain}
                                       </Tag>
-                                      <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                      <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                                         {policy.path}
                                       </Tag>
                                       <Text type="secondary">→</Text>
                                       <Tag 
-                                        bordered={false}
+                                        
                                         style={{ 
                                           fontSize: 12, 
                                           margin: 0
@@ -1665,7 +1665,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                             {server.ports.map((portConfig) => (
                                               <Tag 
                                                 key={portConfig.id} 
-                                                bordered={false}
+                                                
                                                 color="blue"
                                                 style={{ fontSize: 11, margin: 0 }}
                                               >
@@ -1687,7 +1687,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                   <Text type="secondary">其他请求</Text>
                                   <Text type="secondary">→</Text>
                                   <Tag 
-                                    bordered={false}
+                                    
                                     style={{ 
                                       fontSize: 12, 
                                       margin: 0
@@ -1711,7 +1711,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                           {server.ports.map((portConfig) => (
                                             <Tag 
                                               key={portConfig.id} 
-                                              bordered={false}
+                                              
                                               color="blue"
                                               style={{ fontSize: 11, margin: 0 }}
                                             >
@@ -1961,7 +1961,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                   render: (_: unknown, record: ServerConfig) => (
                                     <Space>
                                       {record.ports.map(p => (
-                                        <Tag key={p.id} bordered={false}>{p.port}</Tag>
+                                        <Tag key={p.id} >{p.port}</Tag>
                                       ))}
                                     </Space>
                                   )
@@ -1972,7 +1972,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                                   render: (_: unknown, record: ServerConfig) => (
                                     <Space>
                                       {record.ports.map(p => (
-                                        <Tag key={p.id} bordered={false}>{p.weight}</Tag>
+                                        <Tag key={p.id} >{p.weight}</Tag>
                                       ))}
                                     </Space>
                                   )
@@ -2601,19 +2601,19 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                         </Text>
                         <div style={{ flex: 1 }}>
                           {ruleIndex === 0 && (
-                            <Tag bordered={false} style={{ fontFamily: 'monospace' }}>
+                            <Tag  style={{ fontFamily: 'monospace' }}>
                               {rule.domain || '-'}
                             </Tag>
                           )}
                         </div>
                         <div style={{ color: '#999', fontSize: 16, fontWeight: 'bold' }}>/</div>
                         <div style={{ flex: 1 }}>
-                          <Tag bordered={false} style={{ fontFamily: 'monospace' }}>
+                          <Tag  style={{ fontFamily: 'monospace' }}>
                             {rule.path || '-'}
                           </Tag>
                         </div>
                         <div style={{ flex: 1.2 }}>
-                          <Tag bordered={false}>{rule.serverGroup}</Tag>
+                          <Tag >{rule.serverGroup}</Tag>
                         </div>
                         <div style={{ flex: 1.5 }}>
                           <Text type="secondary">{rule.remark || '-'}</Text>
@@ -2663,11 +2663,11 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                 </div>
                 <div style={{ display: 'flex' }}>
                   <Text strong style={{ width: 120 }}>前端协议：</Text>
-                  <Tag bordered={false}>{selectedListenerDetail.protocol}</Tag>
+                  <Tag >{selectedListenerDetail.protocol}</Tag>
                 </div>
                 <div style={{ display: 'flex' }}>
                   <Text strong style={{ width: 120 }}>后端协议：</Text>
-                  <Tag bordered={false}>
+                  <Tag >
                     {(selectedListenerDetail.protocol === 'HTTP' || selectedListenerDetail.protocol === 'HTTPS') ? 'HTTP' : selectedListenerDetail.protocol}
                   </Tag>
                 </div>
@@ -2681,7 +2681,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                 </div>
                 <div style={{ display: 'flex' }}>
                   <Text strong style={{ width: 120 }}>健康检查：</Text>
-                  <Tag color={selectedListenerDetail.healthCheck === 'enabled' ? 'success' : 'default'} bordered={false}>
+                  <Tag color={selectedListenerDetail.healthCheck === 'enabled' ? 'success' : 'default'} >
                     {selectedListenerDetail.healthCheck === 'enabled' ? '已启用' : '未启用'}
                   </Tag>
                 </div>
@@ -2693,7 +2693,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                       selectedListenerDetail.status === 'stopped' ? 'default' :
                       'processing'
                     } 
-                    bordered={false}
+                    
                   >
                     {selectedListenerDetail.status === 'running' ? '运行中' :
                      selectedListenerDetail.status === 'stopped' ? '已停止' :
@@ -2718,15 +2718,15 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#666' }}>
                             <Text type="secondary">├─</Text>
                             <Text type="secondary">转发策略{index + 1}:</Text>
-                            <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                            <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                               {policy.domain}
                             </Tag>
-                            <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                            <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                               {policy.path}
                             </Tag>
                             <Text type="secondary">→</Text>
                             <Tag 
-                              bordered={false}
+                              
                               style={{ 
                                 fontSize: 12, 
                                 margin: 0
@@ -2750,7 +2750,7 @@ export default function LoadBalancerDetails({ loadBalancer, onBack, systemManage
                           <Text type="secondary">其他请求</Text>
                           <Text type="secondary">→</Text>
                           <Tag 
-                            bordered={false}
+                            
                             style={{ 
                               fontSize: 12, 
                               margin: 0

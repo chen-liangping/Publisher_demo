@@ -39,6 +39,15 @@ interface DBInstance {
   username?: string
   status?: string
   password?: string
+  // MongoDB 专用字段：只读和读写用户信息
+  readonlyUser?: {
+    username: string
+    password: string
+  }
+  readwriteUser?: {
+    username: string
+    password: string
+  }
   gameId?: string
   // 最近一次备份时间（用于"复制生产数据"）
   backupTime?: string
@@ -77,6 +86,15 @@ interface WhitelistItem {
   remark?: string
 }
 
+// MongoDB 数据库权限相关类型
+interface MongoDatabase {
+  id: string
+  dbName: string
+  remark?: string         // 数据库用途备注
+  readonlyAccess: boolean  // 只读账号是否有权限
+  readwriteAccess: boolean // 读写账号是否有权限
+}
+
 // 审计条目类型（简化）
 interface AuditItem {
   action: 'add' | 'delete'
@@ -94,8 +112,58 @@ const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
   { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
   { id: '3', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '分片集群', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
-  { id: '4', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '分片集群实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
-  { id: '5', type: 'Mongo', alias: 'mongo-test', spec: '2核4GB', arch: '副本集实例', username: 'gamedemo_test', status: 'running', password: 'mongopass', gameId: AUTO_GAME_ID, version: 'Mongo 4.4', connectionCount: 15000, defaultPort: 27017, capacity: '50GB', MongoSpec: '2核4GB', MongoCount: 2, shardSpec: '4核8G', shardCount: 2, backupTime: '2024/09/03 21:05:00'},
+  { 
+    id: '4', 
+    type: 'Mongo', 
+    alias: 'mongo-test', 
+    spec: '2核4GB', 
+    arch: '分片集群实例', 
+    status: 'running', 
+    gameId: AUTO_GAME_ID, 
+    version: 'Mongo 4.4', 
+    connectionCount: 15000, 
+    defaultPort: 27017, 
+    capacity: '50GB', 
+    MongoSpec: '2核4GB', 
+    MongoCount: 2, 
+    shardSpec: '4核8G', 
+    shardCount: 2, 
+    backupTime: '2024/09/03 21:05:00',
+    readonlyUser: {
+      username: 'gamedemo_readonly',
+      password: 'readonly123'
+    },
+    readwriteUser: {
+      username: 'gamedemo_readwrite', 
+      password: 'readwrite456'
+    }
+  },
+  { 
+    id: '5', 
+    type: 'Mongo', 
+    alias: 'mongo-test', 
+    spec: '2核4GB', 
+    arch: '副本集实例', 
+    status: 'running', 
+    gameId: AUTO_GAME_ID, 
+    version: 'Mongo 4.4', 
+    connectionCount: 15000, 
+    defaultPort: 27017, 
+    capacity: '50GB', 
+    MongoSpec: '2核4GB', 
+    MongoCount: 2, 
+    shardSpec: '4核8G', 
+    shardCount: 2, 
+    backupTime: '2024/09/03 21:05:00',
+    readonlyUser: {
+      username: 'gamedemo_readonly',
+      password: 'readonly789'
+    },
+    readwriteUser: {
+      username: 'gamedemo_readwrite',
+      password: 'readwrite012'
+    }
+  },
   { id: '6', type: 'Zookeeper', alias: 'zookeeper-test', spec: '2核2GB', arch: '标准版', username: 'gamedemo_test', status: 'running', password: 'zkpass', gameId: AUTO_GAME_ID, version: 'Zookeeper 3.6', defaultPort: 2181, backupTime: '2024/09/01 09:00:00' }
 ]
 
@@ -105,10 +173,123 @@ const mockProductionData: DBInstance[] = [
   { id: 'prod-2', type: 'MySQL', alias: 'mysql-prod-backup', spec: '4核16GB', arch: '集群版', username: 'prod_user', status: 'running', password: 'prod123', gameId: 'production', version: 'MySQL 8.0', connectionCount: 30000, defaultPort: 3306, capacity: '500GB' },
   { id: 'prod-3', type: 'Redis', alias: 'redis-prod-cache', spec: '16核64GB', arch: '双机主备架构', username: 'prod_user', status: 'running', password: 'prodpass', gameId: 'production', version: 'Redis 7.0', connectionCount: 100000, defaultPort: 6379, capacity: '200GB' },
   { id: 'prod-4', type: 'Redis', alias: 'redis-prod-session', spec: '8核32GB', arch: '双机主备架构', username: 'prod_user', status: 'running', password: 'prodpass', gameId: 'production', version: 'Redis 7.0', connectionCount: 80000, defaultPort: 6379, capacity: '100GB' },
-  { id: 'prod-5', type: 'Mongo', alias: 'mongo-prod-user', spec: '8核16GB', arch: '副本集实例', username: 'prod_user', status: 'running', password: 'mongoprod', gameId: 'production', version: 'Mongo 5.0', connectionCount: 60000, defaultPort: 27017, capacity: '300GB' },
-  { id: 'prod-6', type: 'Mongo', alias: 'mongo-prod-logs', spec: '4核8GB', arch: '副本集实例', username: 'prod_user', status: 'running', password: 'mongoprod', gameId: 'production', version: 'Mongo 5.0', connectionCount: 40000, defaultPort: 27017, capacity: '500GB' },
+  { 
+    id: 'prod-5', 
+    type: 'Mongo', 
+    alias: 'mongo-prod-user', 
+    spec: '8核16GB', 
+    arch: '副本集实例', 
+    status: 'running', 
+    gameId: 'production', 
+    version: 'Mongo 5.0', 
+    connectionCount: 60000, 
+    defaultPort: 27017, 
+    capacity: '300GB',
+    readonlyUser: {
+      username: 'prod_readonly',
+      password: 'prodread123'
+    },
+    readwriteUser: {
+      username: 'prod_readwrite',
+      password: 'prodwrite456'
+    }
+  },
+  { 
+    id: 'prod-6', 
+    type: 'Mongo', 
+    alias: 'mongo-prod-logs', 
+    spec: '4核8GB', 
+    arch: '副本集实例', 
+    status: 'running', 
+    gameId: 'production', 
+    version: 'Mongo 5.0', 
+    connectionCount: 40000, 
+    defaultPort: 27017, 
+    capacity: '500GB',
+    readonlyUser: {
+      username: 'prod_readonly',
+      password: 'prodread789'
+    },
+    readwriteUser: {
+      username: 'prod_readwrite',
+      password: 'prodwrite012'
+    }
+  },
   { id: 'prod-7', type: 'Zookeeper', alias: 'zk-prod-cluster', spec: '4核8GB', arch: '标准版', username: 'prod_user', status: 'running', password: 'zkprod', gameId: 'production', version: 'Zookeeper 3.8', defaultPort: 2181 }
 ]
+
+// MongoDB 数据库权限管理 Mock 数据
+const mockMongoDatabases: Record<string, MongoDatabase[]> = {
+  '4': [ // mongo-test (分片集群)
+    {
+      id: 'db1',
+      dbName: 'gamedata',
+      remark: '游戏核心数据存储',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db2',
+      dbName: 'userinfo',
+      remark: '用户基础信息管理',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db3',
+      dbName: 'logs',
+      remark: '系统日志记录',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db4',
+      dbName: 'analytics',
+      remark: '数据分析统计',
+      readonlyAccess: true,
+      readwriteAccess: true
+    }
+  ],
+  '5': [ // mongo-test (副本集)
+    {
+      id: 'db5',
+      dbName: 'gamedata',
+      remark: '游戏数据备份',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db6',
+      dbName: 'cache',
+      remark: '缓存数据存储',
+      readonlyAccess: true,
+      readwriteAccess: true
+    }
+  ],
+  'prod-5': [ // mongo-prod-user
+    {
+      id: 'db7',
+      dbName: 'gamedata',
+      remark: '生产环境游戏数据',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db8',
+      dbName: 'userprofiles',
+      remark: '用户档案信息',
+      readonlyAccess: true,
+      readwriteAccess: true
+    },
+    {
+      id: 'db9',
+      dbName: 'analytics',
+      remark: '业务数据分析',
+      readonlyAccess: true,
+      readwriteAccess: true
+    }
+  ]
+}
 
 export default function ContainerDatabase() {
   const [selectedInstance, setSelectedInstance] = useState<DBInstance | null>(null)
@@ -162,6 +343,19 @@ export default function ContainerDatabase() {
   // 规格详情 Modal
   const [specDetailOpen, setSpecDetailOpen] = useState<boolean>(false)
   const [selectedSpecInstance, setSelectedSpecInstance] = useState<DBInstance | null>(null)
+  
+  // MongoDB 权限管理相关状态
+  const [dbPermissionOpen, setDbPermissionOpen] = useState<boolean>(false)
+  const [selectedDbInstance, setSelectedDbInstance] = useState<DBInstance | null>(null)
+  const [showCreateDatabase, setShowCreateDatabase] = useState<boolean>(false)
+  const [newDatabaseName, setNewDatabaseName] = useState<string>('')
+  const [newDatabaseRemark, setNewDatabaseRemark] = useState<string>('')
+  
+  // MongoDB 数据库查询相关状态
+  const [dbQueryOpen, setDbQueryOpen] = useState<boolean>(false)
+  const [selectedQueryInstance, setSelectedQueryInstance] = useState<DBInstance | null>(null)
+  const [queryCommand, setQueryCommand] = useState<string>('')
+  const [queryResult, setQueryResult] = useState<string>('')
   const [mockPairings, setMockPairings] = useState<Record<string, string>>({}) // testId -> prodId
   const [mockProgress, setMockProgress] = useState<{
     visible: boolean
@@ -573,7 +767,7 @@ export default function ContainerDatabase() {
     const user = inst.username || `${AUTO_GAME_ID}_user`
     const masked = '****************'
     const type = (inst.type || 'db').toLowerCase()
-    const hostBase = `${inst.alias}.${type}.stg.g123-cpp.com`
+    const hostBase = `${inst?.alias || '未知实例'}.${type}.stg.g123-cpp.com`
     const port = String(inst.defaultPort || 3306)
 
     switch (type) {
@@ -1110,7 +1304,7 @@ export default function ContainerDatabase() {
                               <Avatar shape="square" style={{ width: 64, height: 64, fontSize: 32, background: 'rgba(0,0,0,0.04)' }}>{(inst.type || 'DB')[0]}</Avatar>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: 20, color: 'rgb(17,25,40)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <strong>{inst.type}<span style={{fontSize: 18, color: 'rgba(0,0,0,0.45)', marginLeft: 4 }}>{inst.alias}</span></strong>
+                                  <strong>{inst.type}<span style={{fontSize: 18, color: 'rgba(0,0,0,0.45)', marginLeft: 4 }}>{inst?.alias || '未知实例'}</span></strong>
                                   {inst.domainUsed && (
                                     <Tag color="orange" style={{ fontSize: '10px' }}>域名已指向生产数据备份</Tag>
                                   )}
@@ -1136,7 +1330,7 @@ export default function ContainerDatabase() {
                                     <>
                                       <Button 
                                         icon={<ClockCircleOutlined />} 
-                                        onClick={() => message.info(`慢日志 ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`慢日志 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         慢日志
                                       </Button>
@@ -1151,11 +1345,25 @@ export default function ContainerDatabase() {
                                         IP白名单
                                       </Button>
                                       <Button 
-                                        type="primary" 
                                         icon={<SearchOutlined />} 
-                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                        onClick={() => {
+                                          setSelectedQueryInstance(inst);
+                                          setDbQueryOpen(true);
+                                          setQueryCommand('');
+                                          setQueryResult('');
+                                        }}
                                       >
-                                        数据库查询
+                                        数据库
+                                      </Button>
+                                      <Button 
+                                        type="primary" 
+                                        icon={<UserAddOutlined />} 
+                                        onClick={() => {
+                                          setSelectedDbInstance(inst);
+                                          setDbPermissionOpen(true);
+                                        }}
+                                      >
+                                        数据库权限
                                       </Button>
                                     </>
                                   )
@@ -1165,13 +1373,13 @@ export default function ContainerDatabase() {
                                     <>
                                       <Button 
                                         icon={<RollbackOutlined />} 
-                                        onClick={() => message.info(`恢复 ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`恢复 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         数据库恢复
                                       </Button>
                                       <Button 
                                         icon={<ClockCircleOutlined />} 
-                                        onClick={() => message.info(`慢SQL ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`慢SQL ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         慢SQL
                                       </Button>
@@ -1188,7 +1396,7 @@ export default function ContainerDatabase() {
                                       <Button 
                                         type="primary" 
                                         icon={<SearchOutlined />} 
-                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`查询 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         数据库查询
                                       </Button>
@@ -1200,7 +1408,7 @@ export default function ContainerDatabase() {
                                     <>
                                       <Button 
                                         icon={<CloudUploadOutlined />} 
-                                        onClick={() => message.info(`备份 ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`备份 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         备份
                                       </Button>
@@ -1217,7 +1425,7 @@ export default function ContainerDatabase() {
                                       <Button 
                                         type="primary" 
                                         icon={<SearchOutlined />} 
-                                        onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                        onClick={() => message.info(`查询 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         数据库查询
                                       </Button>
@@ -1255,7 +1463,7 @@ export default function ContainerDatabase() {
                                     <Button 
                                       type="primary" 
                                       icon={<SearchOutlined />} 
-                                      onClick={() => message.info(`查询 ${inst.alias}（模拟）`)}
+                                      onClick={() => message.info(`查询 ${inst?.alias || '未知实例'}（模拟）`)}
                                     >
                                       数据库查询
                                     </Button>
@@ -1289,36 +1497,87 @@ export default function ContainerDatabase() {
                         </div>
                         {/* 配置 */}
                         <div style={{ fontWeight: 700, color: 'rgba(0,0,0,0.88)', marginBottom: 8 }}>配置</div>
-                        <Descriptions size="small" column={2} bordered={false} styles={{ label: { color: 'rgba(0,0,0,0.88)', width: 112 } }}>
-                          <Descriptions.Item label="用户名">{inst.username || '-'}</Descriptions.Item>
-                          <Descriptions.Item label="密码">
-                            <span>{maskPassword(inst.password)}</span>
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              icon={<CopyOutlined />} 
-                              onClick={() => copyPassword(inst.password)} 
-                              style={{ paddingLeft: 8 }} 
-                            />
-                          </Descriptions.Item>
-                          <Descriptions.Item label="版本">{inst.version || '-'}</Descriptions.Item>
-                          <Descriptions.Item label="架构类型">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span>{inst.arch || '-'}</span>
-                              <Typography.Link 
-                                onClick={() => {
-                                  setSelectedSpecInstance(inst)
-                                  setSpecDetailOpen(true)
-                                }}
-                                style={{ fontSize: 12 }}
-                              >
-                                查看规格
-                              </Typography.Link>
-                            </div>
-                          </Descriptions.Item>
-                          <Descriptions.Item label="最大连接数">{inst.connectionCount ?? '-'}</Descriptions.Item>
-                          <Descriptions.Item label="默认端口" span={2}>{inst.defaultPort ?? '-'}</Descriptions.Item>
-                        </Descriptions>
+                        
+                        {/* MongoDB 特殊显示：显示两个用户 */}
+                        {(inst.type === 'Mongo' || inst.type === 'mongo' || inst.type === 'mongodb') ? (
+                          <Descriptions size="small" column={2}>
+                            <Descriptions.Item label="只读用户" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>
+                              {inst.readonlyUser?.username || '-'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="只读密码">
+                              <span>{maskPassword(inst.readonlyUser?.password)}</span>
+                              <Button 
+                                type="text" 
+                                size="small" 
+                                icon={<CopyOutlined />} 
+                                onClick={() => copyPassword(inst.readonlyUser?.password)} 
+                                style={{ paddingLeft: 8 }} 
+                              />
+                            </Descriptions.Item>
+                            <Descriptions.Item label="读写用户" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>
+                              {inst.readwriteUser?.username || '-'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="读写密码">
+                              <span>{maskPassword(inst.readwriteUser?.password)}</span>
+                              <Button 
+                                type="text" 
+                                size="small" 
+                                icon={<CopyOutlined />} 
+                                onClick={() => copyPassword(inst.readwriteUser?.password)} 
+                                style={{ paddingLeft: 8 }} 
+                              />
+                            </Descriptions.Item>
+                            <Descriptions.Item label="版本" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.version || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="架构类型" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span>{inst.arch || '-'}</span>
+                                <Typography.Link 
+                                  onClick={() => {
+                                    setSelectedSpecInstance(inst)
+                                    setSpecDetailOpen(true)
+                                  }}
+                                  style={{ fontSize: 12 }}
+                                >
+                                  查看规格
+                                </Typography.Link>
+                              </div>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
+                            <Descriptions.Item label="默认端口" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                          </Descriptions>
+                        ) : (
+                          /* 其他数据库类型的通用显示 */
+                          <Descriptions size="small" column={2}>
+                            <Descriptions.Item label="用户名" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.username || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="密码">
+                              <span>{maskPassword(inst.password)}</span>
+                              <Button 
+                                type="text" 
+                                size="small" 
+                                icon={<CopyOutlined />} 
+                                onClick={() => copyPassword(inst.password)} 
+                                style={{ paddingLeft: 8 }} 
+                              />
+                            </Descriptions.Item>
+                            <Descriptions.Item label="版本" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.version || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="架构类型" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span>{inst.arch || '-'}</span>
+                                <Typography.Link 
+                                  onClick={() => {
+                                    setSelectedSpecInstance(inst)
+                                    setSpecDetailOpen(true)
+                                  }}
+                                  style={{ fontSize: 12 }}
+                                >
+                                  查看规格
+                                </Typography.Link>
+                              </div>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
+                            <Descriptions.Item label="默认端口" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                          </Descriptions>
+                        )}
                       </div>
                     </Card>
                   )
@@ -1907,7 +2166,7 @@ export default function ContainerDatabase() {
                 onChange={handleTestSelectionChange}
                 options={getTestInstances().map(inst => ({
                   value: inst.id,
-                  label: `${inst.type}-${inst.alias}`
+                  label: `${inst.type}-${inst?.alias || '未知实例'}`
                 }))}
                 maxTagCount="responsive"
               />
@@ -2458,6 +2717,389 @@ export default function ContainerDatabase() {
           )
         })()}
       </Modal>
+
+      {/* MongoDB 权限管理弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <UserAddOutlined />
+            <span>MongoDB 数据库权限 - {selectedDbInstance?.alias || '未知实例'}</span>
+          </div>
+        }
+        open={dbPermissionOpen}
+        onCancel={() => {
+          setDbPermissionOpen(false);
+          setSelectedDbInstance(null);
+        }}
+        footer={null}
+        width={1000}
+        destroyOnHidden
+      >
+        {selectedDbInstance && (
+          <div style={{ padding: '16px 0' }}>
+            {/* 实例信息 */}
+            <div style={{ 
+              background: '#f8f9fa', 
+              padding: 16, 
+              borderRadius: 6, 
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}>
+                  <svg viewBox="0 0 32 32" width="32" height="32">
+                    <path fill="#13aa52" d="M15.9.087l.854 1.604c.192.296.4.558.645.802a22.406 22.406 0 012.004 2.266c1.447 1.9 2.423 4.01 3.12 6.292.418 1.394.645 2.824.662 4.27.07 4.323-1.412 8.035-4.4 11.12a12.7 12.7 0 01-1.57 1.342c-.296 0-.436-.227-.558-.436a3.589 3.589 0 01-.436-1.255c-.105-.523-.174-1.046-.14-1.586v-.244C16.057 24.21 15.796.21 15.9.087z"/>
+                    <path fill="#13aa52" d="M15.9.034c-.035-.07-.07-.017-.105.017.017.35-.105.662-.296.96-.21.296-.488.523-.767.767-1.55 1.342-2.77 2.963-3.747 4.776-1.3 2.44-1.97 5.055-2.16 7.808-.087.993.314 4.497.627 5.508.854 2.684 2.388 4.933 4.375 6.885.488.47 1.01.906 1.55 1.325.157 0 .174-.14.21-.244a4.78 4.78 0 00.157-.68l.35-2.614z"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
+                    {selectedDbInstance.alias}
+                  </div>
+                  <div style={{ fontSize: 14, color: '#666' }}>
+                    {selectedDbInstance.arch} · {selectedDbInstance.spec}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                    只读账号: {selectedDbInstance.readonlyUser?.username || 'N/A'} | 读写账号: {selectedDbInstance.readwriteUser?.username || 'N/A'}
+                  </div>
+                </div>
+              </div>
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                onClick={() => setShowCreateDatabase(true)}
+              >
+                分配数据库权限
+              </Button>
+            </div>
+
+            {/* 数据库列表 */}
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+              数据库权限管理
+            </div>
+            
+            <div style={{ border: '1px solid #e8e8e8', borderRadius: 6 }}>
+              {/* 表头 */}
+              <div style={{ 
+                display: 'flex', 
+                background: '#fafafa', 
+                padding: '12px 16px',
+                borderBottom: '1px solid #e8e8e8',
+                fontWeight: 600
+              }}>
+                <div style={{ flex: '0 0 200px' }}>数据库名称</div>
+                <div style={{ flex: 1 }}>用途备注</div>
+                <div style={{ flex: '0 0 100px', textAlign: 'center' }}>权限状态</div>
+              </div>
+              
+              {/* 数据行 */}
+              {(mockMongoDatabases[selectedDbInstance.id] || []).map((db) => (
+                <div 
+                  key={db.id}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    padding: '16px',
+                    borderBottom: '1px solid #f0f0f0'
+                  }}
+                >
+                  <div style={{ flex: '0 0 200px' }}>
+                    <div style={{ fontWeight: 500, fontSize: 15 }}>
+                      {db.dbName}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, color: '#666' }}>
+                      {db.remark || '暂无备注'}
+                    </div>
+                  </div>
+                  <div style={{ flex: '0 0 100px', textAlign: 'center' }}>
+                    <Tag 
+                      color="success"
+                      style={{ borderRadius: 12 }}
+                    >
+                      已授权 ✓
+                    </Tag>
+                  </div>
+                </div>
+              ))}
+              
+              {(!mockMongoDatabases[selectedDbInstance.id] || mockMongoDatabases[selectedDbInstance.id].length === 0) && (
+                <div style={{ 
+                  padding: 48,
+                  textAlign: 'center',
+                  color: '#999'
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 8 }}>暂无数据库</div>
+                  <div style={{ fontSize: 14, marginBottom: 16 }}>创建第一个数据库开始使用</div>
+                  <Button 
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => setShowCreateDatabase(true)}
+                  >
+                    新建数据库
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* 底部说明 */}
+            <div style={{ 
+              marginTop: 24,
+              padding: 12,
+              background: '#f0f9ff',
+              border: '1px solid #bae7ff',
+              borderRadius: 6,
+              fontSize: 13,
+              color: '#0958d9'
+            }}>
+              <strong>说明：</strong>
+              新建数据库后，系统会自动为只读和读写账号授予完整权限。建议在备注中说明数据库的具体用途，便于后续管理。
+            </div>
+          </div>
+        )}
+
+        {/* 新建数据库弹窗 */}
+        <Modal
+          title="新建数据库"
+          open={showCreateDatabase}
+          onOk={() => {
+            if (!newDatabaseName.trim()) {
+              message.error('请输入数据库名称')
+              return
+            }
+            message.success(`数据库 "${newDatabaseName}" 创建成功，已自动授权给只读和读写账号`)
+            setNewDatabaseName('')
+            setNewDatabaseRemark('')
+            setShowCreateDatabase(false)
+          }}
+          onCancel={() => {
+            setNewDatabaseName('')
+            setNewDatabaseRemark('')
+            setShowCreateDatabase(false)
+          }}
+          okText="创建"
+          cancelText="取消"
+        >
+          <div style={{ padding: '16px 0' }}>
+            <Form layout="vertical">
+              <Form.Item 
+                label="数据库名称" 
+                required
+              >
+                <Input
+                  placeholder="请输入数据库名称，如: gamedata"
+                  value={newDatabaseName}
+                  onChange={(e) => setNewDatabaseName(e.target.value)}
+                  onPressEnter={() => {
+                    if (newDatabaseName.trim()) {
+                      message.success(`数据库 "${newDatabaseName}" 创建成功，已自动授权给只读和读写账号`)
+                      setNewDatabaseName('')
+                      setNewDatabaseRemark('')
+                      setShowCreateDatabase(false)
+                    }
+                  }}
+                />
+              </Form.Item>
+              
+              <Form.Item label="用途备注">
+                <Input.TextArea
+                  placeholder="请输入数据库用途说明，如: 游戏核心数据存储"
+                  value={newDatabaseRemark}
+                  onChange={(e) => setNewDatabaseRemark(e.target.value)}
+                  rows={3}
+                  maxLength={200}
+                  showCount
+                />
+              </Form.Item>
+              
+              <div style={{ 
+                background: '#f8f9fa',
+                padding: 12,
+                borderRadius: 6,
+                fontSize: 13,
+                color: '#666'
+              }}>
+                <div style={{ marginBottom: 8, fontWeight: 500 }}>创建后将自动执行：</div>
+                <div>• 为只读账号授予该数据库的读取权限</div>
+                <div>• 为读写账号授予该数据库的读写权限</div>
+              </div>
+            </Form>
+          </div>
+        </Modal>
+      </Modal>
+
+      {/* MongoDB 数据库查询抽屉 */}
+      <Drawer
+        title="数据库查询"
+        open={dbQueryOpen}
+        onClose={() => {
+          setDbQueryOpen(false);
+          setSelectedQueryInstance(null);
+          setQueryCommand('');
+          setQueryResult('');
+        }}
+        width={1000}
+        destroyOnClose
+      >
+        {selectedQueryInstance && (
+          <div style={{ minHeight: '500px' }}>
+            {/* MongoDB 实例信息 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 20,
+              padding: 16,
+              background: '#f8f9fa',
+              borderRadius: 6
+            }}>
+              <div style={{
+                width: 24,
+                height: 24,
+                borderRadius: 4,
+                background: '#13aa52',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <div style={{ 
+                  width: 8, 
+                  height: 8, 
+                  background: '#fff', 
+                  borderRadius: '50%' 
+                }}></div>
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>
+                  MongoDB
+                </div>
+                <div style={{ fontSize: 13, color: '#666' }}>
+                  为测试正式环境，仅支持查询 Publisher 相关数据库，请勿数据修改，名称限制为 testapp_ 开头
+                </div>
+              </div>
+            </div>
+
+            {/* 查询输入框 */}
+            <div style={{ marginBottom: 20 }}>
+              <Input.TextArea
+                value={queryCommand}
+                onChange={(e) => setQueryCommand(e.target.value)}
+                placeholder='> use testapp'
+                rows={6}
+                style={{
+                  fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                  fontSize: 14,
+                  background: '#2d3748',
+                  color: '#e2e8f0',
+                  border: 'none',
+                  borderRadius: 4,
+                  resize: 'none'
+                }}
+                onPressEnter={(e) => {
+                  if (e.ctrlKey || e.metaKey) {
+                    if (queryCommand.trim()) {
+                      setQueryResult(`// 执行查询: ${queryCommand}\n// 模拟结果:\n{\n  "message": "查询执行成功",\n  "command": "${queryCommand}",\n  "timestamp": "${new Date().toISOString()}",\n  "note": "这是模拟结果，实际环境中会返回真实数据"\n}`);
+                    }
+                  }
+                }}
+              />
+              <div style={{ 
+                marginTop: 8,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span style={{ fontSize: 12, color: '#999' }}>
+                  按 Ctrl+Enter (Mac: Cmd+Enter) 执行查询
+                </span>
+                <Button 
+                  type="primary" 
+                  size="small"
+                  onClick={() => {
+                    if (queryCommand.trim()) {
+                      setQueryResult(`// 执行查询: ${queryCommand}\n// 模拟结果:\n{\n  "message": "查询执行成功",\n  "command": "${queryCommand}",\n  "timestamp": "${new Date().toISOString()}",\n  "note": "这是模拟结果，实际环境中会返回真实数据"\n}`);
+                    }
+                  }}
+                  disabled={!queryCommand.trim()}
+                >
+                  执行查询
+                </Button>
+              </div>
+            </div>
+
+            {/* 查询结果标题 */}
+            <div style={{ 
+              fontSize: 14, 
+              fontWeight: 500, 
+              marginBottom: 12,
+              color: '#333'
+            }}>
+              查询结果
+            </div>
+
+            {/* 查询结果区域 */}
+            {queryResult ? (
+              <div style={{
+                background: '#2d3748',
+                color: '#e2e8f0',
+                padding: 16,
+                borderRadius: 4,
+                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                fontSize: 13,
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+                minHeight: 200,
+                maxHeight: 300,
+                overflow: 'auto'
+              }}>
+                {queryResult}
+              </div>
+            ) : (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: 200,
+                color: '#999',
+                border: '1px dashed #d9d9d9',
+                borderRadius: 4,
+                background: '#fafafa'
+              }}>
+                <div style={{ 
+                  width: 48, 
+                  height: 48, 
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#f0f0f0',
+                  borderRadius: '50%',
+                  color: '#ccc'
+                }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </div>
+                <div style={{ fontSize: 16, marginBottom: 8 }}>暂无内容</div>
+                <div style={{ fontSize: 14 }}>输入查询命令并执行以查看结果</div>
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
     </div>
   )
 }

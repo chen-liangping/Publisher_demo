@@ -674,7 +674,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                         key: 'protocol',
                         width: 120,
                         render: (protocol: string) => (
-                          <Tag bordered={false}>{protocol.toUpperCase()}</Tag>
+                          <Tag >{protocol.toUpperCase()}</Tag>
                         )
                       },
                       {
@@ -992,7 +992,7 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                       {option.data.mounted && (
                         <Tag 
                           color="success" 
-                          bordered={false} 
+                           
                           style={{ marginLeft: 8, fontSize: '11px' }}
                         >
                           已挂载

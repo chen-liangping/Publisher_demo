@@ -193,7 +193,7 @@ export default function NotificationControl(): React.ReactElement {
           {r.level === 1 && (
             <Tag
               color={r.key === 'alert-root' ? 'volcano' : 'blue'}
-              bordered={false}
+              
               style={{ borderRadius: 999, paddingInline: 10 }}
             >
               {r.key === 'alert-root' ? '告警' : '通知'}
@@ -262,7 +262,7 @@ export default function NotificationControl(): React.ReactElement {
             title={
               <Space>
                 <span style={{ fontSize: 16 }}>全局通知配置</span>
-                <Tag color="purple" bordered={false} style={{ borderRadius: 999, paddingInline: 10 }}>
+                <Tag color="purple"  style={{ borderRadius: 999, paddingInline: 10 }}>
                   可单独控制
                 </Tag>
               </Space>

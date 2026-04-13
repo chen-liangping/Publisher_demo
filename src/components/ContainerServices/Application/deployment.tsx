@@ -470,7 +470,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       key: 'status',
       render: (val: string) => {
         const color = val === '正常' ? 'green' : val === '故障' ? 'red' : 'orange'
-        return <Tag color={color} bordered={false}>{val}</Tag>
+        return <Tag color={color} >{val}</Tag>
       }
     },
     {
@@ -557,7 +557,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Title level={3} style={{ margin: 0 }}>{name}</Title>
               {appTags.map(t => (
-            <Tag key={t} color={t === '游服' ? '#fa8c16' : '#1890ff'} bordered={false} style={{ marginLeft: 0 }}>{t}</Tag>
+            <Tag key={t} color={t === '游服' ? '#fa8c16' : '#1890ff'}  style={{ marginLeft: 0 }}>{t}</Tag>
               ))}
             </div>
 
@@ -601,7 +601,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                       const parts = String(r.image || '').split(':')
                       const version = parts.length > 1 ? parts[1] : 'latest'
                       return (
-                        <Tag key={r.key} color="green" bordered={false} style={{ marginBottom: 4 }}>{`${r.container}:${version}`}</Tag>
+                        <Tag key={r.key} color="green"  style={{ marginBottom: 4 }}>{`${r.container}:${version}`}</Tag>
                       )
                     })}
                     <Button type="text" icon={<EditOutlined />} onClick={openImageModal} title="管理容器" />
@@ -609,8 +609,8 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>标签</div>
                   <div style={{fontSize: 14, overflow: 'hidden' }}>
-                    <Tag color="blue" bordered={false} style={{ marginRight: 4 }}>gamedemo_efwe:wef</Tag>
-                    <Tag color="blue" bordered={false} style={{ marginRight: 4 }}>key:value</Tag>
+                    <Tag color="blue"  style={{ marginRight: 4 }}>gamedemo_efwe:wef</Tag>
+                    <Tag color="blue"  style={{ marginRight: 4 }}>key:value</Tag>
                   </div>
                 </div>
                 </div>
@@ -634,7 +634,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
               <Col xs={24} sm={12} lg={8}>
               <div style={{ marginBottom: 16 }}>                              
                   <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>状态</div>
-                  <div><Tag color="green" bordered={false}>operable</Tag></div>
+                  <div><Tag color="green" >operable</Tag></div>
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ color: '#666', fontSize: 14, marginBottom: 4 }}>日志</div>
@@ -1122,7 +1122,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                             dataIndex: 'status', 
                             key: 'status', 
                             width: 100,
-                            render: () => <Tag color="green" bordered={false}>正常</Tag>
+                            render: () => <Tag color="green" >正常</Tag>
                           },
                           { 
                             title: '操作', 
@@ -1168,7 +1168,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                       const color = val === '正常' ? 'green' : val === '故障' ? 'red' : 'orange'
                       return (
                         <div>
-                          <Tag color={color} bordered={false}>{val}</Tag>
+                          <Tag color={color} >{val}</Tag>
                           {val === '故障' && (
                             <div style={{ marginTop: 4 }}>
                               <Button 

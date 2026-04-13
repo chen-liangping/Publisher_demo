@@ -172,12 +172,12 @@ initializeFaro({
         
         return errorMessage ? (
           <Tooltip title={errorMessage} placement="topLeft">
-            <Tag bordered={false} color={getStatusColor(status)} style={{ cursor: 'help' }}>
+            <Tag  color={getStatusColor(status)} style={{ cursor: 'help' }}>
               {status}
             </Tag>
           </Tooltip>
         ) : (
-          <Tag bordered={false} color={getStatusColor(status)}>
+          <Tag  color={getStatusColor(status)}>
             {status}
           </Tag>
         )
@@ -249,7 +249,7 @@ initializeFaro({
         }
         
         return (
-          <Tag bordered={false} color={getStatusColor(status)}>
+          <Tag  color={getStatusColor(status)}>
             {status}
           </Tag>
         )

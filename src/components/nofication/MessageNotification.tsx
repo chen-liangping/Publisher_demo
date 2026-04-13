@@ -193,7 +193,7 @@ export default function MessageNotification(props: {
         render: (type: NoticeType) => {
           const t = pickTypeTag(type)
           return (
-            <Tag bordered={false} color={t.color} style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
+            <Tag  color={t.color} style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}>
               {t.label}
             </Tag>
           )
@@ -356,7 +356,7 @@ export default function MessageNotification(props: {
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{detailNotice.title}</div>
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Tag
-                  bordered={false}
+                  
                   color={pickTypeTag(detailNotice.type).color}
                   style={{ borderRadius: 999, paddingInline: 10, opacity: 0.9 }}
                 >
