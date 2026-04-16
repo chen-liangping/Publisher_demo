@@ -982,6 +982,19 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
     })
   }, [appId, description])
 
+  React.useEffect(() => {
+    // 产品意图：把“测试环境是否完成初始化”同步到全局，供顶栏环境切换做前置校验。
+    const isTestEnvInitialized =
+      gameConfig.testInit.clientStatus === 'completed' &&
+      gameConfig.testInit.serverStatus === 'completed'
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        'publisher_demo_test_env_initialized',
+        isTestEnvInitialized ? '1' : '0'
+      )
+    }
+  }, [gameConfig.testInit.clientStatus, gameConfig.testInit.serverStatus])
+
   // 顶层 Tab：游戏初始化 | 资源限额配置 | 自动开服配置 | MSE配置 | Lambda模版
   const [activeMainTab, setActiveMainTab] = useState<string>('init')
   // 限额 / 开服失败 / MSE / Lambda 编辑态：null 表示未编辑，'test'|'prod' 表示正在编辑该环境
@@ -1515,10 +1528,16 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
             </div>
           </div>
 
+          {(() => {
+            const testEnvDone =
+              gameConfig.testInit.clientStatus === 'completed' &&
+              gameConfig.testInit.serverStatus === 'completed'
+
+            return (
           <Collapse
             ghost
             expandIconPosition="start"
-            defaultActiveKey={['test-init', 'prod-init']}
+            defaultActiveKey={testEnvDone ? ['test-init', 'prod-init'] : ['test-init']}
             items={([
               { envKey: 'test' as const, title: '测试环境初始化', key: 'test-init' },
               { envKey: 'prod' as const, title: '正式环境初始化', key: 'prod-init' }
@@ -1527,11 +1546,20 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
               const envClientInitialized = envInit.clientStatus === 'completed'
               const envServerInitialized = envInit.serverStatus === 'completed'
               const envDone = envClientInitialized && envServerInitialized
+              const isProdLocked = env.envKey === 'prod' && !testEnvDone
               return {
                 key: env.key,
+                disabled: isProdLocked,
                 label: (
                   <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingRight: 8 }}>
-                    <Text>{env.title}</Text>
+                    <Space size={8}>
+                      <Text>{env.title}</Text>
+                      {isProdLocked ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          （请先完成测试环境初始化）
+                        </Text>
+                      ) : null}
+                    </Space>
                     <Space size={6}>
                       <span
                         style={{
@@ -1644,6 +1672,8 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
               }
             })}
           />
+            )
+          })()}
         </Card>
               </Space>
             )

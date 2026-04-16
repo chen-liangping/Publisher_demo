@@ -105,6 +105,9 @@ export default function Home() {
   const [selectedProject, setSelectedProject] = useState<'Publisher' | 'Omni' | 'Doraemon' | 'core' | 'Shinchan'>('Publisher')
   // 顶栏：环境开关（默认必须有值，避免空状态；仅区分测试/正式，符合原型常见入口）
   const [isProdEnv, setIsProdEnv] = useState<boolean>(false)
+  // 顶栏环境切换前置：仅当测试环境初始化完成后，才允许切换到正式环境。
+  const [isTestEnvInitialized, setIsTestEnvInitialized] = useState<boolean>(false)
+  const [envSwitchBlockedModalOpen, setEnvSwitchBlockedModalOpen] = useState<boolean>(false)
   // 顶栏：主导航的抽屉（用于“打开游戏/帮助文档”等交互，不仅仅弹 message）
   const [topNavPanel, setTopNavPanel] = useState<null | 'open-game' | 'help'>(null)
   
@@ -166,6 +169,23 @@ export default function Home() {
     const mm = searchParams.get('mode') as Mode | null
     if (mm && mm !== mode) setMode(mm)
   }, [searchParams])
+
+  useEffect(() => {
+    const syncTestInitStatus = (): void => {
+      if (typeof window === 'undefined') return
+      const initialized = window.localStorage.getItem('publisher_demo_test_env_initialized') === '1'
+      setIsTestEnvInitialized(initialized)
+    }
+
+    // 进入页面时先同步一次；切回当前标签页时再次同步，避免状态滞后。
+    syncTestInitStatus()
+    window.addEventListener('focus', syncTestInitStatus)
+    window.addEventListener('storage', syncTestInitStatus)
+    return () => {
+      window.removeEventListener('focus', syncTestInitStatus)
+      window.removeEventListener('storage', syncTestInitStatus)
+    }
+  }, [])
 
   // 渲染右侧内容区域
   const renderContent = (): React.ReactElement => {
@@ -398,7 +418,12 @@ export default function Home() {
             <Switch
               checked={isProdEnv}
               onChange={(checked) => {
-                // 产品意图：用一个显式开关，快速在“测试/正式”之间切换，方便演示不同环境入口。
+                // 产品意图：正式环境入口必须建立在测试环境已初始化的前提下，避免用户误入双初始化流程。
+                if (checked && !isTestEnvInitialized) {
+                  // 使用受控弹窗，确保拦截提示在当前页面稳定可见。
+                  setEnvSwitchBlockedModalOpen(true)
+                  return
+                }
                 setIsProdEnv(checked)
               }}
               aria-label="切换测试/正式环境"
@@ -569,6 +594,17 @@ export default function Home() {
       >
         <PlausibleLikeDashboard />
       </Drawer>
+
+      <Modal
+        title="请先完成测试环境初始化"
+        open={envSwitchBlockedModalOpen}
+        onOk={() => setEnvSwitchBlockedModalOpen(false)}
+        onCancel={() => setEnvSwitchBlockedModalOpen(false)}
+        okText="我知道了"
+        cancelButtonProps={{ style: { display: 'none' } }}
+      >
+        当前不允许直接切换到正式环境。请先在测试环境完成客户端与服务端初始化，再切换到正式环境继续初始化流程。
+      </Modal>
 
       {/* “管理中心”已改为全页路由：/management-center */}
 
