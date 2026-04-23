@@ -592,20 +592,24 @@ export default function ContainerDatabase() {
       [instanceId]: [...(prev[instanceId] || []), newDb]
     }))
 
-    // 产品意图：新建数据库后，也应能进入“分片管理”视图（初始化为未分片）
-    setMongoShardingStateByInstance((prev) => ({
-      ...prev,
-      [instanceId]: {
-        ...(prev[instanceId] || {}),
-        [name]: prev[instanceId]?.[name] || {
-          dbName: name,
-          shardingEnabled: false,
-          isBalanced: true,
-          shardDistribution: [],
-          collections: [{ name: 'core', status: 'unsharded', distribution: [], chunkCount: 0, ranges: [] }]
+    // 产品意图：仅分片集群需要 mock 分片元数据；副本集无分片，不写 mongoSharding 状态
+    if (selectedDbInstance?.arch === '分片集群实例') {
+      setMongoShardingStateByInstance((prev) => ({
+        ...prev,
+        [instanceId]: {
+          ...(prev[instanceId] || {}),
+          [name]: prev[instanceId]?.[name] || {
+            dbName: name,
+            shardingEnabled: false,
+            isBalanced: true,
+            shardDistribution: [],
+            collections: [
+              { name: 'core', status: 'unsharded', distribution: [], chunkCount: 0, jumboChunks: 0, ranges: [] }
+            ]
+          }
         }
-      }
-    }))
+      }))
+    }
 
     messageApi.success(`数据库 "${name}" 创建成功，已自动授权给只读和读写账号`)
     setNewDatabaseName('')
@@ -1630,9 +1634,15 @@ export default function ContainerDatabase() {
                                           setSelectedMongoDbNameForSharding(null)
                                           setMongoCollectionKeyword('')
                                           setSelectedMongoCollectionName(null)
+                                          // 副本集不展示分片，关闭分片相关弹层状态
+                                          if (inst.arch !== '分片集群实例') {
+                                            setEnableShardingOpen(false)
+                                            setEnableDbContextDbName(null)
+                                            setShardingModalPurpose('enable')
+                                          }
                                         }}
                                       >
-                                        权限和分片管理
+                                        {inst.arch === '分片集群实例' ? '权限和分片管理' : '数据库权限'}
                                       </Button>
                                     </>
                                   )
@@ -2992,7 +3002,10 @@ export default function ContainerDatabase() {
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <UserAddOutlined />
-            <span>MongoDB 数据库权限 - {selectedDbInstance?.alias || '未知实例'}</span>
+            <span>
+              MongoDB 数据库权限 - {selectedDbInstance?.alias || '未知实例'}
+              {selectedDbInstance?.arch === '副本集实例' ? '（副本集，无分片）' : ''}
+            </span>
           </div>
         }
         open={dbPermissionOpen}
@@ -3005,13 +3018,18 @@ export default function ContainerDatabase() {
           setSelectedMongoDbNameForSharding(null)
           setMongoCollectionKeyword('')
           setSelectedMongoCollectionName(null)
+          setEnableShardingOpen(false)
+          setEnableDbContextDbName(null)
+          setShardingModalPurpose('enable')
         }}
         footer={null}
-        width={1000}
+        width={selectedDbInstance?.arch === '分片集群实例' ? 1000 : 720}
         destroyOnHidden
       >
         {selectedDbInstance && (() => {
           const instanceId = selectedDbInstance.id
+          // 产品意图：Mongo 副本集无分片，仅分片集群展示/操作分片相关能力
+          const mongoIsShardedCluster = selectedDbInstance.arch === '分片集群实例'
           const dbList = mongoDatabasesByInstance[instanceId] || []
           const filteredDbList = dbList.filter((db) => {
             const kw = mongoDbKeyword.trim().toLowerCase()
@@ -3035,6 +3053,7 @@ export default function ContainerDatabase() {
           }
 
           const openDbSharding = (dbName: string) => {
+            if (!mongoIsShardedCluster) return
             // 产品意图：从数据库行直接进入 config 分片管理（方案 D）
             setSelectedMongoDbNameForSharding(dbName)
             setMongoPermissionView('sharding')
@@ -3062,6 +3081,7 @@ export default function ContainerDatabase() {
           }
 
           const openEnableDbSharding = (dbName: string) => {
+            if (!mongoIsShardedCluster) return
             // 产品意图：库级 enableSharding 与首个 shardCollection 一并走表单（与「开启集合分片」同逻辑），不单独只改布尔
             const st = mongoShardingStateByInstance[instanceId]?.[dbName]
             const allCols = st?.collections?.length
@@ -3327,8 +3347,8 @@ export default function ContainerDatabase() {
 
               {mongoPermissionView === 'dbList' && (
                 <>
-                  {/* 集群级（实例维度，所有数据库共享）：Shard 节点状态 + Balancer */}
-                  {(() => {
+                  {/* 集群级：仅分片集群有 Shard / Balancer；副本集无分片 */}
+                  {mongoIsShardedCluster && (() => {
                     const shardNodes = mongoShardNodesByInstance[instanceId] || []
                     const balancer = mongoBalancerByInstance[instanceId]
                     if (shardNodes.length === 0 && !balancer) return null
@@ -3396,21 +3416,13 @@ export default function ContainerDatabase() {
                     )
                   })()}
 
+
                   {/* 数据库列表 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <div style={{ fontSize: 16, fontWeight: 600 }}>
                       数据库权限管理
                     </div>
-                    <Input
-                      allowClear
-                      value={mongoDbKeyword}
-                      onChange={(e) => setMongoDbKeyword(e.target.value)}
-                      prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                      placeholder="搜索数据库名称 / 备注"
-                      style={{ width: 280 }}
-                    />
                   </div>
-
                   <div style={{ border: '1px solid #e8e8e8', borderRadius: 6 }}>
                     {/* 表头 */}
                     <div style={{
@@ -3420,10 +3432,14 @@ export default function ContainerDatabase() {
                       borderBottom: '1px solid #e8e8e8',
                       fontWeight: 600
                     }}>
-                      <div style={{ flex: '0 0 200px' }}>数据库名称</div>
+                      <div style={{ flex: mongoIsShardedCluster ? '0 0 200px' : '1 1 auto' }}>数据库名称</div>
                       <div style={{ flex: '0 0 120px', textAlign: 'center' }}>权限状态</div>
-                      <div style={{ flex: '0 0 140px', textAlign: 'center' }}>分片状态</div>
-                      <div style={{ flex: '0 0 140px', textAlign: 'right' }}>分片管理</div>
+                      {mongoIsShardedCluster && (
+                        <>
+                          <div style={{ flex: '0 0 140px', textAlign: 'center' }}>分片状态</div>
+                          <div style={{ flex: '0 0 140px', textAlign: 'right' }}>分片管理</div>
+                        </>
+                      )}
                     </div>
 
                     {/* 数据行 */}
@@ -3453,13 +3469,17 @@ export default function ContainerDatabase() {
                             borderBottom: '1px solid #f0f0f0'
                           }}
                         >
-                          <div style={{ flex: '0 0 200px' }}>
-                            <Typography.Link
-                              style={{ fontWeight: 600, fontSize: 15 }}
-                              onClick={() => openDbSharding(db.dbName)}
-                            >
-                              {db.dbName}
-                            </Typography.Link>
+                          <div style={{ flex: mongoIsShardedCluster ? '0 0 200px' : '1 1 auto' }}>
+                            {mongoIsShardedCluster ? (
+                              <Typography.Link
+                                style={{ fontWeight: 600, fontSize: 15 }}
+                                onClick={() => openDbSharding(db.dbName)}
+                              >
+                                {db.dbName}
+                              </Typography.Link>
+                            ) : (
+                              <span style={{ fontWeight: 600, fontSize: 15, color: '#334155' }}>{db.dbName}</span>
+                            )}
                           </div>
                           <div style={{ flex: '0 0 120px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                             <Tag style={{ ...tagPillStyle, ...permStyle }}>
@@ -3476,34 +3496,37 @@ export default function ContainerDatabase() {
                               </Button>
                             )}
                           </div>
-                          <div style={{ flex: '0 0 140px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                            {/* 产品意图：库级分片状态来自 mongoShardingStateByInstance 派生，避免使用不存在字段 */}
-                            {mongoShardingStateByInstance[instanceId]?.[db.dbName]?.shardingEnabled ? (
-                              <span style={{ color: '#166534' }}>● 已开启</span>
-                            ) : (
-                              <>
-                                <span style={{ color: '#475569' }}>○ 未开启</span>
+                          {mongoIsShardedCluster && (
+                            <>
+                              <div style={{ flex: '0 0 140px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                {mongoShardingStateByInstance[instanceId]?.[db.dbName]?.shardingEnabled ? (
+                                  <span style={{ color: '#166534' }}>● 已开启</span>
+                                ) : (
+                                  <>
+                                    <span style={{ color: '#475569' }}>○ 未开启</span>
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      onClick={() => openEnableDbSharding(db.dbName)}
+                                      style={{ padding: 0, height: 'auto' }}
+                                    >
+                                      开启
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                              <div style={{ flex: '0 0 140px', textAlign: 'right' }}>
                                 <Button
-                                  type="link"
-                                  size="small"
-                                  onClick={() => openEnableDbSharding(db.dbName)}
-                                  style={{ padding: 0, height: 'auto' }}
+                                  type="text"
+                                  icon={<SearchOutlined />}
+                                  onClick={() => openDbSharding(db.dbName)}
+                                  style={{ height: 32 }}
                                 >
-                                  开启
+                                  分片管理
                                 </Button>
-                              </>
-                            )}
-                          </div>
-                          <div style={{ flex: '0 0 140px', textAlign: 'right' }}>
-                            <Button
-                              type="text"
-                              icon={<SearchOutlined />}
-                              onClick={() => openDbSharding(db.dbName)}
-                              style={{ height: 32 }}
-                            >
-                              分片管理
-                            </Button>
-                          </div>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )
                     })}
@@ -3538,12 +3561,14 @@ export default function ContainerDatabase() {
                     color: '#0958d9'
                   }}>
                     <strong>说明：</strong>
-                    新建数据库后，系统会自动为只读和读写账号授予完整权限。点击“数据库名称/分片管理”可进入 config 分片查询（集合维度）。
+                    {mongoIsShardedCluster
+                      ? '新建数据库后，系统会自动为只读和读写账号授予完整权限。点击数据库名称或「分片管理」可进入 config 分片查询（集合维度）。'
+                      : '新建数据库后，系统会自动为只读和读写账号授予完整权限。'}
                   </div>
                 </>
               )}
 
-              {mongoPermissionView !== 'dbList' && activeDbName && (
+              {mongoIsShardedCluster && mongoPermissionView !== 'dbList' && activeDbName && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                     <Button
@@ -3801,7 +3826,8 @@ export default function ContainerDatabase() {
                 </>
               )}
 
-              {/* 开启/调整分片弹窗：必须始终挂在本区块根下，不可包在 `mongoPermissionView === 'dbList'` 或 `!dbList && activeDbName` 内，否则在列表点「开启」时 Modal 未挂载、open 无效 */}
+              {/* 开启/调整分片：仅分片集群挂载；必须始终挂在本区块根下，不可包在条件子视图内 */}
+              {mongoIsShardedCluster && (
               <Modal
                 title={
                   shardingModalPurpose === 'enableDb'
@@ -3873,6 +3899,7 @@ export default function ContainerDatabase() {
                   </Form>
                 </div>
               </Modal>
+              )}
             </div>
           )
         })()}
