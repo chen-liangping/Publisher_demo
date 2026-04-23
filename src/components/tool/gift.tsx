@@ -169,7 +169,7 @@ export default function GiftDataPage(): React.ReactElement {
         destroyOnClose
       >
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
-          <Card size="small" bordered={false} style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
+          <Card size="small"  style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               <Title level={5} style={{ margin: 0 }}>认证 Token</Title>
               <Text type="secondary">平台调用您注册的接口时，会在请求头中携带该固定的 Token（Authorization: Basic &lt;Base64(appId:secret)&gt;），请在服务端进行鉴权处理。</Text>
@@ -190,7 +190,7 @@ export default function GiftDataPage(): React.ReactElement {
             </Space>
           </Card>
 
-          <Card size="small" bordered={false} style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
+          <Card size="small"  style={{ borderRadius: 16, boxShadow: '0 4px 18px rgba(15,23,42,0.06)' }}>
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Title level={5} style={{ margin: 0 }}>接入 API</Title>

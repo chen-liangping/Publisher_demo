@@ -33,3 +33,11 @@ package-lock.json
 # 忽略备份文件
 *.bak
 package-lock.json.bak
+
+# Cursor：默认忽略，但允许将规则/技能纳入版本管理
+.cursor/*
+!.cursor/
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/skills/
+!.cursor/skills/**

@@ -1,11 +1,13 @@
 // 消息配置页面 — 平铺表格，按"告警/通知"分类
 // Pod故障 支持应用级高级告警配置（右侧抽屉）
+// 联系人由人员配置的「所属渠道」决定，此处仅展示每个渠道会 @ 谁
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
-  Modal, message, Tabs, Drawer, Switch, Select, InputNumber, Tooltip
+  Modal, message, Tabs, Drawer, Switch, Select, Tooltip
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -27,9 +29,11 @@ interface WebhookItem {
   secret?: string
 }
 
+// 与人员配置一致：channelIds 表示该人员所属接收渠道
 interface Person {
   id: string
   name: string
+  channelIds: string[]
 }
 
 type MessageNature = '告警' | '通知'
@@ -39,13 +43,14 @@ interface MessageRow {
   messageType: string
   name: string
   nature: MessageNature
-  /** 该消息类型的通知总开关 */
-  enabled: boolean
   channels: Record<string, boolean>
-  contacts: Record<string, boolean>
   /** 是否支持应用级高级配置（目前只有 PodFailed） */
   hasAdvancedConfig?: boolean
 }
+
+/** 是否已开启通知：有任一看接收渠道被勾选即为开启 */
+const isRowEnabled = (row: MessageRow): boolean =>
+  Object.values(row.channels).some(Boolean)
 
 /** 应用级告警配置项 */
 interface AppAlertConfig {
@@ -113,14 +118,31 @@ interface AlertPageProps {
 }
 
 export default function AlertPage(props: AlertPageProps): React.ReactElement {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   const webhooks: WebhookItem[] = props.webhooks ?? [
-    { id: 'cp_group', name: 'CP群', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' }
+    { id: 'cp_group', name: 'CP群', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo' },
+    { id: 'xiaobao', name: '小包', url: 'https://oapi.dingtalk.com/robot/send?access_token=demo-xb' }
   ]
 
-  const people: Person[] = [
-    { id: 'yu.b', name: 'yu.b' },
-    { id: 'xuyin', name: '刘悦' }
-  ]
+  // 默认选中的接收渠道：小包（若存在）
+  const defaultChannelId = webhooks.find(w => w.name === '小包')?.id ?? webhooks[0]?.id
+
+  // 模拟人员及所属渠道（与人员配置一致；实际应从同一数据源获取）
+  const people: Person[] = useMemo(() => {
+    const xiaobaoId = webhooks.find(w => w.name === '小包')?.id
+    const cpId = webhooks.find(w => w.name === 'CP群')?.id ?? webhooks[0]?.id
+    return [
+      { id: 'yu.b', name: 'yu.b', channelIds: cpId && xiaobaoId ? [cpId, xiaobaoId] : webhooks.map(w => w.id) },
+      { id: 'xuyin', name: '刘悦', channelIds: xiaobaoId ? [xiaobaoId] : [] }
+    ]
+  }, [webhooks])
+
+  // 根据 channelId 获取该渠道下的联系人（在人员配置中属于该渠道的人员）
+  const getContactsForChannel = (channelId: string): Person[] =>
+    people.filter(p => p.channelIds.includes(channelId))
 
   const [rows, setRows] = useState<MessageRow[]>(() =>
     allMessageTypes.map(t => ({
@@ -128,17 +150,16 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       messageType: t.messageType,
       name: t.name,
       nature: t.nature,
-      enabled: false,
       channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
-      contacts: Object.fromEntries(people.map(p => [p.id, false])),
       hasAdvancedConfig: t.hasAdvancedConfig
     }))
   )
 
-  const [activeTab, setActiveTab] = useState('all')
+  const [activeTab, setActiveTab] = useState<('告警' | '通知')>('告警')
   const [searchText, setSearchText] = useState('')
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchModifyModalOpen, setBatchModifyModalOpen] = useState(false)
 
   /* ---- Pod故障 应用级高级配置 ---- */
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
@@ -149,18 +170,30 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     { id: '3', appName: 'cpgame', channel: '钉钉大群消息', frequency: '5 分钟', enabled: true }
   ])
 
-  // 切换某行通知总开关；Pod故障开启时自动打开配置抽屉
-  const toggleRowEnabled = (rowKey: string) => {
+  // 切换接收渠道；首次勾选时：接收渠道默认选小包
+  const toggleChannel = (rowKey: string, channelId: string) => {
     setRows(prev => {
       const row = prev.find(r => r.key === rowKey)
       if (!row) return prev
-      const nextEnabled = !row.enabled
-      // Pod故障：开启时自动打开抽屉
-      if (nextEnabled && row.hasAdvancedConfig) {
-        setConfigDrawerTitle(row.name)
-        setConfigDrawerOpen(true)
-      }
-      return prev.map(r => r.key === rowKey ? { ...r, enabled: nextEnabled } : r)
+      const wasEnabled = Object.values(row.channels).some(Boolean)
+      const willBeChecked = !(row.channels[channelId] || false)
+      return prev.map(r => {
+        if (r.key !== rowKey) return r
+        const nextChannels = { ...r.channels, [channelId]: willBeChecked }
+        // 首次开启（从无到有勾选）：接收渠道默认选小包
+        const isFirstEnable = !wasEnabled && willBeChecked
+        if (isFirstEnable) {
+          if (row.hasAdvancedConfig) {
+            setConfigDrawerTitle(row.name)
+            setConfigDrawerOpen(true)
+          }
+          return {
+            ...r,
+            channels: Object.fromEntries(webhooks.map(w => [w.id, w.id === defaultChannelId]))
+          }
+        }
+        return { ...r, channels: nextChannels }
+      })
     })
   }
 
@@ -287,9 +320,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
   /* ---- 主表格逻辑 ---- */
 
   const filteredRows = useMemo(() => {
-    let result = rows
-    if (activeTab === '告警') result = result.filter(r => r.nature === '告警')
-    else if (activeTab === '通知') result = result.filter(r => r.nature === '通知')
+    let result = rows.filter(r => r.nature === activeTab)
     if (searchText) {
       const s = searchText.toLowerCase()
       result = result.filter(r =>
@@ -300,83 +331,32 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
     return result
   }, [rows, activeTab, searchText])
 
-  const toggleChannel = (rowKey: string, channelId: string) => {
-    setRows(prev => prev.map(r =>
-      r.key === rowKey
-        ? { ...r, channels: { ...r.channels, [channelId]: !r.channels[channelId] } }
-        : r
-    ))
-  }
-
-  const toggleContact = (rowKey: string, personId: string) => {
-    setRows(prev => prev.map(r =>
-      r.key === rowKey
-        ? { ...r, contacts: { ...r.contacts, [personId]: !r.contacts[personId] } }
-        : r
-    ))
-  }
-
   const batchModify = () => {
     if (selectedRowKeys.length === 0) { message.warning('请先选择需要修改的消息类型'); return }
-    Modal.confirm({
-      title: `批量开启 ${selectedRowKeys.length} 项`,
-      content: '将为选中的消息类型开启所有接收渠道',
-      okText: '确认',
-      cancelText: '取消',
-      onOk: () => {
-        const keySet = new Set(selectedRowKeys as string[])
-        setRows(prev => prev.map(r =>
-          keySet.has(r.key)
-            ? { ...r, channels: Object.fromEntries(webhooks.map(w => [w.id, true])) }
-            : r
-        ))
-        setSelectedRowKeys([])
-        message.success('批量修改完成')
-      }
-    })
+    setBatchModifyModalOpen(true)
   }
 
-  const resetDefaults = () => {
-    Modal.confirm({
-      title: '恢复默认设置',
-      content: '将清空所有接收渠道和联系人配置，是否继续？',
-      okText: '确认',
-      cancelText: '取消',
-      onOk: () => {
-        setRows(prev => prev.map(r => ({
-          ...r,
-          channels: Object.fromEntries(webhooks.map(w => [w.id, false])),
-          contacts: Object.fromEntries(people.map(p => [p.id, false]))
-        })))
-        message.success('已恢复默认')
-      }
-    })
+  const confirmBatchModify = () => {
+    const keySet = new Set(selectedRowKeys as string[])
+    setRows(prev => prev.map(r =>
+      keySet.has(r.key)
+        ? { ...r, channels: Object.fromEntries(webhooks.map(w => [w.id, true])) }
+        : r
+    ))
+    setSelectedRowKeys([])
+    setBatchModifyModalOpen(false)
+    message.success('批量修改完成')
+  }
+
+  // 前往人员配置（维护联系人与渠道的归属关系）
+  const goToPeopleConfig = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('menu', 'people-config')
+    params.set('tab', 'people')
+    router.push(`${pathname}?${params.toString()}`)
   }
 
   const columns: ColumnsType<MessageRow> = useMemo(() => [
-    {
-      title: '通知',
-      key: 'enabled',
-      width: 70,
-      fixed: 'left',
-      render: (_: unknown, row: MessageRow) => (
-        <Switch
-          checked={row.enabled}
-          onChange={() => toggleRowEnabled(row.key)}
-          checkedChildren="ON"
-          unCheckedChildren="OFF"
-          style={{ minWidth: 50 }}
-        />
-      )
-    },
-    {
-      title: 'MessageType消息类型',
-      key: 'messageType',
-      width: 240,
-      render: (_: unknown, row: MessageRow) => (
-        <Text style={{ fontSize: 13, color: row.enabled ? undefined : '#bfbfbf' }}>{row.messageType}</Text>
-      )
-    },
     {
       title: '含义',
       dataIndex: 'name',
@@ -384,15 +364,15 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       width: 220,
       render: (text: string, row: MessageRow) => (
         <Space>
-          <Text style={{ fontSize: 13, color: row.enabled ? undefined : '#bfbfbf' }}>{text}</Text>
+          <Text style={{ fontSize: 13, color: isRowEnabled(row) ? undefined : '#bfbfbf' }}>{text}</Text>
           {/* Pod故障：开启时可配置，关闭时按钮置灰 */}
           {row.hasAdvancedConfig && (
-            <Tooltip title={row.enabled ? '告警应用配置' : '请先开启通知'}>
+            <Tooltip title={isRowEnabled(row) ? '告警应用配置' : '请先勾选接收渠道'}>
               <Button
                 type="link"
                 size="small"
                 icon={<SettingOutlined />}
-                disabled={!row.enabled}
+                disabled={!isRowEnabled(row)}
                 onClick={() => openAdvancedConfig(row)}
                 style={{ padding: 0, fontSize: 13 }}
               >
@@ -404,62 +384,61 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       )
     },
     {
-      title: '性质',
-      dataIndex: 'nature',
-      key: 'nature',
-      width: 80,
-      render: (nature: MessageNature, row: MessageRow) => (
-        <Tag
-          style={{
-            borderRadius: 999, border: 0, fontSize: 12,
-            lineHeight: '22px', padding: '0 10px',
-            background: nature === '告警'
-              ? (row.enabled ? 'rgba(255,77,79,0.08)' : 'rgba(0,0,0,0.02)')
-              : (row.enabled ? 'rgba(22,119,255,0.08)' : 'rgba(0,0,0,0.02)'),
-            color: row.enabled
-              ? (nature === '告警' ? '#ff4d4f' : '#1677ff')
-              : '#bfbfbf'
-          }}
-        >
-          {nature}
-        </Tag>
-      )
-    },
-    {
-      title: '接收渠道',
-      key: 'channels',
-      width: 160,
-      render: (_: unknown, row: MessageRow) => (
-        <Space direction="vertical" size={2} style={{ opacity: row.enabled ? 1 : 0.35 }}>
-          {webhooks.map(w => (
-            <Checkbox
-              key={w.id}
-              checked={row.channels[w.id] || false}
-              disabled={!row.enabled}
-              onChange={() => toggleChannel(row.key, w.id)}
+      title: (
+        <Space>
+          <span>接收渠道</span>
+          <Tooltip title="联系人在人员配置中维护，发到该渠道时会 @ 所属的联系人">
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0, fontSize: 12, height: 'auto' }}
+              onClick={goToPeopleConfig}
             >
-              <Text style={{ fontSize: 13 }}>{w.name}</Text>
-            </Checkbox>
-          ))}
+              维护联系人
+            </Button>
+          </Tooltip>
         </Space>
-      )
-    },
-    {
-      title: '联系人',
-      key: 'contacts',
-      width: 200,
+      ),
+      key: 'channels',
+      width: 220,
       render: (_: unknown, row: MessageRow) => (
-        <Space direction="vertical" size={2} style={{ opacity: row.enabled ? 1 : 0.35 }}>
-          {people.map(p => (
-            <Checkbox
-              key={p.id}
-              checked={row.contacts[p.id] || false}
-              disabled={!row.enabled}
-              onChange={() => toggleContact(row.key, p.id)}
-            >
-              <Text style={{ fontSize: 13 }}>{p.name}</Text>
-            </Checkbox>
-          ))}
+        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+          {webhooks.map(w => {
+            const contacts = getContactsForChannel(w.id)
+            return (
+              <div
+                key={w.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  background: row.channels[w.id] ? '#f0f7ff' : '#fafafa',
+                  borderRadius: 8,
+                  border: `1px solid ${row.channels[w.id] ? '#bae0ff' : '#f0f0f0'}`
+                }}
+              >
+                <Checkbox
+                  checked={row.channels[w.id] || false}
+                  onChange={() => toggleChannel(row.key, w.id)}
+                >
+                  <Text strong style={{ fontSize: 13 }}>{w.name}</Text>
+                </Checkbox>
+                <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+                {contacts.length > 0 ? (
+                  <Space size={2} wrap style={{ flex: 1, minWidth: 0 }}>
+                    {contacts.map(p => (
+                      <Tag key={p.id} style={{ margin: 0, borderRadius: 999, fontSize: 12 }}>
+                        @{p.name}
+                      </Tag>
+                    ))}
+                  </Space>
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>暂无</Text>
+                )}
+              </div>
+            )
+          })}
         </Space>
       )
     }
@@ -470,9 +449,8 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       <Card>
         <Tabs
           activeKey={activeTab}
-          onChange={setActiveTab}
+          onChange={(k) => setActiveTab(k as '告警' | '通知')}
           items={[
-            { key: 'all', label: '全部' },
             { key: '告警', label: '告警' },
             { key: '通知', label: '通知' }
           ]}
@@ -487,7 +465,6 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
               onChange={e => setSelectedRowKeys(e.target.checked ? filteredRows.map(r => r.key) : [])}
             />
             <Button size="small" disabled={selectedRowKeys.length === 0} onClick={batchModify}>批量修改</Button>
-            <Button size="small" onClick={resetDefaults}>恢复默认设置</Button>
           </Space>
           <Input
             placeholder="请输入消息类型"
@@ -504,7 +481,7 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
           columns={columns}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1120 }}
+          scroll={{ x: 560 }}
           rowSelection={{ selectedRowKeys, onChange: keys => setSelectedRowKeys(keys) }}
           size="middle"
         />
@@ -555,6 +532,19 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
       >
         <PlausibleLikeDashboard />
       </Drawer>
+
+      {/* 批量修改二次确认 */}
+      <Modal
+        title={`批量开启 ${selectedRowKeys.length} 项`}
+        open={batchModifyModalOpen}
+        onCancel={() => setBatchModifyModalOpen(false)}
+        onOk={confirmBatchModify}
+        okText="确认"
+        cancelText="取消"
+      >
+        <p>将为选中的消息类型开启所有接收渠道</p>
+      </Modal>
+
     </Space>
   )
 }

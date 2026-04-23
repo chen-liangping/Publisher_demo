@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message } from 'antd'
+import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message, Switch } from 'antd'
 import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined, ExportOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
@@ -40,6 +40,8 @@ export default function AlertSystem(): React.ReactElement {
   const [messageApi, contextHolder] = message.useMessage()
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
+  // Pod 故障监控全局开关：关闭时下方应用列表置灰锁定
+  const [podMonitorEnabled, setPodMonitorEnabled] = useState<boolean>(true)
   const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [faroConfigOpen, setFaroConfigOpen] = useState<boolean>(false)
   // 模拟的告警参与者：人员 + 机器人（参考“消息配置”中的配置）
@@ -48,14 +50,46 @@ export default function AlertSystem(): React.ReactElement {
     { id: 'person_xuyin',  name: '刘悦',  kind: 'person' },
     { id: 'webhook_kumo',  name: '小包',  kind: 'webhook' }
   ])
-  // 每个应用 x 参与者的开关矩阵（默认未配置视为勾选）
+  // 每个应用 x 参与者的开关矩阵。Pod 开关打开时：接收渠道默认仅选“小包”，联系人默认全勾
+  const XIAOBAO_WEBHOOK_ID = 'webhook_kumo'
   const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>(() => {
     const initial: Record<string, Record<string, boolean>> = {}
+    const defaultActors = [
+      { id: 'person_yu.b', kind: 'person' as const },
+      { id: 'person_xuyin', kind: 'person' as const },
+      { id: 'webhook_kumo', kind: 'webhook' as const }
+    ]
     mockAlertConfigs.forEach(cfg => {
-      initial[cfg.id] = {}
+      const row: Record<string, boolean> = {}
+      defaultActors.forEach(a => {
+        row[a.id] = a.kind === 'webhook' ? a.id === XIAOBAO_WEBHOOK_ID : true
+      })
+      initial[cfg.id] = row
     })
     return initial
   })
+
+  // Pod 故障开关切换：开启时，接收渠道默认仅选“小包”，联系人默认全勾
+  const handlePodMonitorSwitch = useCallback((nextEnabled: boolean) => {
+    setPodMonitorEnabled(nextEnabled)
+    if (nextEnabled) {
+      setActorMatrix(prev => {
+        const next: Record<string, Record<string, boolean>> = { ...prev }
+        alertConfigs.forEach(cfg => {
+          const row: Record<string, boolean> = {}
+          actors.forEach(a => {
+            if (a.kind === 'webhook') {
+              row[a.id] = a.id === XIAOBAO_WEBHOOK_ID
+            } else {
+              row[a.id] = true // 联系人默认全勾
+            }
+          })
+          next[cfg.id] = row
+        })
+        return next
+      })
+    }
+  }, [actors, alertConfigs])
 
   // 切换告警开关
   const handleToggleAlert = useCallback((id: string, enabled: boolean) => {
@@ -131,10 +165,10 @@ export default function AlertSystem(): React.ReactElement {
     []
   )
 
-  // 跳转到“人员配置”页面的“消息配置”Tab
+  // 跳转到“消息中心”的“消息配置”Tab（即 alert.tsx 消息配置页面）
   const handleGoToAlertPage = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
-    params.set('menu', 'people-config')
+    params.set('menu', 'message-notification')
     params.set('tab', 'message-config')
     const url = `${pathname}?${params.toString()}`
     router.push(url)
@@ -145,13 +179,7 @@ export default function AlertSystem(): React.ReactElement {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     setEditingConfigs(prev => [
       ...prev,
-      {
-        id,
-        appName: '',
-        channel: '钉钉大群消息',
-        frequency: '5 分钟',
-        enabled: true
-      }
+      { id, appName: '', frequency: '5 分钟' }
     ])
     // 交互逻辑：新增配置行时初始化矩阵行（默认未配置视为勾选）
     setActorMatrix(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}) } }))
@@ -227,6 +255,7 @@ initializeFaro({
       title: (
         <Space>
           <span>报警频率</span>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>（仅 Pod 开启后生效）</Text>
           <Tooltip title="设置告警通知的发送频率">
             <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
           </Tooltip>
@@ -261,34 +290,36 @@ initializeFaro({
     const personActors = actors.filter(actor => actor.kind === 'person')
     const webhookActors = actors.filter(actor => actor.kind === 'webhook')
 
-    const renderActorChecklist = (
-      actorList: AlertActor[],
-      layout: 'vertical' | 'horizontal'
-    ) => (_: unknown, record: AlertConfig): React.ReactElement => {
-      const content = actorList.map(actor => (
-        <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
-          <Checkbox
-            checked={getActorCheckedForApp(record.id, actor.id)}
-            onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
-          >
-            {actor.name}
-          </Checkbox>
-        </div>
-      ))
+    const renderActorChecklist = (actorList: AlertActor[], layout: 'vertical' | 'horizontal') => {
+      function ActorChecklistCell(_: unknown, record: AlertConfig): React.ReactElement {
+        const content = actorList.map(actor => (
+          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={getActorCheckedForApp(record.id, actor.id)}
+              onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
+            >
+              {actor.name}
+            </Checkbox>
+          </div>
+        ))
 
-      if (layout === 'horizontal') {
+        if (layout === 'horizontal') {
+          return (
+            <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+              {content}
+            </Space>
+          )
+        }
+
         return (
-          <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+          <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
             {content}
           </Space>
         )
       }
 
-      return (
-        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-          {content}
-        </Space>
-      )
+      ActorChecklistCell.displayName = `ActorChecklistCell(${layout})`
+      return ActorChecklistCell
     }
 
     const groupedActorCols: ColumnsType<AlertConfig> = []
@@ -410,22 +441,83 @@ initializeFaro({
       </Card>
 
       {/* 主要内容 - 故障报警 */}
-      <Card 
-        title="故障报警"
-        extra={
-          <Button type="link" onClick={handleGoToAlertPage}>
-            更多告警配置
-          </Button>
-        }
-      >
-        <Table
-          rowKey="id"
-          columns={alertColumns}
-          dataSource={alertConfigs}
-          pagination={false}
-          scroll={{ x: 740 }}
-          style={{ minWidth: '100%' }}
-        />
+      <Card title="故障报警">
+        {/* 顶部：全局前置控制区（快速开关） */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 16px',
+            background: '#fafafa',
+            borderRadius: 8,
+            marginBottom: 16,
+            border: '1px solid #f0f0f0'
+          }}
+        >
+          <Space align="center" size={16}>
+            <SettingOutlined style={{ color: '#1677ff', fontSize: 16 }} />
+            <div>
+              <div style={{ fontSize: 13, color: '#666', marginBottom: 4 }}>
+                Pod 故障告警
+              </div>
+              <Space align="center">
+                <Switch
+                  checked={podMonitorEnabled}
+                  onChange={handlePodMonitorSwitch}
+                  checkedChildren="ON"
+                  unCheckedChildren="OFF"
+                />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  开启后将监控所有 K8s Pod 存活状态
+                </Text>
+              </Space>
+            </div>
+          </Space>
+          <Space>
+            <Button
+              type="default"
+              icon={<SettingOutlined />}
+              onClick={handleOpenConfigDrawer}
+              disabled={!podMonitorEnabled}
+            >
+              配置应用
+            </Button>
+            <Button type="link" icon={<SettingOutlined />} onClick={handleGoToAlertPage}>
+              更多告警配置
+            </Button>
+          </Space>
+        </div>
+
+        {/* Pod 关闭时的提示 */}
+        {!podMonitorEnabled && (
+          <div
+            style={{
+              padding: '12px 16px',
+              background: '#fff7e6',
+              border: '1px solid #ffd591',
+              borderRadius: 8,
+              marginBottom: 16,
+              color: '#d46b08'
+            }}
+          >
+            Pod 监控已关闭，无法配置应用级告警频率
+          </div>
+        )}
+
+        {/* 应用列表表格 */}
+        <div style={{ opacity: podMonitorEnabled ? 1 : 0.5, pointerEvents: podMonitorEnabled ? 'auto' : 'none' }}>
+          <Table
+            rowKey="id"
+            columns={alertColumns}
+            dataSource={alertConfigs}
+            pagination={false}
+            scroll={{ x: 740 }}
+            style={{ minWidth: '100%' }}
+          />
+        </div>
       </Card>
 
       {/* 故障报警配置抽屉：配置应用与报警频率 */}

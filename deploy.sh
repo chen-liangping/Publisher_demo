@@ -254,7 +254,8 @@ show_help() {
 
 # 主函数
 main() {
-    local port=3001
+    # 约束：本项目开发服务固定跑在 3006 端口（与仓库规则一致）
+    local port=3006
     local force_clean=false
     
     # 解析命令行参数

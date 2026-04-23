@@ -61,6 +61,15 @@ interface DeployConfig {
   gracePeriodSeconds?: number
   publicPort?: string
   containers?: { name: string; imageRepo: string; imageTag: string; imageSize: number }[]
+  /** 资源配置模式：unified-覆盖 | keep-保持原有 */
+  resourceMode?: 'unified' | 'keep'
+  /** 统一资源配置（仅在 unified 模式下使用） */
+  unifiedResources?: {
+    memory: number
+    cpu: number
+    memoryUnit: 'Mi' | 'Gi'
+    cpuUnit: 'C'
+  }
 }
 
 /* ==============================
@@ -129,6 +138,8 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
   // 添加应用弹窗
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addStageId, setAddStageId] = useState('')
+  // 资源配置模式监听
+  const [resourceMode, setResourceMode] = useState<'unified' | 'keep'>('unified')
 
   /* 拖拽 */
   const dragFrom = useRef<{ stageId: string; itemId: string } | null>(null)
@@ -212,10 +223,20 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
       isRollbackable: 'true',
       gracePeriodSeconds: 5,
       publicPort: '8080',
-      containers: [{ name: 'aaa', imageRepo: 'game-server', imageTag: '4.0.0-amd64', imageSize: 0 }]
+      containers: [{ name: 'aaa', imageRepo: 'game-server', imageTag: '4.0.0-amd64', imageSize: 0 }],
+      resourceMode: 'unified', // 默认为统一覆盖模式
+      unifiedResources: {
+        memory: 384,
+        cpu: 0.3,
+        memoryUnit: 'Mi',
+        cpuUnit: 'C'
+      }
     }
     deployForm.resetFields()
-    deployForm.setFieldsValue(item.config || defaults)
+    const formData = item.config || defaults
+    deployForm.setFieldsValue(formData)
+    // 同步资源模式状态
+    setResourceMode(formData.resourceMode || 'unified')
   }
 
   /** 保存配置 */
@@ -642,7 +663,7 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
               {/* 镜像版本 */}
               <Form.Item label="镜像版本" required>
                 <Space direction="vertical" style={{ width: '100%', gap: 8 }}>
-                  <Input.Group compact>
+                  <Space.Compact style={{ width: '100%' }}>
                     <Form.Item name={['containers', 0, 'name']} noStyle><Input disabled style={{ width: '25%' }} /></Form.Item>
                     <Form.Item name={['containers', 0, 'imageRepo']} noStyle><Input disabled style={{ width: '40%' }} /></Form.Item>
                     <Form.Item name={['containers', 0, 'imageTag']} noStyle rules={[{ required: true }]}>
@@ -652,7 +673,7 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
                         <Select.Option value="3.8.0-amd64">3.8.0-amd64</Select.Option>
                       </Select>
                     </Form.Item>
-                  </Input.Group>
+                  </Space.Compact>
 
                   <Collapse
                     items={[{
@@ -664,11 +685,11 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
                           <Form.Item label="环境变量">
                             <Space direction="vertical" style={{ width: '100%', gap: 8 }}>
                               <Space style={{ width: '100%', gap: 8 }}>
-                                <Input.Group compact style={{ flex: 1 }}>
+                                <Space.Compact style={{ flex: 1 }}>
                                   <Input disabled value="SPRING_PROFILES_ACTIVE" style={{ width: '40%' }} />
                                   <Button disabled style={{ paddingLeft: 8, paddingRight: 8 }}>=</Button>
                                   <Input disabled value="test" style={{ width: 'calc(60% - 32px)' }} />
-                                </Input.Group>
+                                </Space.Compact>
                                 <Button icon={<DeleteOutlined />} disabled style={{ visibility: 'hidden' }} />
                               </Space>
                               <Button icon={<PlusOutlined />}>环境变量</Button>
@@ -708,6 +729,100 @@ export default function DeployPlan({ onBack, editingPlan }: DeployPlanProps) {
                   />
                 </Space>
               </Form.Item>
+
+              {/* 资源配置模式 */}
+              <Form.Item 
+                name="resourceMode" 
+                label="资源配置" 
+                rules={[{ required: true }]}
+                extra="选择如何处理游服的CPU和内存资源配置"
+              >
+                <Radio.Group 
+                  onChange={(e) => setResourceMode(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <div style={{ marginBottom: 16 }}>
+                    <Radio value="unified">
+                      <div style={{ marginLeft: 8 }}>
+                        <div style={{ fontWeight: 500, marginBottom: 4 }}>统一覆盖（默认）</div>
+                        <div style={{ color: '#666', fontSize: '12px' }}>所有 deployment 使用同一套资源配置</div>
+                      </div>
+                    </Radio>
+                  </div>
+                  <div>
+                    <Radio value="keep">
+                      <div style={{ marginLeft: 8 }}>
+                        <div style={{ fontWeight: 500, marginBottom: 4 }}>保持原有（只更新其他参数）</div>
+                        <div style={{ color: '#666', fontSize: '12px' }}>不修改资源配置，只更新镜像/环境变量等其他参数</div>
+                      </div>
+                    </Radio>
+                  </div>
+                </Radio.Group>
+              </Form.Item>
+
+              {/* 统一资源配置 - 仅在统一覆盖模式下显示 */}
+              {resourceMode === 'unified' && (
+                <>
+                  <Form.Item label="统一资源配置">
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item 
+                          name={['unifiedResources', 'memory']} 
+                          label="内存" 
+                          rules={[{ required: true, message: '请输入内存大小' }]}
+                          extra="检测到内存偏高推荐，建议内存存储调整为 386 Mi"
+                        >
+                          <Space.Compact style={{ width: '100%' }}>
+                            <InputNumber 
+                              min={1} 
+                              max={8192} 
+                              style={{ width: '70%' }}
+                              placeholder="384"
+                            />
+                            <Form.Item 
+                              name={['unifiedResources', 'memoryUnit']} 
+                              noStyle
+                              initialValue="Mi"
+                            >
+                              <Select style={{ width: '30%' }}>
+                                <Select.Option value="Mi">Mi</Select.Option>
+                                <Select.Option value="Gi">Gi</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </Space.Compact>
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item 
+                          name={['unifiedResources', 'cpu']} 
+                          label="CPU" 
+                          rules={[{ required: true, message: '请输入CPU大小' }]}
+                          extra="检测到 CPU 偏高推荐，建议内存调整为 1.2C"
+                        >
+                          <Space.Compact style={{ width: '100%' }}>
+                            <InputNumber 
+                              min={0.1} 
+                              max={32} 
+                              step={0.1}
+                              style={{ width: '70%' }}
+                              placeholder="0.3"
+                            />
+                            <Form.Item 
+                              name={['unifiedResources', 'cpuUnit']} 
+                              noStyle
+                              initialValue="C"
+                            >
+                              <Select style={{ width: '30%' }}>
+                                <Select.Option value="C">C</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </Space.Compact>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Form.Item>
+                </>
+              )}
 
               {/* 优雅中止等待时间 */}
               <Form.Item name="gracePeriodSeconds" label="优雅中止等待时间" rules={[{ required: true }]}>

@@ -28,3 +28,9 @@ This is a **pure frontend prototype** (no backend, no database, no Docker) for a
 
 - All data is **mocked/hardcoded** in React components. No API calls are required for the app to function.
 - The `deploy.sh` script in the repo root is a convenience deployment script; it is not needed for development. Use `npm install` + `PORT=3006 npm run dev` directly.
+
+### AI workflow docs (prototype meta)
+
+- Constraints: `AIdocs/ai_constraints.md`
+- Prompt + templates + work items: `AIdocs/ai/`
+- Minimal checks: `npm run ai:check` / `npm run ai:check:full`

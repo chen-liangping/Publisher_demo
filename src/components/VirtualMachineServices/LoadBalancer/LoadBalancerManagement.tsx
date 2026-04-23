@@ -274,7 +274,7 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                   {/* 中间：服务地址 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
                     <span style={{ fontSize: 14 }}>公网地址：</span>
-                    <Tag bordered={false} color="blue" style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                    <Tag  color="blue" style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                       {lb.serviceAddress}
                     </Tag>
                   </div>
@@ -285,7 +285,7 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                     {lb.listeners.map((listener, index) => (
                       <Tag 
                         key={index}
-                        bordered={false}
+                        
                         color="blue" 
                         style={{ 
                           fontSize: 13, 
@@ -343,14 +343,14 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                                       {/* 策略行 */}
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#666' }}>
                                         <Text type="secondary" style={{ fontSize: 12 }}>├─</Text>
-                                        <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                        <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                                           {rule.domain}
                                         </Tag>
-                                        <Tag bordered={false} style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
+                                        <Tag  style={{ fontSize: 12, margin: 0, fontFamily: 'monospace' }}>
                                           {rule.path}
                                         </Tag>
                                         <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
-                                        <Tag bordered={false} style={{ fontSize: 12, margin: 0 }}>
+                                        <Tag  style={{ fontSize: 12, margin: 0 }}>
                                           {rule.serverGroup}
                                         </Tag>
                                       </div>
@@ -362,7 +362,7 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                                           <Text type="secondary" style={{ fontSize: 11 }}>({vm.privateIp})</Text>
                                           <Text type="secondary" style={{ fontSize: 11 }}>端口:</Text>
                                           {vm.ports.map((port, portIndex) => (
-                                            <Tag key={portIndex} bordered={false} style={{ fontSize: 11, margin: 0 }}>
+                                            <Tag key={portIndex}  style={{ fontSize: 11, margin: 0 }}>
                                               {port}
                                             </Tag>
                                           ))}
@@ -380,7 +380,7 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                                   <Text type="secondary" style={{ fontSize: 12 }}>└─</Text>
                                   <Text type="secondary" style={{ fontSize: 12 }}>其他请求</Text>
                                   <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
-                                  <Tag bordered={false} style={{ fontSize: 12, margin: 0 }}>
+                                  <Tag  style={{ fontSize: 12, margin: 0 }}>
                                     {listener.serverGroup}
                                   </Tag>
                                 </div>
@@ -392,7 +392,7 @@ export default function LoadBalancerManagement({ systemManagedServerGroups = [],
                                     <Text type="secondary" style={{ fontSize: 11 }}>({vm.privateIp})</Text>
                                     <Text type="secondary" style={{ fontSize: 11 }}>端口:</Text>
                                     {vm.ports.map((port, portIndex) => (
-                                      <Tag key={portIndex} bordered={false} style={{ fontSize: 11, margin: 0 }}>
+                                      <Tag key={portIndex}  style={{ fontSize: 11, margin: 0 }}>
                                         {port}
                                       </Tag>
                                     ))}

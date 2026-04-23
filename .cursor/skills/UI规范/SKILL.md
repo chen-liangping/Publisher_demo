@@ -84,3 +84,20 @@ description: Enforce quick UI rules in this prototype: fully-rounded Tag style w
 - [ ] 宽表：`scroll.x` 已开；关键列有 width/min-width；`volume` 列不被挤压
 - [ ] 卡片：无粗边框，层次靠 shadow/背景
 
+---
+
+## 6) 功能实现后的自测与截图策略（强制）
+### 规则
+- 每次实现功能后，必须询问是否需要自测，需要则进行一次可复现自测（至少覆盖：页面可打开、核心交互可触发、结果可见）。
+- 自测必须产出截图，并且**使用固定文件名覆盖旧截图**，禁止每次生成新随机文件名导致仓库膨胀。
+- 默认至少保留 2 张截图：
+  - `selftest-latest-initial.png`（进入页面初始态）
+  - `selftest-latest-after-action.png`（执行关键交互后）
+- 如需第三张，可使用固定名 `selftest-latest-extra.png`，仍然覆盖旧文件。
+- **每次自测前，如果需要自动化测试，需根据当前需求生成或更新测试脚本（例如 Playwright 脚本）。**
+
+### 执行约定
+- 优先使用本机可用浏览器进行自动化或半自动化自测。
+- 若自动化不可用，需手动验证并在结果中明确说明未自动化的原因与人工验证范围。
+- 自测结论必须可读：通过/失败点/下一步修复建议。
+

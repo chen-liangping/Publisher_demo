@@ -19,9 +19,10 @@ interface UserInfo {
 
 interface UserAvatarMenuProps {
   user: UserInfo
+  variant?: 'default' | 'compact'
 }
 
-export default function UserAvatarMenu({ user }: UserAvatarMenuProps) {
+export default function UserAvatarMenu({ user, variant = 'default' }: UserAvatarMenuProps) {
   const [isHovered, setIsHovered] = useState<boolean>(false)
   const [syncModalVisible, setSyncModalVisible] = useState<boolean>(false)
 
@@ -122,71 +123,102 @@ export default function UserAvatarMenu({ user }: UserAvatarMenuProps) {
         borderRadius: '8px'
       }}
     >
-      <div 
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          cursor: 'pointer',
-          padding: '8px 16px',
-          borderRadius: '8px',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          backgroundColor: isHovered ? '#f5f5f5' : 'transparent',
-          transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
-          boxShadow: isHovered ? '0 2px 8px rgba(0, 0, 0, 0.1)' : 'none'
-        }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <Avatar 
-          size={36}
-          src={user.avatar}
-          icon={<UserOutlined />}
-          style={{ 
-            marginRight: 12,
-            border: '2px solid #e6e6e6',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-            transition: 'all 0.3s ease',
-            borderRadius: '50%',
-            backgroundColor: '#f5f5f5'
+      {variant === 'compact' ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            width: 36,
+            height: 36,
+            borderRadius: 999,
+            transition: 'all 0.25s ease',
+            backgroundColor: isHovered ? 'rgba(15, 23, 42, 0.06)' : 'rgba(15, 23, 42, 0.03)',
+            boxShadow: isHovered ? '0 10px 24px rgba(15, 23, 42, 0.10)' : 'none',
+            transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
+            justifyContent: 'center'
           }}
-        />
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'flex-start',
-          minWidth: 0 // 防止文字溢出
-        }}>
-          <span style={{ 
-            fontSize: '14px', 
-            fontWeight: 600, 
-            lineHeight: '20px',
-            color: '#262626',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            maxWidth: '120px'
-          }}>
-            {user.name}
-          </span>
-          <span style={{ 
-            fontSize: '12px', 
-            color: '#8c8c8c', 
-            lineHeight: '16px',
-            whiteSpace: 'nowrap'
-          }}>
-            {user.role}
-          </span>
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          aria-label="用户菜单"
+        >
+          <Avatar
+            size={30}
+            src={user.avatar}
+            icon={<UserOutlined />}
+            style={{
+              borderRadius: '50%',
+              backgroundColor: '#f5f5f5'
+            }}
+          />
         </div>
-        <DownOutlined 
-          style={{ 
-            marginLeft: 12, 
-            fontSize: '12px', 
-            color: '#bfbfbf',
-            transition: 'all 0.3s ease',
-            transform: isHovered ? 'rotate(180deg)' : 'rotate(0deg)'
-          }} 
-        />
-      </div>
+      ) : (
+        <div 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            backgroundColor: isHovered ? '#f5f5f5' : 'transparent',
+            transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
+            boxShadow: isHovered ? '0 2px 8px rgba(0, 0, 0, 0.1)' : 'none'
+          }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          <Avatar 
+            size={36}
+            src={user.avatar}
+            icon={<UserOutlined />}
+            style={{ 
+              marginRight: 12,
+              border: '2px solid #e6e6e6',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              transition: 'all 0.3s ease',
+              borderRadius: '50%',
+              backgroundColor: '#f5f5f5'
+            }}
+          />
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'flex-start',
+            minWidth: 0 // 防止文字溢出
+          }}>
+            <span style={{ 
+              fontSize: '14px', 
+              fontWeight: 600, 
+              lineHeight: '20px',
+              color: '#262626',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '120px'
+            }}>
+              {user.name}
+            </span>
+            <span style={{ 
+              fontSize: '12px', 
+              color: '#8c8c8c', 
+              lineHeight: '16px',
+              whiteSpace: 'nowrap'
+            }}>
+              {user.role}
+            </span>
+          </div>
+          <DownOutlined 
+            style={{ 
+              marginLeft: 12, 
+              fontSize: '12px', 
+              color: '#bfbfbf',
+              transition: 'all 0.3s ease',
+              transform: isHovered ? 'rotate(180deg)' : 'rotate(0deg)'
+            }} 
+          />
+        </div>
+      )}
       </Dropdown>
       
       {/* 数据同步弹窗 */}
