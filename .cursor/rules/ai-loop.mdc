@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+自驱动开发闭环（适用于本仓库）
+
+- 每次实现需求前，必须先在 `AIdocs/ai/work-items/` 创建或更新一个 Work Item（参考 `AIdocs/ai/templates/work-item.md`）。
+- 实现前必须完成「方案设计（Designer）」与「Review 清单（Reviewer）」并给出 `Reviewer Gate: PASS`，否则不得开始写代码。
+- 实现后必须跑最小自检：`npm run ai:check`，并把结果写回 Work Item 的「实施记录（Builder）」。
+- 必须遵守 `AIdocs/ai_constraints.md` 中所有 MUST 规则；发生冲突时，优先调整新逻辑以适配现有约定。

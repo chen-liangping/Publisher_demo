@@ -24,7 +24,7 @@ import {
   Progress,
   DatePicker
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 
 const { Title, Text } = Typography
@@ -90,9 +90,54 @@ interface WhitelistItem {
 interface MongoDatabase {
   id: string
   dbName: string
-  remark?: string         // 数据库用途备注
+  remark?: string          // 数据库用途备注
   readonlyAccess: boolean  // 只读账号是否有权限
   readwriteAccess: boolean // 读写账号是否有权限
+}
+
+type MongoShardKeyType = 'hashed' | 'asc'
+type MongoShardingStatus = 'sharded' | 'unsharded'
+
+interface MongoShardDistribution {
+  shard: string
+  percent: number
+  chunks?: number
+}
+
+interface MongoCollectionShardingState {
+  name: string
+  status: MongoShardingStatus
+  shardKey?: string
+  shardKeyType?: MongoShardKeyType
+  distribution: MongoShardDistribution[]
+  chunkCount?: number
+  // 来源：config.chunks 中 jumbo=true 的总数；>0 时业务上需提示
+  jumboChunks?: number
+  ranges?: Array<{ range: string; shard: string }>
+}
+
+interface MongoDbShardingState {
+  dbName: string
+  shardingEnabled: boolean
+  isBalanced: boolean
+  shardDistribution: MongoShardDistribution[]
+  collections: MongoCollectionShardingState[]
+}
+
+type MongoShardingStateByInstance = Record<string, Record<string, MongoDbShardingState>>
+
+// 集群级：来源 listShards
+type MongoShardNodeStatus = 'healthy' | 'down' | 'recovering'
+interface MongoShardNodeState {
+  name: string
+  status: MongoShardNodeStatus
+}
+
+// 集群级：来源 config.settings(_id="balancer" / "chunksize")
+interface MongoBalancerState {
+  enabled: boolean
+  // 单位 MB；64MB 等
+  chunkSizeMB: number
 }
 
 // 审计条目类型（简化）
@@ -224,28 +269,24 @@ const mockMongoDatabases: Record<string, MongoDatabase[]> = {
     {
       id: 'db1',
       dbName: 'gamedata',
-      remark: '游戏核心数据存储',
-      readonlyAccess: true,
-      readwriteAccess: true
+      readonlyAccess: false,
+      readwriteAccess: false
     },
     {
       id: 'db2',
       dbName: 'userinfo',
-      remark: '用户基础信息管理',
-      readonlyAccess: true,
-      readwriteAccess: true
+      readonlyAccess: false,
+      readwriteAccess: false
     },
     {
       id: 'db3',
       dbName: 'logs',
-      remark: '系统日志记录',
-      readonlyAccess: true,
+      readonlyAccess: false,
       readwriteAccess: true
     },
     {
       id: 'db4',
       dbName: 'analytics',
-      remark: '数据分析统计',
       readonlyAccess: true,
       readwriteAccess: true
     }
@@ -254,14 +295,12 @@ const mockMongoDatabases: Record<string, MongoDatabase[]> = {
     {
       id: 'db5',
       dbName: 'gamedata',
-      remark: '游戏数据备份',
       readonlyAccess: true,
       readwriteAccess: true
     },
     {
       id: 'db6',
       dbName: 'cache',
-      remark: '缓存数据存储',
       readonlyAccess: true,
       readwriteAccess: true
     }
@@ -270,25 +309,172 @@ const mockMongoDatabases: Record<string, MongoDatabase[]> = {
     {
       id: 'db7',
       dbName: 'gamedata',
-      remark: '生产环境游戏数据',
       readonlyAccess: true,
       readwriteAccess: true
     },
     {
       id: 'db8',
       dbName: 'userprofiles',
-      remark: '用户档案信息',
       readonlyAccess: true,
       readwriteAccess: true
     },
     {
       id: 'db9',
       dbName: 'analytics',
-      remark: '业务数据分析',
       readonlyAccess: true,
       readwriteAccess: true
     }
   ]
+}
+
+function buildMockMongoShardingState(databasesByInstance: Record<string, MongoDatabase[]>): MongoShardingStateByInstance {
+  const shardIds = ['shard001', 'shard002']
+
+  const makeDb = (dbName: string): MongoDbShardingState => {
+    const collections: MongoCollectionShardingState[] = (() => {
+      if (dbName === 'gamedata') {
+        return [
+          {
+            name: 'players',
+            status: 'sharded',
+            shardKey: '_id',
+            shardKeyType: 'hashed',
+            distribution: [
+              { shard: shardIds[0], percent: 48, chunks: 520 },
+              { shard: shardIds[1], percent: 52, chunks: 504 }
+            ],
+            chunkCount: 1024,
+            ranges: [
+              { range: '[MinKey,0)', shard: shardIds[0] },
+              { range: '[0,MaxKey)', shard: shardIds[1] }
+            ]
+          },
+          {
+            name: 'orders',
+            status: 'sharded',
+            shardKey: 'userId',
+            shardKeyType: 'asc',
+            distribution: [
+              { shard: shardIds[0], percent: 70, chunks: 716 },
+              { shard: shardIds[1], percent: 30, chunks: 308 }
+            ],
+            chunkCount: 1024,
+            jumboChunks: 3,
+            ranges: [
+              { range: '[MinKey,1000)', shard: shardIds[0] },
+              { range: '[1000,MaxKey)', shard: shardIds[1] }
+            ]
+          },
+          {
+            name: 'logs',
+            status: 'unsharded',
+            distribution: [],
+            chunkCount: 0,
+            ranges: []
+          }
+        ]
+      }
+      if (dbName === 'userinfo') {
+        return [
+          {
+            name: 'users',
+            status: 'sharded',
+            shardKey: '_id',
+            shardKeyType: 'hashed',
+            distribution: [
+              { shard: shardIds[0], percent: 51, chunks: 408 },
+              { shard: shardIds[1], percent: 49, chunks: 392 }
+            ],
+            chunkCount: 800,
+            ranges: [
+              { range: '[MinKey,0)', shard: shardIds[0] },
+              { range: '[0,MaxKey)', shard: shardIds[1] }
+            ]
+          },
+          {
+            name: 'sessions',
+            status: 'unsharded',
+            distribution: [],
+            chunkCount: 0,
+            ranges: []
+          }
+        ]
+      }
+      if (dbName === 'analytics') {
+        return [
+          {
+            name: 'events',
+            status: 'sharded',
+            shardKey: 'createdAt',
+            shardKeyType: 'hashed',
+            distribution: [
+              { shard: shardIds[0], percent: 55, chunks: 330 },
+              { shard: shardIds[1], percent: 45, chunks: 270 }
+            ],
+            chunkCount: 600,
+            ranges: [
+              { range: '[MinKey,0)', shard: shardIds[0] },
+              { range: '[0,MaxKey)', shard: shardIds[1] }
+            ]
+          }
+        ]
+      }
+      return [
+        { name: 'core', status: 'unsharded', distribution: [], chunkCount: 0, ranges: [] }
+      ]
+    })()
+
+    const shardedCollections = collections.filter((c) => c.status === 'sharded')
+    const shardingEnabled = shardedCollections.length > 0
+
+    const shardDistribution = shardingEnabled
+      ? shardIds.map((s) => {
+          const total = shardedCollections.reduce((acc, col) => {
+            const it = col.distribution.find((d) => d.shard === s)
+            return acc + (it?.percent || 0)
+          }, 0)
+          return { shard: s, percent: Math.round(total / shardedCollections.length) }
+        })
+      : []
+
+    const isBalanced = shardingEnabled
+      ? Math.abs((shardDistribution[0]?.percent || 0) - (shardDistribution[1]?.percent || 0)) <= 15
+      : true
+
+    return { dbName, shardingEnabled, isBalanced, shardDistribution, collections }
+  }
+
+  const result: MongoShardingStateByInstance = {}
+  Object.entries(databasesByInstance).forEach(([instanceId, dbs]) => {
+    result[instanceId] = result[instanceId] || {}
+    dbs.forEach((db) => {
+      result[instanceId][db.dbName] = makeDb(db.dbName)
+    })
+  })
+  return result
+}
+
+// 集群级 Mock：分片节点列表（listShards）
+function buildMockMongoShardNodes(databasesByInstance: Record<string, MongoDatabase[]>): Record<string, MongoShardNodeState[]> {
+  const result: Record<string, MongoShardNodeState[]> = {}
+  Object.keys(databasesByInstance).forEach((instanceId) => {
+    // 默认两节点；个别实例制造一个 recovering 以便 UI 体现非 healthy 态
+    const recovering = instanceId === '4'
+    result[instanceId] = [
+      { name: 'shard001', status: 'healthy' },
+      { name: 'shard002', status: recovering ? 'recovering' : 'healthy' }
+    ]
+  })
+  return result
+}
+
+// 集群级 Mock：Balancer / chunkSize（config.settings）
+function buildMockMongoBalancer(databasesByInstance: Record<string, MongoDatabase[]>): Record<string, MongoBalancerState> {
+  const result: Record<string, MongoBalancerState> = {}
+  Object.keys(databasesByInstance).forEach((instanceId) => {
+    result[instanceId] = { enabled: true, chunkSizeMB: 64 }
+  })
+  return result
 }
 
 export default function ContainerDatabase() {
@@ -350,6 +536,83 @@ export default function ContainerDatabase() {
   const [showCreateDatabase, setShowCreateDatabase] = useState<boolean>(false)
   const [newDatabaseName, setNewDatabaseName] = useState<string>('')
   const [newDatabaseRemark, setNewDatabaseRemark] = useState<string>('')
+
+  // MongoDB 权限管理：数据库列表（支持新增数据库产生真实效果）
+  const [mongoDatabasesByInstance, setMongoDatabasesByInstance] = useState<Record<string, MongoDatabase[]>>(mockMongoDatabases)
+
+  // MongoDB config 查询（分片管理）：方案 D（从数据库行进入集合分片管理）
+  const [mongoPermissionView, setMongoPermissionView] = useState<'dbList' | 'sharding' | 'collectionDetail'>('dbList')
+  const [mongoDbKeyword, setMongoDbKeyword] = useState<string>('')
+  const [selectedMongoDbNameForSharding, setSelectedMongoDbNameForSharding] = useState<string | null>(null)
+  const [mongoCollectionKeyword, setMongoCollectionKeyword] = useState<string>('')
+  const [selectedMongoCollectionName, setSelectedMongoCollectionName] = useState<string | null>(null)
+  const [mongoShardingStateByInstance, setMongoShardingStateByInstance] = useState<MongoShardingStateByInstance>(() => buildMockMongoShardingState(mockMongoDatabases))
+  // 集群级：分片节点列表（来源 listShards），实例维度只读展示
+  const [mongoShardNodesByInstance] = useState<Record<string, MongoShardNodeState[]>>(() => buildMockMongoShardNodes(mockMongoDatabases))
+  // 集群级：Balancer 与 chunkSize（来源 config.settings），实例维度只读展示
+  const [mongoBalancerByInstance] = useState<Record<string, MongoBalancerState>>(() => buildMockMongoBalancer(mockMongoDatabases))
+
+  // 开启分片弹窗（对“未分片集合”提供真实状态变化；enableDb=从数据库列表点「开启」)
+  const [enableShardingOpen, setEnableShardingOpen] = useState<boolean>(false)
+  const [shardingModalPurpose, setShardingModalPurpose] = useState<'enable' | 'adjust' | 'enableDb'>('enable')
+  // 与 enableDb 联用：用户从某一行点「开启」时，目标业务库名（不依赖已进入分片二级视图）
+  const [enableDbContextDbName, setEnableDbContextDbName] = useState<string | null>(null)
+  const [enableShardingCollection, setEnableShardingCollection] = useState<string>('')
+  const [enableShardingKey, setEnableShardingKey] = useState<string>('_id')
+  const [enableShardingKeyType, setEnableShardingKeyType] = useState<MongoShardKeyType>('hashed')
+
+  const createMongoDatabase = () => {
+    const instanceId = selectedDbInstance?.id
+    const name = newDatabaseName.trim()
+    const remark = newDatabaseRemark.trim()
+    if (!instanceId) return false
+
+    if (!name) {
+      messageApi.error('请输入数据库名称')
+      return false
+    }
+
+    // 产品意图：新增数据库需要即时反映到列表中（真实业务效果），而不是只弹 message
+    const exists = (mongoDatabasesByInstance[instanceId] || []).some((d) => d.dbName === name)
+    if (exists) {
+      messageApi.error(`数据库 "${name}" 已存在`)
+      return false
+    }
+
+    const newDb: MongoDatabase = {
+      id: `db_${Date.now()}`,
+      dbName: name,
+      remark: remark || undefined,
+      readonlyAccess: true,
+      readwriteAccess: true
+    }
+
+    setMongoDatabasesByInstance((prev) => ({
+      ...prev,
+      [instanceId]: [...(prev[instanceId] || []), newDb]
+    }))
+
+    // 产品意图：新建数据库后，也应能进入“分片管理”视图（初始化为未分片）
+    setMongoShardingStateByInstance((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...(prev[instanceId] || {}),
+        [name]: prev[instanceId]?.[name] || {
+          dbName: name,
+          shardingEnabled: false,
+          isBalanced: true,
+          shardDistribution: [],
+          collections: [{ name: 'core', status: 'unsharded', distribution: [], chunkCount: 0, ranges: [] }]
+        }
+      }
+    }))
+
+    messageApi.success(`数据库 "${name}" 创建成功，已自动授权给只读和读写账号`)
+    setNewDatabaseName('')
+    setNewDatabaseRemark('')
+    setShowCreateDatabase(false)
+    return true
+  }
   
   // MongoDB 数据库查询相关状态
   const [dbQueryOpen, setDbQueryOpen] = useState<boolean>(false)
@@ -1359,11 +1622,17 @@ export default function ContainerDatabase() {
                                         type="primary" 
                                         icon={<UserAddOutlined />} 
                                         onClick={() => {
+                                          // 产品意图：每次打开都从“数据库列表”开始，避免用户迷失在二级页面
                                           setSelectedDbInstance(inst);
                                           setDbPermissionOpen(true);
+                                          setMongoPermissionView('dbList')
+                                          setMongoDbKeyword('')
+                                          setSelectedMongoDbNameForSharding(null)
+                                          setMongoCollectionKeyword('')
+                                          setSelectedMongoCollectionName(null)
                                         }}
                                       >
-                                        数据库权限
+                                        权限和分片管理
                                       </Button>
                                     </>
                                   )
@@ -2728,161 +2997,892 @@ export default function ContainerDatabase() {
         }
         open={dbPermissionOpen}
         onCancel={() => {
+          // 产品意图：关闭弹窗时恢复到数据库列表视图，避免下次打开仍停留在“分片详情”等二级视图
           setDbPermissionOpen(false);
           setSelectedDbInstance(null);
+          setMongoPermissionView('dbList')
+          setMongoDbKeyword('')
+          setSelectedMongoDbNameForSharding(null)
+          setMongoCollectionKeyword('')
+          setSelectedMongoCollectionName(null)
         }}
         footer={null}
         width={1000}
         destroyOnHidden
       >
-        {selectedDbInstance && (
-          <div style={{ padding: '16px 0' }}>
-            {/* 实例信息 */}
-            <div style={{ 
-              background: '#f8f9fa', 
-              padding: 16, 
-              borderRadius: 6, 
-              marginBottom: 24,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 8,
-                  background: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-                }}>
-                  <svg viewBox="0 0 32 32" width="32" height="32">
-                    <path fill="#13aa52" d="M15.9.087l.854 1.604c.192.296.4.558.645.802a22.406 22.406 0 012.004 2.266c1.447 1.9 2.423 4.01 3.12 6.292.418 1.394.645 2.824.662 4.27.07 4.323-1.412 8.035-4.4 11.12a12.7 12.7 0 01-1.57 1.342c-.296 0-.436-.227-.558-.436a3.589 3.589 0 01-.436-1.255c-.105-.523-.174-1.046-.14-1.586v-.244C16.057 24.21 15.796.21 15.9.087z"/>
-                    <path fill="#13aa52" d="M15.9.034c-.035-.07-.07-.017-.105.017.017.35-.105.662-.296.96-.21.296-.488.523-.767.767-1.55 1.342-2.77 2.963-3.747 4.776-1.3 2.44-1.97 5.055-2.16 7.808-.087.993.314 4.497.627 5.508.854 2.684 2.388 4.933 4.375 6.885.488.47 1.01.906 1.55 1.325.157 0 .174-.14.21-.244a4.78 4.78 0 00.157-.68l.35-2.614z"/>
-                  </svg>
-                </div>
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
-                    {selectedDbInstance.alias}
-                  </div>
-                  <div style={{ fontSize: 14, color: '#666' }}>
-                    {selectedDbInstance.arch} · {selectedDbInstance.spec}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-                    只读账号: {selectedDbInstance.readonlyUser?.username || 'N/A'} | 读写账号: {selectedDbInstance.readwriteUser?.username || 'N/A'}
-                  </div>
-                </div>
-              </div>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                onClick={() => setShowCreateDatabase(true)}
-              >
-                分配数据库权限
-              </Button>
-            </div>
+        {selectedDbInstance && (() => {
+          const instanceId = selectedDbInstance.id
+          const dbList = mongoDatabasesByInstance[instanceId] || []
+          const filteredDbList = dbList.filter((db) => {
+            const kw = mongoDbKeyword.trim().toLowerCase()
+            if (!kw) return true
+            return db.dbName.toLowerCase().includes(kw) || (db.remark || '').toLowerCase().includes(kw)
+          })
 
-            {/* 数据库列表 */}
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-              数据库权限管理
-            </div>
-            
-            <div style={{ border: '1px solid #e8e8e8', borderRadius: 6 }}>
-              {/* 表头 */}
-              <div style={{ 
-                display: 'flex', 
-                background: '#fafafa', 
-                padding: '12px 16px',
-                borderBottom: '1px solid #e8e8e8',
-                fontWeight: 600
+          const activeDbName = selectedMongoDbNameForSharding
+          const dbSharding = activeDbName ? mongoShardingStateByInstance[instanceId]?.[activeDbName] : undefined
+          const activeCollectionName = selectedMongoCollectionName
+          const activeCollection = activeCollectionName
+            ? dbSharding?.collections.find((c) => c.name === activeCollectionName)
+            : undefined
+
+          const tagPillStyle: React.CSSProperties = {
+            border: 0,
+            borderRadius: 999,
+            padding: '0 10px',
+            lineHeight: '22px',
+            fontWeight: 600
+          }
+
+          const openDbSharding = (dbName: string) => {
+            // 产品意图：从数据库行直接进入 config 分片管理（方案 D）
+            setSelectedMongoDbNameForSharding(dbName)
+            setMongoPermissionView('sharding')
+            setMongoCollectionKeyword('')
+            setSelectedMongoCollectionName(null)
+          }
+
+          const grantDbPermission = (dbId: string, dbName: string) => {
+            // 产品意图：未授权数据库一键授权，给只读和读写账号同时补齐权限
+            modal.confirm({
+              title: '授权数据库',
+              content: `将为只读账号与读写账号补齐对数据库 "${dbName}" 的访问权限，确认继续？`,
+              okText: '确认授权',
+              cancelText: '取消',
+              onOk: () => {
+                setMongoDatabasesByInstance((prev) => ({
+                  ...prev,
+                  [instanceId]: (prev[instanceId] || []).map((d) =>
+                    d.id === dbId ? { ...d, readonlyAccess: true, readwriteAccess: true } : d
+                  )
+                }))
+                messageApi.success(`已为 "${dbName}" 完成授权`)
+              }
+            })
+          }
+
+          const openEnableDbSharding = (dbName: string) => {
+            // 产品意图：库级 enableSharding 与首个 shardCollection 一并走表单（与「开启集合分片」同逻辑），不单独只改布尔
+            const st = mongoShardingStateByInstance[instanceId]?.[dbName]
+            const allCols = st?.collections?.length
+              ? st.collections
+              : ([
+                  { name: 'core', status: 'unsharded' as const, distribution: [] as MongoShardDistribution[], chunkCount: 0, jumboChunks: 0, ranges: [] as Array<{ range: string; shard: string }> }
+                ] as MongoCollectionShardingState[])
+            const unsharded = allCols.filter((c) => c.status === 'unsharded')
+            if (unsharded.length === 0) {
+              messageApi.warning('该库下没有可开启分片的集合（或均已分片），请先在分片管理中处理。')
+              return
+            }
+            setShardingModalPurpose('enableDb')
+            setEnableDbContextDbName(dbName)
+            setEnableShardingCollection(unsharded[0].name)
+            setEnableShardingKey('_id')
+            setEnableShardingKeyType('hashed')
+            setEnableShardingOpen(true)
+          }
+
+          const openCollectionDetail = (collectionName: string) => {
+            // 产品意图：集合详情从“集合名”进入，而非单独的“详情按钮”
+            setSelectedMongoCollectionName(collectionName)
+            setMongoPermissionView('collectionDetail')
+          }
+
+          const openEnableShardingModal = (collectionName: string) => {
+            // 产品意图：对“未分片集合”提供可控入口，一键开启分片（mock 真实状态变化）
+            setShardingModalPurpose('enable')
+            setEnableDbContextDbName(null)
+            setEnableShardingCollection(collectionName)
+            setEnableShardingKey('_id')
+            setEnableShardingKeyType('hashed')
+            setEnableShardingOpen(true)
+          }
+
+          const openAdjustShardKeyModal = (collectionName: string) => {
+            // 产品意图：已分片集合允许在原型中调整分片键，用于评审键类型与均衡展示的变化
+            const col = dbSharding?.collections.find((c) => c.name === collectionName)
+            if (!col || col.status !== 'sharded') return
+            setShardingModalPurpose('adjust')
+            setEnableDbContextDbName(null)
+            setEnableShardingCollection(collectionName)
+            setEnableShardingKey(col.shardKey || '_id')
+            setEnableShardingKeyType(col.shardKeyType || 'hashed')
+            setEnableShardingOpen(true)
+          }
+
+          const buildMockShardingDistribution = (shardKeyType: MongoShardKeyType): MongoShardDistribution[] =>
+            shardKeyType === 'asc'
+              ? [
+                  { shard: 'shard001', percent: 70, chunks: 700 },
+                  { shard: 'shard002', percent: 30, chunks: 300 }
+                ]
+              : [
+                  { shard: 'shard001', percent: 49, chunks: 490 },
+                  { shard: 'shard002', percent: 51, chunks: 510 }
+                ]
+
+          const confirmShardingModal = () => {
+            if (!enableShardingCollection.trim()) {
+              messageApi.warning('请选择集合')
+              return
+            }
+
+            const targetDbName =
+              shardingModalPurpose === 'enableDb' ? enableDbContextDbName : activeDbName
+            if (!targetDbName) {
+              messageApi.error('未定位到目标数据库')
+              return
+            }
+            if (shardingModalPurpose === 'enable' || shardingModalPurpose === 'adjust') {
+              if (!activeDbName || !dbSharding) return
+            }
+            if (shardingModalPurpose === 'enableDb' && !enableDbContextDbName) return
+
+            // 用于校验的集合列表：与 setState 内首帧一致（无元数据时默认 core 未分片，便于新库走通）
+            const stForCheck =
+              shardingModalPurpose === 'enableDb'
+                ? mongoShardingStateByInstance[instanceId]?.[targetDbName]
+                : dbSharding
+            const colList: MongoCollectionShardingState[] = stForCheck?.collections?.length
+              ? stForCheck.collections
+              : [
+                  {
+                    name: 'core',
+                    status: 'unsharded' as const,
+                    distribution: [],
+                    chunkCount: 0,
+                    jumboChunks: 0,
+                    ranges: []
+                  }
+                ]
+            const targetBefore = colList.find((c) => c.name === enableShardingCollection)
+            if (!targetBefore) {
+              messageApi.error('所选集合不在当前库下，请重新选择')
+              return
+            }
+            if ((shardingModalPurpose === 'enable' || shardingModalPurpose === 'enableDb') && targetBefore.status !== 'unsharded') {
+              messageApi.warning('该集合已分片，请使用「调整分片键」或在分片管理中选择未分片集合。')
+              return
+            }
+            if (shardingModalPurpose === 'adjust' && targetBefore.status !== 'sharded') {
+              messageApi.warning('该集合未分片，请先开启分片')
+              return
+            }
+
+            // 产品意图：确认后列表/详情/库行「分片状态」应立即一致（含 enableSharding、shardCollection 的 mock）
+            setMongoShardingStateByInstance((prev) => {
+              const next = { ...prev }
+              const instance = { ...(next[instanceId] || {}) }
+              const existing = instance[targetDbName]
+              const baseCollections: MongoCollectionShardingState[] = existing?.collections?.length
+                ? existing.collections.map((c) => ({ ...c }))
+                : colList.map((c) => ({ ...c }))
+
+              const dbState: MongoDbShardingState = existing
+                ? { ...existing, collections: baseCollections }
+                : {
+                    dbName: targetDbName,
+                    shardingEnabled: false,
+                    isBalanced: true,
+                    shardDistribution: [],
+                    collections: baseCollections
+                  }
+
+              const collections = dbState.collections.map((c) => {
+                if (c.name !== enableShardingCollection) return c
+                const distribution = buildMockShardingDistribution(enableShardingKeyType)
+                return {
+                  ...c,
+                  status: 'sharded' as const,
+                  shardKey: enableShardingKey,
+                  shardKeyType: enableShardingKeyType,
+                  distribution,
+                  chunkCount: distribution.reduce((acc, it) => acc + (it.chunks || 0), 0),
+                  jumboChunks: 0,
+                  ranges: [
+                    { range: '[MinKey,0)', shard: 'shard001' },
+                    { range: '[0,MaxKey)', shard: 'shard002' }
+                  ]
+                }
+              })
+
+              const shardedCollections = collections.filter((c) => c.status === 'sharded')
+              const shardDistribution = shardedCollections.length
+                ? ['shard001', 'shard002'].map((s) => {
+                    const total = shardedCollections.reduce((acc, col) => {
+                      const it = col.distribution.find((d) => d.shard === s)
+                      return acc + (it?.percent || 0)
+                    }, 0)
+                    return { shard: s, percent: Math.round(total / shardedCollections.length) }
+                  })
+                : []
+              const isBalanced = shardDistribution.length === 2
+                ? Math.abs(shardDistribution[0].percent - shardDistribution[1].percent) <= 15
+                : true
+
+              const updated: MongoDbShardingState = {
+                ...dbState,
+                collections,
+                shardingEnabled: shardedCollections.length > 0,
+                shardDistribution,
+                isBalanced
+              }
+
+              instance[targetDbName] = updated
+              next[instanceId] = instance
+              return next
+            })
+
+            if (shardingModalPurpose === 'enable') {
+              messageApi.success(`已执行库级 enableSharding，并对集合 "${enableShardingCollection}" 完成 shardCollection（mock）`)
+              setMongoPermissionView('collectionDetail')
+              setSelectedMongoCollectionName(enableShardingCollection)
+            } else if (shardingModalPurpose === 'enableDb') {
+              const dn = enableDbContextDbName || targetDbName
+              messageApi.success(
+                `已对库 "${dn}" 执行 enableSharding，并对集合 "${enableShardingCollection}" 完成 shardCollection（mock）`
+              )
+            } else {
+              messageApi.success(`已调整集合 "${enableShardingCollection}" 分片键（mock）`)
+            }
+            setEnableShardingOpen(false)
+            setShardingModalPurpose('enable')
+            setEnableDbContextDbName(null)
+          }
+
+          // 弹窗内集合下拉：在「分片管理内开启」用当前库 dbSharding；在「数据库列表上开启」用目标库 enableDbContextDbName
+          const modalShardingState: MongoDbShardingState | undefined =
+            shardingModalPurpose === 'enableDb' && enableDbContextDbName
+              ? mongoShardingStateByInstance[instanceId]?.[enableDbContextDbName]
+              : dbSharding
+          const modalUnshardedCollectionOptions = (() => {
+            const cols: MongoCollectionShardingState[] = modalShardingState?.collections?.length
+              ? modalShardingState.collections
+              : [
+                  {
+                    name: 'core',
+                    status: 'unsharded' as const,
+                    distribution: [],
+                    chunkCount: 0,
+                    jumboChunks: 0,
+                    ranges: []
+                  }
+                ]
+            return cols
+              .filter((c) => c.status === 'unsharded')
+              .map((c) => ({ value: c.name, label: c.name }))
+          })()
+
+          return (
+            <div style={{ padding: '16px 0' }}>
+              {/* 实例信息 */}
+              <div style={{
+                background: '#f8f9fa',
+                padding: 16,
+                borderRadius: 6,
+                marginBottom: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div style={{ flex: '0 0 200px' }}>数据库名称</div>
-                <div style={{ flex: 1 }}>用途备注</div>
-                <div style={{ flex: '0 0 100px', textAlign: 'center' }}>权限状态</div>
-              </div>
-              
-              {/* 数据行 */}
-              {(mockMongoDatabases[selectedDbInstance.id] || []).map((db) => (
-                <div 
-                  key={db.id}
-                  style={{ 
-                    display: 'flex', 
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 8,
+                    background: '#fff',
+                    display: 'flex',
                     alignItems: 'center',
-                    padding: '16px',
-                    borderBottom: '1px solid #f0f0f0'
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                  }}>
+                    <svg viewBox="0 0 32 32" width="32" height="32">
+                      <path fill="#13aa52" d="M15.9.087l.854 1.604c.192.296.4.558.645.802a22.406 22.406 0 012.004 2.266c1.447 1.9 2.423 4.01 3.12 6.292.418 1.394.645 2.824.662 4.27.07 4.323-1.412 8.035-4.4 11.12a12.7 12.7 0 01-1.57 1.342c-.296 0-.436-.227-.558-.436a3.589 3.589 0 01-.436-1.255c-.105-.523-.174-1.046-.14-1.586v-.244C16.057 24.21 15.796.21 15.9.087z" />
+                      <path fill="#13aa52" d="M15.9.034c-.035-.07-.07-.017-.105.017.017.35-.105.662-.296.96-.21.296-.488.523-.767.767-1.55 1.342-2.77 2.963-3.747 4.776-1.3 2.44-1.97 5.055-2.16 7.808-.087.993.314 4.497.627 5.508.854 2.684 2.388 4.933 4.375 6.885.488.47 1.01.906 1.55 1.325.157 0 .174-.14.21-.244a4.78 4.78 0 00.157-.68l.35-2.614z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
+                      {selectedDbInstance.alias}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#666' }}>
+                      {selectedDbInstance.arch} · {selectedDbInstance.spec}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                      只读账号: {selectedDbInstance.readonlyUser?.username || 'N/A'} | 读写账号: {selectedDbInstance.readwriteUser?.username || 'N/A'}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    // 产品意图：新增/分配权限需要打开弹窗，而不是只弹 message
+                    setShowCreateDatabase(true)
                   }}
                 >
-                  <div style={{ flex: '0 0 200px' }}>
-                    <div style={{ fontWeight: 500, fontSize: 15 }}>
-                      {db.dbName}
-                    </div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, color: '#666' }}>
-                      {db.remark || '暂无备注'}
-                    </div>
-                  </div>
-                  <div style={{ flex: '0 0 100px', textAlign: 'center' }}>
-                    <Tag 
-                      color="success"
-                      style={{ borderRadius: 12 }}
-                    >
-                      已授权 ✓
-                    </Tag>
-                  </div>
-                </div>
-              ))}
-              
-              {(!mockMongoDatabases[selectedDbInstance.id] || mockMongoDatabases[selectedDbInstance.id].length === 0) && (
-                <div style={{ 
-                  padding: 48,
-                  textAlign: 'center',
-                  color: '#999'
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 8 }}>暂无数据库</div>
-                  <div style={{ fontSize: 14, marginBottom: 16 }}>创建第一个数据库开始使用</div>
-                  <Button 
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => setShowCreateDatabase(true)}
-                  >
-                    新建数据库
-                  </Button>
-                </div>
-              )}
-            </div>
+                  创建并授权数据库
+                </Button>
+              </div>
 
-            {/* 底部说明 */}
-            <div style={{ 
-              marginTop: 24,
-              padding: 12,
-              background: '#f0f9ff',
-              border: '1px solid #bae7ff',
-              borderRadius: 6,
-              fontSize: 13,
-              color: '#0958d9'
-            }}>
-              <strong>说明：</strong>
-              新建数据库后，系统会自动为只读和读写账号授予完整权限。建议在备注中说明数据库的具体用途，便于后续管理。
+              {mongoPermissionView === 'dbList' && (
+                <>
+                  {/* 集群级（实例维度，所有数据库共享）：Shard 节点状态 + Balancer */}
+                  {(() => {
+                    const shardNodes = mongoShardNodesByInstance[instanceId] || []
+                    const balancer = mongoBalancerByInstance[instanceId]
+                    if (shardNodes.length === 0 && !balancer) return null
+                    const shardStatusStyle = (s: MongoShardNodeStatus): React.CSSProperties => {
+                      if (s === 'healthy') return { background: 'rgba(34,197,94,0.14)', color: '#166534' }
+                      if (s === 'recovering') return { background: 'rgba(245,158,11,0.16)', color: '#92400e' }
+                      return { background: 'rgba(239,68,68,0.14)', color: '#991b1b' }
+                    }
+                    const shardStatusText = (s: MongoShardNodeStatus) =>
+                      s === 'healthy' ? '● healthy' : s === 'recovering' ? '◐ recovering' : '× down'
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div style={{ background: '#ffffff', border: '1px solid #e8e8e8', borderRadius: 10, padding: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700 }}>Shard 节点状态</div>
+                            <span style={{ fontSize: 12, color: '#94a3b8' }}>来源：listShards</span>
+                          </div>
+                          {shardNodes.length === 0 ? (
+                            <div style={{ color: '#94a3b8', fontSize: 13 }}>无分片节点</div>
+                          ) : (
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {shardNodes.map((n) => (
+                                <div key={n.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ fontWeight: 600, color: '#334155' }}>{n.name}</span>
+                                  <Tag style={{ ...tagPillStyle, ...shardStatusStyle(n.status) }}>
+                                    {shardStatusText(n.status)}
+                                  </Tag>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ background: '#ffffff', border: '1px solid #e8e8e8', borderRadius: 10, padding: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700 }}>Balancer 状态</div>
+                            <span style={{ fontSize: 12, color: '#94a3b8' }}>来源：config.settings</span>
+                          </div>
+                          {balancer ? (
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ color: '#475569' }}>是否开启</span>
+                                <Tag
+                                  style={{
+                                    ...tagPillStyle,
+                                    background: balancer.enabled ? 'rgba(34,197,94,0.14)' : 'rgba(148,163,184,0.18)',
+                                    color: balancer.enabled ? '#166534' : '#475569'
+                                  }}
+                                >
+                                  {balancer.enabled ? '● 开' : '○ 关'}
+                                </Tag>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ color: '#475569' }}>chunkSize</span>
+                                <span style={{ fontWeight: 700, color: '#334155' }}>{balancer.chunkSizeMB}MB</span>
+                              </div>
+                              <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                                集群级配置，所有数据库共享，仅展示
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ color: '#94a3b8', fontSize: 13 }}>未获取到 balancer 配置</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* 数据库列表 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div style={{ fontSize: 16, fontWeight: 600 }}>
+                      数据库权限管理
+                    </div>
+                    <Input
+                      allowClear
+                      value={mongoDbKeyword}
+                      onChange={(e) => setMongoDbKeyword(e.target.value)}
+                      prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                      placeholder="搜索数据库名称 / 备注"
+                      style={{ width: 280 }}
+                    />
+                  </div>
+
+                  <div style={{ border: '1px solid #e8e8e8', borderRadius: 6 }}>
+                    {/* 表头 */}
+                    <div style={{
+                      display: 'flex',
+                      background: '#fafafa',
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #e8e8e8',
+                      fontWeight: 600
+                    }}>
+                      <div style={{ flex: '0 0 200px' }}>数据库名称</div>
+                      <div style={{ flex: '0 0 120px', textAlign: 'center' }}>权限状态</div>
+                      <div style={{ flex: '0 0 140px', textAlign: 'center' }}>分片状态</div>
+                      <div style={{ flex: '0 0 140px', textAlign: 'right' }}>分片管理</div>
+                    </div>
+
+                    {/* 数据行 */}
+                    {filteredDbList.map((db) => {
+                      // 权限三态：全有=已授权(绿)；任一=部分授权(琥珀)；都无=未授权(红)
+                      const permLabel: '已授权' | '部分授权' | '未授权' =
+                        db.readonlyAccess && db.readwriteAccess
+                          ? '已授权'
+                          : (db.readonlyAccess || db.readwriteAccess)
+                            ? '部分授权'
+                            : '未授权'
+                      const permStyle: React.CSSProperties =
+                        permLabel === '已授权'
+                          ? { background: 'rgba(34,197,94,0.14)', color: '#166534' }
+                          : permLabel === '部分授权'
+                            ? { background: 'rgba(245,158,11,0.16)', color: '#92400e' }
+                            : { background: 'rgba(239,68,68,0.14)', color: '#991b1b' }
+                      const permSuffix =
+                        permLabel === '已授权' ? ' ✓' : permLabel === '未授权' ? ' ✗' : ''
+                      return (
+                        <div
+                          key={db.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '16px',
+                            borderBottom: '1px solid #f0f0f0'
+                          }}
+                        >
+                          <div style={{ flex: '0 0 200px' }}>
+                            <Typography.Link
+                              style={{ fontWeight: 600, fontSize: 15 }}
+                              onClick={() => openDbSharding(db.dbName)}
+                            >
+                              {db.dbName}
+                            </Typography.Link>
+                          </div>
+                          <div style={{ flex: '0 0 120px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <Tag style={{ ...tagPillStyle, ...permStyle }}>
+                              {permLabel}{permSuffix}
+                            </Tag>
+                            {permLabel === '未授权' && (
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => grantDbPermission(db.id, db.dbName)}
+                                style={{ padding: 0, height: 'auto' }}
+                              >
+                                授权
+                              </Button>
+                            )}
+                          </div>
+                          <div style={{ flex: '0 0 140px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            {/* 产品意图：库级分片状态来自 mongoShardingStateByInstance 派生，避免使用不存在字段 */}
+                            {mongoShardingStateByInstance[instanceId]?.[db.dbName]?.shardingEnabled ? (
+                              <span style={{ color: '#166534' }}>● 已开启</span>
+                            ) : (
+                              <>
+                                <span style={{ color: '#475569' }}>○ 未开启</span>
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  onClick={() => openEnableDbSharding(db.dbName)}
+                                  style={{ padding: 0, height: 'auto' }}
+                                >
+                                  开启
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                          <div style={{ flex: '0 0 140px', textAlign: 'right' }}>
+                            <Button
+                              type="text"
+                              icon={<SearchOutlined />}
+                              onClick={() => openDbSharding(db.dbName)}
+                              style={{ height: 32 }}
+                            >
+                              分片管理
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {filteredDbList.length === 0 && (
+                      <div style={{
+                        padding: 48,
+                        textAlign: 'center',
+                        color: '#999'
+                      }}>
+                        <div style={{ fontSize: 16, marginBottom: 8 }}>未找到匹配数据库</div>
+                        <div style={{ fontSize: 14, marginBottom: 16 }}>换个关键词试试，或新建数据库</div>
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined />}
+                          onClick={() => setShowCreateDatabase(true)}
+                        >
+                          新建数据库
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 底部说明 */}
+                  <div style={{
+                    marginTop: 24,
+                    padding: 12,
+                    background: '#f0f9ff',
+                    border: '1px solid #bae7ff',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    color: '#0958d9'
+                  }}>
+                    <strong>说明：</strong>
+                    新建数据库后，系统会自动为只读和读写账号授予完整权限。点击“数据库名称/分片管理”可进入 config 分片查询（集合维度）。
+                  </div>
+                </>
+              )}
+
+              {mongoPermissionView !== 'dbList' && activeDbName && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <Button
+                      type="text"
+                      icon={<RollbackOutlined />}
+                      onClick={() => {
+                        // 产品意图：二级视图返回到数据库列表
+                        setMongoPermissionView('dbList')
+                        setSelectedMongoDbNameForSharding(null)
+                        setMongoCollectionKeyword('')
+                        setSelectedMongoCollectionName(null)
+                      }}
+                      style={{ height: 32 }}
+                    >
+                      返回数据库列表
+                    </Button>
+                    <div style={{ color: '#94a3b8' }}>/</div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>
+                      config 查询 · {activeDbName}
+                    </div>
+                  </div>
+
+                  {selectedDbInstance.arch !== '分片集群实例' && (
+                    <Alert
+                      style={{ marginBottom: 16 }}
+                      type="warning"
+                      showIcon
+                      message="当前实例为副本集架构"
+                      description="分片（sharding）通常用于分片集群；此处仍提供 Mock 视图用于原型评审。"
+                    />
+                  )}
+
+                  {dbSharding ? (
+                    <>
+                      {/* 概览卡片（参考 docs/mongo.md） */}
+                   
+
+                      {/* 集合列表 */}
+                      {mongoPermissionView === 'sharding' && (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                            <div style={{ fontSize: 16, fontWeight: 700 }}>集合列表</div>
+                            <Input
+                              allowClear
+                              value={mongoCollectionKeyword}
+                              onChange={(e) => setMongoCollectionKeyword(e.target.value)}
+                              prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                              placeholder="搜索集合名"
+                              style={{ width: 260 }}
+                            />
+                          </div>
+
+                          <Table
+                            size="small"
+                            pagination={false}
+                            rowKey="name"
+                            dataSource={dbSharding.collections.filter((c) => {
+                              const kw = mongoCollectionKeyword.trim().toLowerCase()
+                              if (!kw) return true
+                              return c.name.toLowerCase().includes(kw)
+                            })}
+                            columns={[
+                              {
+                                title: '集合名',
+                                dataIndex: 'name',
+                                key: 'name',
+                                width: 220,
+                                render: (name: string, row: MongoCollectionShardingState) => (
+                                  <Typography.Link onClick={() => openCollectionDetail(row.name)}>
+                                    {name}
+                                  </Typography.Link>
+                                )
+                              },
+                              {
+                                title: '分片状态',
+                                dataIndex: 'status',
+                                key: 'status',
+                                width: 120,
+                                render: (status: MongoShardingStatus) => (
+                                  <Tag
+                                    style={{
+                                      ...tagPillStyle,
+                                      background: status === 'sharded' ? 'rgba(34,197,94,0.14)' : 'rgba(148,163,184,0.18)',
+                                      color: status === 'sharded' ? '#166534' : '#475569'
+                                    }}
+                                  >
+                                    {status === 'sharded' ? '● 已分片' : '○ 未分片'}
+                                  </Tag>
+                                )
+                              },
+                              {
+                                title: '分片键',
+                                key: 'shardKey',
+                                width: 160,
+                                render: (_: unknown, row: MongoCollectionShardingState) => (
+                                  <span style={{ color: '#334155' }}>
+                                    {row.status === 'sharded' ? `${row.shardKey} (${row.shardKeyType})` : '-'}
+                                  </span>
+                                )
+                              },
+                              {
+                                title: '数据分布',
+                                key: 'distribution',
+                                render: (_: unknown, row: MongoCollectionShardingState) => {
+                                  if (row.status !== 'sharded') return <span style={{ color: '#94a3b8' }}>-</span>
+                                  const pcts = row.distribution.map((d) => d.percent)
+                                  const imbalanced = pcts.length >= 2 ? Math.abs(pcts[0] - pcts[1]) > 15 : false
+                                  const hasJumbo = (row.jumboChunks || 0) > 0
+                                  return (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                      <span style={{ fontWeight: 600, color: '#334155' }}>
+                                        {row.distribution.map((d) => `${d.percent}%`).join(' / ')}
+                                      </span>
+                                      {imbalanced && (
+                                        <Tag style={{ ...tagPillStyle, background: 'rgba(245,158,11,0.16)', color: '#92400e' }}>
+                                          ⚠ 不均衡
+                                        </Tag>
+                                      )}
+                                      {hasJumbo && (
+                                        <Tooltip title={`存在 ${row.jumboChunks} 个 jumbo chunk，需关注`}>
+                                          <Tag style={{ ...tagPillStyle, background: 'rgba(239,68,68,0.14)', color: '#991b1b' }}>
+                                            ⚠ Jumbo {row.jumboChunks}
+                                          </Tag>
+                                        </Tooltip>
+                                      )}
+                                    </div>
+                                  )
+                                }
+                              },
+                              {
+                                title: '操作',
+                                key: 'actions',
+                                width: 168,
+                                align: 'right' as const,
+                                render: (_: unknown, row: MongoCollectionShardingState) => (
+                                  row.status === 'unsharded'
+                                    ? (
+                                      <Button
+                                        type="text"
+                                        icon={<CloudUploadOutlined />}
+                                        onClick={() => openEnableShardingModal(row.name)}
+                                        style={{ height: 32 }}
+                                      >
+                                        开启分片
+                                      </Button>
+                                    )
+                                    : (
+                                      <Button
+                                        type="text"
+                                        icon={<SlidersOutlined />}
+                                        onClick={() => openAdjustShardKeyModal(row.name)}
+                                        style={{ height: 32 }}
+                                      >
+                                        调整分片键
+                                      </Button>
+                                    )
+                                )
+                              }
+                            ]}
+                          />
+                        </>
+                      )}
+
+                      {/* 集合详情 */}
+                      {mongoPermissionView === 'collectionDetail' && activeCollection && (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                            <Button
+                              type="text"
+                              icon={<RollbackOutlined />}
+                              onClick={() => {
+                                // 产品意图：集合详情返回集合列表
+                                setMongoPermissionView('sharding')
+                                setSelectedMongoCollectionName(null)
+                              }}
+                              style={{ height: 32 }}
+                            >
+                              返回集合列表
+                            </Button>
+                            {activeCollection.status === 'unsharded' && (
+                              <Button
+                                type="primary"
+                                icon={<CloudUploadOutlined />}
+                                onClick={() => openEnableShardingModal(activeCollection.name)}
+                              >
+                                开启分片
+                              </Button>
+                            )}
+                            {activeCollection.status === 'sharded' && (
+                              <Button
+                                type="primary"
+                                icon={<SlidersOutlined />}
+                                onClick={() => openAdjustShardKeyModal(activeCollection.name)}
+                              >
+                                调整分片键
+                              </Button>
+                            )}
+                          </div>
+
+                          <div style={{
+                            background: '#ffffff',
+                            border: '1px solid #e8e8e8',
+                            borderRadius: 10,
+                            padding: 16,
+                            marginBottom: 16
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <div style={{ fontSize: 16, fontWeight: 800 }}>
+                                集合：{activeCollection.name}
+                              </div>
+                              <Tag
+                                style={{
+                                  ...tagPillStyle,
+                                  background: activeCollection.status === 'sharded' ? 'rgba(34,197,94,0.14)' : 'rgba(148,163,184,0.18)',
+                                  color: activeCollection.status === 'sharded' ? '#166534' : '#475569'
+                                }}
+                              >
+                                {activeCollection.status === 'sharded' ? '● 已开启' : '○ 未开启'}
+                              </Tag>
+                            </div>
+
+                            {activeCollection.status === 'sharded' && (
+                              <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>分片键</div>
+                                  <div style={{ fontWeight: 700, color: '#334155' }}>
+                                    {activeCollection.shardKey} ({activeCollection.shardKeyType})
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>chunk 数</div>
+                                  <div style={{ fontWeight: 700, color: '#334155' }}>
+                                    {activeCollection.chunkCount ?? 0}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>jumbo chunk</div>
+                                  {(activeCollection.jumboChunks || 0) > 0 ? (
+                                    <Tag style={{ ...tagPillStyle, background: 'rgba(239,68,68,0.14)', color: '#991b1b' }}>
+                                      ⚠ {activeCollection.jumboChunks}
+                                    </Tag>
+                                  ) : (
+                                    <div style={{ fontWeight: 700, color: '#166534' }}>0</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <Alert type="info" showIcon message="暂无该库的分片信息（mock）" />
+                  )}
+                </>
+              )}
+
+              {/* 开启/调整分片弹窗：必须始终挂在本区块根下，不可包在 `mongoPermissionView === 'dbList'` 或 `!dbList && activeDbName` 内，否则在列表点「开启」时 Modal 未挂载、open 无效 */}
+              <Modal
+                title={
+                  shardingModalPurpose === 'enableDb'
+                    ? '开启数据库分片'
+                    : shardingModalPurpose === 'enable'
+                      ? '开启集合分片'
+                      : '调整分片键'
+                }
+                open={enableShardingOpen}
+                onCancel={() => {
+                  setEnableShardingOpen(false)
+                  setShardingModalPurpose('enable')
+                  setEnableDbContextDbName(null)
+                }}
+                onOk={confirmShardingModal}
+                okText={shardingModalPurpose === 'adjust' ? '确认调整' : '确认开启'}
+                cancelText="取消"
+                destroyOnClose
+              >
+                <div style={{ padding: '8px 0' }}>
+                  <Form layout="vertical">
+                    {shardingModalPurpose === 'enableDb' && enableDbContextDbName && (
+                      <div style={{ marginBottom: 12, fontSize: 13, color: '#64748b' }}>
+                        目标库：<strong style={{ color: '#334155' }}>{enableDbContextDbName}</strong>
+                        {' · '}
+                        将先执行 <code>sh.enableSharding</code>，再对所选集合执行 <code>shardCollection</code>（原型 Mock）
+                      </div>
+                    )}
+
+                    <Form.Item label="集合" required>
+                      {shardingModalPurpose === 'adjust' ? (
+                        <Input readOnly value={enableShardingCollection} />
+                      ) : (
+                        <Select
+                          value={enableShardingCollection}
+                          onChange={(v) => setEnableShardingCollection(v)}
+                          options={modalUnshardedCollectionOptions}
+                        />
+                      )}
+                    </Form.Item>
+
+                    <Form.Item label="分片键" required>
+                      <Select
+                        value={enableShardingKey}
+                        onChange={(v) => setEnableShardingKey(v)}
+                        options={[
+                          { value: '_id', label: '_id（推荐）' },
+                          { value: 'userId', label: 'userId' },
+                          { value: 'uid', label: 'uid' },
+                          { value: 'createdAt', label: 'createdAt' }
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <Form.Item label="类型" required>
+                      <Select
+                        value={enableShardingKeyType}
+                        onChange={(v) => setEnableShardingKeyType(v)}
+                        options={[
+                          { value: 'hashed', label: 'hashed（更均匀）' },
+                          { value: 'asc', label: 'asc（范围分片）' }
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                      说明：原型 Mock。确认后更新库行「分片状态」、config 视图中集合分片与分布；库级开启后不可回退；仅未分片集合可在此弹窗中首次分片。
+                    </div>
+                  </Form>
+                </div>
+              </Modal>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* 新建数据库弹窗 */}
         <Modal
           title="新建数据库"
           open={showCreateDatabase}
           onOk={() => {
-            if (!newDatabaseName.trim()) {
-              message.error('请输入数据库名称')
-              return
-            }
-            message.success(`数据库 "${newDatabaseName}" 创建成功，已自动授权给只读和读写账号`)
-            setNewDatabaseName('')
-            setNewDatabaseRemark('')
-            setShowCreateDatabase(false)
+            createMongoDatabase()
           }}
           onCancel={() => {
             setNewDatabaseName('')
@@ -2903,26 +3903,12 @@ export default function ContainerDatabase() {
                   value={newDatabaseName}
                   onChange={(e) => setNewDatabaseName(e.target.value)}
                   onPressEnter={() => {
-                    if (newDatabaseName.trim()) {
-                      message.success(`数据库 "${newDatabaseName}" 创建成功，已自动授权给只读和读写账号`)
-                      setNewDatabaseName('')
-                      setNewDatabaseRemark('')
-                      setShowCreateDatabase(false)
-                    }
+                    // 产品意图：回车与点击“创建”一致，都是创建数据库并更新列表
+                    createMongoDatabase()
                   }}
                 />
               </Form.Item>
               
-              <Form.Item label="用途备注">
-                <Input.TextArea
-                  placeholder="请输入数据库用途说明，如: 游戏核心数据存储"
-                  value={newDatabaseRemark}
-                  onChange={(e) => setNewDatabaseRemark(e.target.value)}
-                  rows={3}
-                  maxLength={200}
-                  showCount
-                />
-              </Form.Item>
               
               <div style={{ 
                 background: '#f8f9fa',

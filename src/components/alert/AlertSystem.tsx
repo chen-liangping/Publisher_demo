@@ -290,34 +290,36 @@ initializeFaro({
     const personActors = actors.filter(actor => actor.kind === 'person')
     const webhookActors = actors.filter(actor => actor.kind === 'webhook')
 
-    const renderActorChecklist = (
-      actorList: AlertActor[],
-      layout: 'vertical' | 'horizontal'
-    ) => (_: unknown, record: AlertConfig): React.ReactElement => {
-      const content = actorList.map(actor => (
-        <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
-          <Checkbox
-            checked={getActorCheckedForApp(record.id, actor.id)}
-            onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
-          >
-            {actor.name}
-          </Checkbox>
-        </div>
-      ))
+    const renderActorChecklist = (actorList: AlertActor[], layout: 'vertical' | 'horizontal') => {
+      function ActorChecklistCell(_: unknown, record: AlertConfig): React.ReactElement {
+        const content = actorList.map(actor => (
+          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={getActorCheckedForApp(record.id, actor.id)}
+              onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
+            >
+              {actor.name}
+            </Checkbox>
+          </div>
+        ))
 
-      if (layout === 'horizontal') {
+        if (layout === 'horizontal') {
+          return (
+            <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+              {content}
+            </Space>
+          )
+        }
+
         return (
-          <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
+          <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
             {content}
           </Space>
         )
       }
 
-      return (
-        <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-          {content}
-        </Space>
-      )
+      ActorChecklistCell.displayName = `ActorChecklistCell(${layout})`
+      return ActorChecklistCell
     }
 
     const groupedActorCols: ColumnsType<AlertConfig> = []

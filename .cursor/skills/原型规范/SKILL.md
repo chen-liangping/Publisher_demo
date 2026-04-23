@@ -69,6 +69,36 @@ src/components/<feature>/types.ts
 - [ ] 宽表支持横向滚动，列有合理 min width
 - [ ] 关键交互都有注释
 
+## Ant Design `Modal` 与多视图/条件渲染（强约束，避免「点了不弹窗」反复出现）
+
+**根因**：`Modal` 若写在 `view === 'A' && (...)` 或 `view !== 'list' && ...` 等**条件分支内部**，在另一视图（如列表 `dbList`）里把 `open` 设为 `true` 时，**该分支不渲染 → Modal 节点未挂载 → 永远不会显示**，与 `open` 状态无关。
+
+**必须遵守**：
+
+1. 凡弹窗的**打开入口**可能出现在多个子视图（列表 / 二级详情 / Tab）中，**对应 `Modal` 必须挂在这些条件分支的公共父级**（例如：同一 `Drawer`/`div` 内、紧挨在 `view === 'list'` 与 `view === 'detail'` 两个块**之后**的兄弟节点），保证只要父级在，Modal 始终在 React 树中。
+2. 用 `open={state}` 控制显隐即可；**不要把整颗 `Modal` 包在「仅某一视图才为真」的条件里**（除非该弹窗 100% 只会在该视图内打开，且所有入口已验证不会从其他视图触发）。
+3. 自测清单：在**会触发该弹窗的最浅层页面**点一次，确认能出现；再切回其他视图若也能打开，再各点一次。
+
+**反例（禁止）**：
+
+```tsx
+{view === 'list' && <List />}
+{view !== 'list' && id && (
+  <>
+    <Detail />
+    <Modal open={open} ... />  {/* 在 list 点按钮 setOpen(true) 时这里不渲染，弹窗永不出 */}
+  </>
+)}
+```
+
+**正例**：
+
+```tsx
+{view === 'list' && <List />}
+{view !== 'list' && id && <Detail />}
+<Modal open={open} onCancel={() => setOpen(false)} ... />
+```
+
 ## Optional: UI polish suggestions (lightweight)
 - hover/active 反馈：按钮、卡片、表格行保持明显反馈（优先用 AntD 自带 + CSS transition）
 - 卡片不要重描边：用轻背景/阴影拉层次
