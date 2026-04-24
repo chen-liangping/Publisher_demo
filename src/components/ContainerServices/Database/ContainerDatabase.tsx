@@ -3444,21 +3444,19 @@ export default function ContainerDatabase() {
 
                     {/* 数据行 */}
                     {filteredDbList.map((db) => {
-                      // 权限三态：全有=已授权(绿)；任一=部分授权(琥珀)；都无=未授权(红)
-                      const permLabel: '已授权' | '部分授权' | '未授权' =
+                      // 权限二态：全有=已授权(绿)；都无=未授权(红)
+                      const permLabel: '已授权' | '未授权' =
                         db.readonlyAccess && db.readwriteAccess
                           ? '已授权'
-                          : (db.readonlyAccess || db.readwriteAccess)
-                            ? '部分授权'
-                            : '未授权'
+                          : '未授权'
+                  
                       const permStyle: React.CSSProperties =
                         permLabel === '已授权'
                           ? { background: 'rgba(34,197,94,0.14)', color: '#166534' }
-                          : permLabel === '部分授权'
-                            ? { background: 'rgba(245,158,11,0.16)', color: '#92400e' }
-                            : { background: 'rgba(239,68,68,0.14)', color: '#991b1b' }
+                          : { background: 'rgba(239,68,68,0.14)', color: '#991b1b' }
+                        
                       const permSuffix =
-                        permLabel === '已授权' ? ' ✓' : permLabel === '未授权' ? ' ✗' : ''
+                        permLabel === '已授权' ? ' ✓' : ''
                       return (
                         <div
                           key={db.id}

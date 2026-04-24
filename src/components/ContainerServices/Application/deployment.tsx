@@ -1,6 +1,6 @@
 "use client"
 //游服
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import type { ColumnsType } from 'antd/es/table'
 import {
   Card,
@@ -22,9 +22,21 @@ import {
   Input,
   Modal,
   Switch,
-  Divider
+  Divider,
+  Popover,
+  Spin
 } from 'antd'
-import { MoreOutlined, EditOutlined, CopyOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
+import {
+  MoreOutlined,
+  EditOutlined,
+  CopyOutlined,
+  UpOutlined,
+  DownOutlined,
+  WarningOutlined,
+  InfoCircleOutlined,
+  LineChartOutlined,
+  RobotOutlined
+} from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
 import DeploymentRecords, { 
   type DeployGroup as CommonDeployGroup, 
@@ -33,6 +45,248 @@ import DeploymentRecords, {
 import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
 const { Title, Text } = Typography
+
+/** 对齐 K8s ContainerStatus：waiting/terminated 的 reason + message，描述容器进程/探针等 */
+interface PodContainerStatusSummary {
+  containerName?: string
+  stateReason: string
+  stateMessage: string
+}
+
+interface K8sPodEventRow {
+  key: string
+  eventType: 'Normal' | 'Warning'
+  objectKind: string
+  objectName: string
+  message: string
+  reason: string
+  time: string
+}
+
+/** 对齐 Pod.status.conditions，用于状态旁 (i) Popover */
+interface PodConditionRow {
+  type: string
+  status: 'True' | 'False' | 'Unknown'
+}
+
+interface Pod {
+  key: string
+  service: string
+  group: string
+  startTime: string
+  updatedTime: string
+  policy: string
+  resources: string
+  status: string
+  containerStatus?: PodContainerStatusSummary
+  podEvents?: K8sPodEventRow[]
+  /** 主行展示的阶段文案，如 Running（与 ACK Pod 列表一致） */
+  k8sPhaseLabel?: string
+  podConditions?: PodConditionRow[]
+  /** 重启次数，与折线图标同列展示 */
+  restartCount?: number
+}
+
+/** 服务列表 Mock（含 K8s 事件与容器状态摘要） */
+const MOCK_SERVICE_PODS: Pod[] = [
+  {
+    key: 'p1',
+    service: 'game1',
+    group: '默认',
+    startTime: '2025-02-05 14:14:41',
+    updatedTime: '2025-02-05 12:00:00',
+    policy: '手动开服',
+    resources: '0.5C/1538Mi 推荐值：0.1C/448Mi',
+    status: '故障',
+    k8sPhaseLabel: 'Running',
+    restartCount: 0,
+    podConditions: [
+      { type: 'PodReadyToStartContainers', status: 'True' },
+      { type: 'Initialized', status: 'True' },
+      { type: 'Ready', status: 'False' },
+      { type: 'ContainersReady', status: 'False' },
+      { type: 'PodScheduled', status: 'True' }
+    ],
+    containerStatus: {
+      containerName: 'open-platform',
+      stateReason: 'Unhealthy',
+      stateMessage:
+        'Startup probe failed: Get "http://10.15.135.64:8080/health": dial tcp 10.15.135.64:8080: connect: connection refused'
+    },
+    podEvents: [
+      {
+        key: 'e1',
+        eventType: 'Warning',
+        objectKind: 'Pod',
+        objectName: 'open-platform-5b98b44949-rgkkf',
+        message:
+          'Startup probe failed: Get "http://10.15.135.64:8080/health": dial tcp 10.15.135.64:8080: connect: connection refused',
+        reason: 'Unhealthy',
+        time: '2026-04-22 17:22:04'
+      },
+      {
+        key: 'e2',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'open-platform-5b98b44949-rgkkf',
+        message: 'Started container open-platform',
+        reason: 'Started',
+        time: '2026-04-22 17:21:46'
+      },
+      {
+        key: 'e3',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'open-platform-5b98b44949-rgkkf',
+        message: 'Successfully pulled image "registry/open-platform:v1.2.0"',
+        reason: 'Pulled',
+        time: '2026-04-22 17:21:45'
+      },
+      {
+        key: 'e4',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'open-platform-5b98b44949-rgkkf',
+        message: 'Pulling image "registry/open-platform:v1.2.0"',
+        reason: 'Pulling',
+        time: '2026-04-22 17:21:44'
+      },
+      {
+        key: 'e5',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'open-platform-5b98b44949-rgkkf',
+        message: 'Created container open-platform',
+        reason: 'Created',
+        time: '2026-04-22 17:21:43'
+      }
+    ]
+  },
+  {
+    key: 'p2',
+    service: 'game2',
+    group: '默认',
+    startTime: '2025-02-04 10:00:00',
+    updatedTime: '2025-02-05 12:00:00',
+    policy: '自动开服',
+    resources: '0.3C/768Mi',
+    status: '正常',
+    k8sPhaseLabel: 'Running',
+    restartCount: 0,
+    podConditions: [
+      { type: 'PodReadyToStartContainers', status: 'True' },
+      { type: 'Initialized', status: 'True' },
+      { type: 'Ready', status: 'True' },
+      { type: 'ContainersReady', status: 'True' },
+      { type: 'PodScheduled', status: 'True' }
+    ],
+    containerStatus: {
+      containerName: 'game2',
+      stateReason: 'Running',
+      stateMessage: 'Started container main'
+    },
+    podEvents: [
+      {
+        key: 'n1',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'game2-7d4f8c9d4-xk2mn',
+        message: 'Started container main',
+        reason: 'Started',
+        time: '2025-02-04 10:05:02'
+      },
+      {
+        key: 'n2',
+        eventType: 'Normal',
+        objectKind: 'Pod',
+        objectName: 'game2-7d4f8c9d4-xk2mn',
+        message: 'Successfully pulled image "registry/game2:7.8.0"',
+        reason: 'Pulled',
+        time: '2025-02-04 10:05:00'
+      }
+    ]
+  }
+]
+
+/** 原型：根据 Pod Conditions 与 containerStatus 生成 AI 诊断文案（未调用真实 LLM） */
+function buildMockAiDiagnosisText(pod: Pod): string {
+  const cond = pod.podConditions ?? []
+  const notReady = cond.some(c => (c.type === 'Ready' || c.type === 'ContainersReady') && c.status === 'False')
+  const phase = pod.k8sPhaseLabel ?? (pod.status === '正常' ? 'Running' : '异常')
+
+  if (pod.status === '正常' && !notReady) {
+    return [
+      `【服务】${pod.service}`,
+      '',
+      `展示阶段为「${phase}」，Pod Conditions 均为 True，容器状态为「${pod.containerStatus?.stateReason ?? '—'}」。`,
+      '',
+      '从当前输入推断：工作负载就绪，暂无「未就绪却承担流量」的典型风险。若刚发版，可继续观察事件与监控是否出现探针抖动。',
+      '',
+      '（Mock：由本地规则生成，未接入大模型 API）'
+    ].join('\n')
+  }
+
+  const lines: string[] = []
+  lines.push(`【服务】${pod.service}`)
+  lines.push(`【展示阶段】${phase}（业务标注：${pod.status}）`)
+  lines.push('')
+  lines.push('1. 根因推断')
+  if (notReady) {
+    lines.push(
+      'Pod 可能已在运行，但 Ready / ContainersReady 为 False：就绪或健康检查未通过，或应用未在探针期望的地址与端口监听。'
+    )
+  } else {
+    lines.push('业务态为异常，请结合容器退出原因与「查看事件」中的 Warning 交叉确认。')
+  }
+  lines.push('')
+
+  const cs = pod.containerStatus
+  if (cs) {
+    lines.push('2. 与容器状态的关联')
+    lines.push(`- ${cs.stateReason}${cs.containerName ? `（容器 ${cs.containerName}）` : ''}`)
+    lines.push(`- ${cs.stateMessage}`)
+    lines.push('')
+    if (/connection refused|dial tcp|probe|health/i.test(cs.stateMessage)) {
+      lines.push(
+        '上述信息多见于 Startup/Liveness/Readiness 探针在启动阶段访问 Pod IP:端口被拒绝：进程尚未监听、仅监听 127.0.0.1、或端口与探针配置不一致。'
+      )
+      lines.push('')
+    }
+  }
+
+  lines.push('3. 建议动作（按优先级）')
+  lines.push('- 在 Pod 网络命名空间内对探针 URL 或 podIP:port/path 执行 curl / nc 复现。')
+  lines.push('- 核对 Deployment 的 containerPort、Service targetPort 与探针 port、进程实际监听是否一致。')
+  lines.push('- 冷启动较慢时：适当增大 startupProbe 的 initialDelaySeconds、failureThreshold，避免启动完成前被判定失败。')
+  lines.push('- 结合「查看事件」中 Warning 时间与镜像变更、扩缩容记录排查。')
+  lines.push('')
+  lines.push('（Mock：未接入真实大模型；接入流式 API 后可替换为模型输出）')
+
+  return lines.join('\n')
+}
+
+interface AiDiagnoseChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** 多轮对话 Mock：按关键词返回占位回复（未接 LLM） */
+function mockAiFollowUpReply(userText: string, pod: Pod): string {
+  if (/探针|健康|health|probe|就绪|readiness|liveness|startup/i.test(userText)) {
+    return '（Mock）建议依次核对：① 探针端口与进程监听是否一致；② 路径是否被鉴权拦截（如 401）；③ initialDelaySeconds 是否短于冷启动时间。修改 YAML 后滚动发布，并在「查看事件」里观察 Warning 是否消失。'
+  }
+  if (/重启|restart|crash|oom|退出|exit/i.test(userText)) {
+    return `（Mock）服务「${pod.service}」可对照重启次数与事件中 Last State（如 OOMKilled）。若是内存，先调高 limit 或排查泄漏；若是 CrashLoop，请结合上文 stateMessage 与容器日志定位。`
+  }
+  if (/日志|log|事件|event/i.test(userText)) {
+    return '（Mock）请使用本页「查看事件」打开底部事件表，按时间查看 Warning；标准输出日志需在集群控制台 Pod 详情「日志」Tab 查看（本原型未接真实日志流）。'
+  }
+  if (/为什么|原因|根因|怎么回事/i.test(userText)) {
+    return `（Mock）综合当前 Pod Conditions 与容器 stateMessage，仍优先从「就绪/探针未通过」方向排查；业务标注为「${pod.status}」。具体步骤见首条诊断摘要。`
+  }
+  return `（Mock）已记录你的问题：「${userText}」。接入大模型 API 后，将把本对话与集群元数据一并作为上下文；当前请优先对照首条「诊断摘要」中的排查顺序。`
+}
 
 export default function Deployment({ appId, appName, tags }: { appId?: string; appName?: string; tags?: string[] }) {
   const [activeKey, setActiveKey] = useState<string>('overview')
@@ -89,45 +343,45 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   const [resourceConfigExpanded, setResourceConfigExpanded] = useState<boolean>(true)
 
   // ==================== 服务相关 ====================
-  // Mock pod info data，pod数据
-  const pods = [
-    {
-      key: 'p1',
-      service: 'game1',
-      group: '默认',
-      startTime: '2025-02-05 14:14:41',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '手动开服',
-      resources: '0.5C/1538Mi 推荐值：0.1C/448Mi',
-      status: '故障'
-    },
-    {
-      key: 'p2',
-      service: 'game2',
-      group: '默认',
-      startTime: '2025-02-04 10:00:00',
-      updatedTime: '2025-02-05 12:00:00',
-      policy: '自动开服',
-      resources: '0.3C/768Mi',
-      status: '正常'
-    }
-  ]
-
-  interface Pod {
-    key: string
-    service: string
-    group: string
-    startTime: string
-    updatedTime: string
-    policy: string
-    resources: string
-    status: string
-  }
-
   // 服务详情 Drawer 状态
   const [serviceDrawerVisible, setServiceDrawerVisible] = useState<boolean>(false)
   const [selectedService, setSelectedService] = useState<Pod | null>(null)
-  
+  /** 底部抽屉展示的 Pod 事件所属行（故障时通过「查看日志」从视口下沿拉起，无需整页下滑） */
+  const [podEventsPanelRecord, setPodEventsPanelRecord] = useState<Pod | null>(null)
+  /** 底部事件抽屉内筛选（对齐控制台表头「类型/对象」下拉） */
+  const [podEventTypeFilter, setPodEventTypeFilter] = useState<'all' | 'Normal' | 'Warning'>('all')
+  const [podEventObjectFilter, setPodEventObjectFilter] = useState<string>('all')
+  const [serviceListSearch, setServiceListSearch] = useState<string>('')
+  const [aiDiagnoseModalOpen, setAiDiagnoseModalOpen] = useState<boolean>(false)
+  const [aiDiagnosePod, setAiDiagnosePod] = useState<Pod | null>(null)
+  const [aiDiagnoseMessages, setAiDiagnoseMessages] = useState<AiDiagnoseChatMessage[]>([])
+  const [aiDiagnoseDraft, setAiDiagnoseDraft] = useState<string>('')
+  const [aiDiagnoseSending, setAiDiagnoseSending] = useState<boolean>(false)
+  const aiDiagnoseChatEndRef = useRef<HTMLDivElement | null>(null)
+
+  const filteredPods = useMemo(() => {
+    const q = serviceListSearch.trim().toLowerCase()
+    if (!q) return MOCK_SERVICE_PODS
+    return MOCK_SERVICE_PODS.filter(p => p.service.toLowerCase().includes(q))
+  }, [serviceListSearch])
+
+  const podEventObjectOptions = useMemo(() => {
+    const kinds = new Set(podEventsPanelRecord?.podEvents?.map(e => e.objectKind) ?? [])
+    return [{ label: '全部', value: 'all' }, ...[...kinds].sort().map(k => ({ label: k, value: k }))]
+  }, [podEventsPanelRecord])
+
+  const displayedPodEvents = useMemo(() => {
+    const list = podEventsPanelRecord?.podEvents ?? []
+    let rows = [...list]
+    if (podEventTypeFilter !== 'all') {
+      rows = rows.filter(r => r.eventType === podEventTypeFilter)
+    }
+    if (podEventObjectFilter !== 'all') {
+      rows = rows.filter(r => r.objectKind === podEventObjectFilter)
+    }
+    return rows
+  }, [podEventsPanelRecord, podEventTypeFilter, podEventObjectFilter])
+
   // 批量选择相关状态
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [batchActionModalVisible, setBatchActionModalVisible] = useState<boolean>(false)
@@ -383,7 +637,48 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   // (插件相关的函数在需要时定义)
 
   // ==================== 表格列定义区域 ====================
-  
+
+  /** 打开底部 Pod 事件抽屉（列表「查看事件」） */
+  const openPodEventsFromRow = (record: Pod) => {
+    setPodEventTypeFilter('all')
+    setPodEventObjectFilter('all')
+    setPodEventsPanelRecord(record)
+  }
+
+  const openAiDiagnose = (record: Pod) => {
+    setAiDiagnosePod(record)
+    setAiDiagnoseDraft('')
+    setAiDiagnoseSending(false)
+    setAiDiagnoseMessages([
+      {
+        id: `seed-${Date.now()}`,
+        role: 'assistant',
+        content: `【${record.service}】根据当前 Pod 快照的初步诊断：\n\n${buildMockAiDiagnosisText(record)}`
+      }
+    ])
+    setAiDiagnoseModalOpen(true)
+  }
+
+  const sendAiDiagnoseUserMessage = () => {
+    const text = aiDiagnoseDraft.trim()
+    const pod = aiDiagnosePod
+    if (!text || !pod || aiDiagnoseSending) return
+    const userId = `u-${Date.now()}`
+    setAiDiagnoseMessages(prev => [...prev, { id: userId, role: 'user', content: text }])
+    setAiDiagnoseDraft('')
+    setAiDiagnoseSending(true)
+    window.setTimeout(() => {
+      const reply = mockAiFollowUpReply(text, pod)
+      setAiDiagnoseMessages(prev => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: reply }])
+      setAiDiagnoseSending(false)
+    }, 480)
+  }
+
+  useEffect(() => {
+    if (!aiDiagnoseModalOpen) return
+    aiDiagnoseChatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [aiDiagnoseModalOpen, aiDiagnoseMessages, aiDiagnoseSending])
+
   // 资源变配表格列定义
   const resourceColumns: ColumnsType<ResourceItem> = [
     { title: '容器', dataIndex: 'container', key: 'container' },
@@ -407,6 +702,68 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       }
     },
     { title: '内存', dataIndex: 'memory', key: 'memory' }
+  ]
+
+  // Pod 事件表列（对齐 ACK 控制台「事件」Tab：类型 / 对象 / 信息 / 内容 / 时间 + 智能诊断）
+  const podEventColumns: ColumnsType<K8sPodEventRow> = [
+    {
+      title: '类型',
+      dataIndex: 'eventType',
+      key: 'eventType',
+      width: 108,
+      render: (t: 'Normal' | 'Warning') => (
+        <Tag
+          color={t === 'Warning' ? 'gold' : 'green'}
+          bordered={false}
+          style={{ borderRadius: 9999, fontWeight: t === 'Warning' ? 600 : undefined }}
+        >
+          {t}
+        </Tag>
+      )
+    },
+    {
+      title: '对象',
+      key: 'object',
+      width: 280,
+      ellipsis: true,
+      render: (_: unknown, r: K8sPodEventRow) => (
+        <Text code style={{ fontSize: 12, background: 'transparent' }}>
+          {r.objectKind} {r.objectName}
+        </Text>
+      )
+    },
+    {
+      title: '信息',
+      dataIndex: 'message',
+      key: 'message',
+      ellipsis: true,
+      render: (msg: string, record: K8sPodEventRow) => (
+        <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 8, maxWidth: '100%' }}>
+          <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-word' }}>{msg}</span>
+          {record.eventType === 'Warning' && <WarningOutlined style={{ color: '#faad14', flexShrink: 0, marginTop: 2 }} />}
+        </span>
+      )
+    },
+    { title: '内容', dataIndex: 'reason', key: 'reason', width: 132, ellipsis: true },
+    { title: '时间', dataIndex: 'time', key: 'time', width: 172 },
+    {
+      title: ' ',
+      key: 'diag',
+      width: 112,
+      render: (_: unknown, record: K8sPodEventRow) =>
+        record.eventType === 'Warning' ? (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, fontSize: 12 }}
+            onClick={() => {
+              if (podEventsPanelRecord) openAiDiagnose(podEventsPanelRecord)
+            }}
+          >
+            智能诊断
+          </Button>
+        ) : null
+    }
   ]
 
   // 服务表格列定义
@@ -468,9 +825,96 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (val: string) => {
-        const color = val === '正常' ? 'green' : val === '故障' ? 'red' : 'orange'
-        return <Tag color={color} >{val}</Tag>
+      width: 300,
+      render: (_val: string, record: Pod) => {
+        const conditions = record.podConditions ?? []
+        const phaseLabel = record.k8sPhaseLabel ?? (record.status === '正常' ? 'Running' : '异常')
+        const notReady = conditions.some(
+          c => (c.type === 'Ready' || c.type === 'ContainersReady') && c.status === 'False'
+        )
+        // 对齐 ACK：Running 但未 Ready 用橙色；全就绪用绿色
+        const accent =
+          record.status === '正常' && !notReady ? '#52c41a' : '#fa8c16'
+        const restarts = record.restartCount ?? 0
+
+        const popoverBody = (
+          <div style={{ maxWidth: 360 }}>
+            {conditions.length > 0 ? (
+              conditions.map(row => (
+                <div key={row.type} style={{ fontSize: 13, lineHeight: 1.75, color: 'rgba(0,0,0,0.88)' }}>
+                  <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' }}>
+                    {row.type}:{' '}
+                  </span>
+                  <span
+                    style={{
+                      color: row.status === 'False' ? '#cf1322' : row.status === 'True' ? 'rgba(0,0,0,0.88)' : '#d48806'
+                    }}
+                  >
+                    {row.status}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Text type="secondary" style={{ fontSize: 13 }}>暂无 Pod Conditions（Mock）</Text>
+            )}
+            {record.containerStatus && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                  容器状态（stateReason / stateMessage）
+                </Text>
+                <Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                  {record.containerStatus.stateReason}
+                  {record.containerStatus.containerName ? `（${record.containerStatus.containerName}）` : ''}：{' '}
+                  {record.containerStatus.stateMessage}
+                </Text>
+              </div>
+            )}
+            <Divider style={{ margin: '12px 0 8px' }} />
+          </div>
+        )
+
+        return (
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: accent,
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{ color: accent, fontWeight: 500, fontSize: 14 }}>{phaseLabel}</span>
+                <Popover
+                  placement="bottomLeft"
+                  trigger="click"
+                  zIndex={1100}
+                  content={popoverBody}
+                >
+                  <InfoCircleOutlined
+                    role="button"
+                    aria-label="Pod 条件"
+                    style={{ color: '#8c8c8c', cursor: 'pointer', fontSize: 14 }}
+                  />
+                </Popover>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: 2 }}>
+                <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontSize: 12 }} onClick={() => openPodEventsFromRow(record)}>
+                  查看事件
+                </Button>
+                <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontSize: 12 }} onClick={() => openAiDiagnose(record)}>
+                  智能诊断
+                </Button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#1677ff', fontSize: 13, flexShrink: 0 }}>
+              <LineChartOutlined />
+              <span>{restarts}</span>
+            </div>
+          </div>
+        )
       }
     },
     {
@@ -734,16 +1178,24 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
               </Dropdown>
             }
           >
-              <Table 
-                columns={podColumns} 
-                dataSource={pods} 
-                pagination={false}
-                rowSelection={{
-                  selectedRowKeys,
-                  onChange: (keys: React.Key[]) => setSelectedRowKeys(keys)
-                }}
-              />
-            </Card>
+            <Input.Search
+              allowClear
+              placeholder="搜索服务名称"
+              value={serviceListSearch}
+              onChange={e => setServiceListSearch(e.target.value)}
+              style={{ maxWidth: 280, marginBottom: 12 }}
+            />
+            <Table
+              columns={podColumns}
+              dataSource={filteredPods}
+              pagination={false}
+              scroll={{ x: 1100 }}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys: React.Key[]) => setSelectedRowKeys(keys)
+              }}
+            />
+          </Card>
 
             {/* 批量操作 Modal */}
             <Modal
@@ -762,7 +1214,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                   已选择 <strong>{selectedRowKeys.length}</strong> 个服务：
                   <span style={{ marginLeft: 8, color: '#666', fontSize: 14 }}>
                     {selectedRowKeys.map((key, index) => {
-                      const pod = pods.find(p => p.key === key)
+                      const pod = MOCK_SERVICE_PODS.find(p => p.key === key)
                       // 从服务名称中提取数字，如 'game1' -> '1'
                       const serviceNumber = pod?.service.match(/\d+/)?.[0] || key
                       return (
@@ -1209,6 +1661,205 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
                 ]}
               />
             </Card>
+          </div>
+        )}
+      </Drawer>
+
+      {/* AI 智能诊断：根据当前行 Pod Mock 数据生成原因与建议（未接真实 LLM） */}
+      <Modal
+        title={
+          <Space>
+            <RobotOutlined style={{ color: '#722ed1' }} />
+            <span>AI 智能诊断</span>
+            {aiDiagnosePod ? (
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+                {aiDiagnosePod.service}
+              </Text>
+            ) : null}
+          </Space>
+        }
+        open={aiDiagnoseModalOpen}
+        onCancel={() => {
+          setAiDiagnoseModalOpen(false)
+          setAiDiagnosePod(null)
+          setAiDiagnoseMessages([])
+          setAiDiagnoseDraft('')
+          setAiDiagnoseSending(false)
+        }}
+        footer={
+          <Space>
+            <Button
+              onClick={() => {
+                if (aiDiagnosePod) {
+                  setAiDiagnoseMessages([
+                    {
+                      id: `seed-${Date.now()}`,
+                      role: 'assistant',
+                      content: `【${aiDiagnosePod.service}】根据当前 Pod 快照的初步诊断：\n\n${buildMockAiDiagnosisText(aiDiagnosePod)}`
+                    }
+                  ])
+                }
+              }}
+              disabled={!aiDiagnosePod}
+            >
+              关闭
+            </Button>
+          </Space>
+        }
+        width={720}
+        styles={{ body: { paddingTop: 8, maxHeight: 'min(78vh, 720px)', display: 'flex', flexDirection: 'column' } }}
+        destroyOnClose
+      >
+        {aiDiagnosePod && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 280,
+                maxHeight: 'min(52vh, 480px)',
+                overflowY: 'auto',
+                paddingRight: 4,
+                marginBottom: 12
+              }}
+            >
+              {aiDiagnoseMessages.map(m => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                    marginBottom: 12
+                  }}
+                >
+                  <div
+                    style={{
+                      maxWidth: '88%',
+                      background:
+                        m.role === 'user'
+                          ? '#e6f4ff'
+                          : 'linear-gradient(135deg, #faf5ff 0%, #f9f0ff 100%)',
+                      border: m.role === 'user' ? '1px solid #91caff' : '1px solid #d3adf7',
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      fontSize: 13,
+                      lineHeight: 1.75,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      color: 'rgba(0,0,0,0.88)'
+                    }}
+                  >
+                    {m.role === 'assistant' && (
+                      <Space size={6} style={{ marginBottom: 6 }}>
+                        <RobotOutlined style={{ color: '#722ed1' }} />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          助手
+                        </Text>
+                      </Space>
+                    )}
+                    {m.role === 'user' && (
+                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                        你
+                      </Text>
+                    )}
+                    <div>{m.content}</div>
+                  </div>
+                </div>
+              ))}
+              {aiDiagnoseSending && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+                  <Space style={{ color: '#722ed1' }}>
+                    <Spin size="small" />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      正在生成回复…
+                    </Text>
+                  </Space>
+                </div>
+              )}
+              <div ref={aiDiagnoseChatEndRef} />
+            </div>
+            <Divider style={{ margin: '0 0 12px' }} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <Input.TextArea
+                style={{ flex: 1 }}
+                value={aiDiagnoseDraft}
+                onChange={e => setAiDiagnoseDraft(e.target.value)}
+                placeholder="补充现象或提问，例如：探针一直失败怎么办？"
+                autoSize={{ minRows: 2, maxRows: 5 }}
+                disabled={aiDiagnoseSending}
+                onPressEnter={e => {
+                  if (!e.shiftKey) {
+                    e.preventDefault()
+                    sendAiDiagnoseUserMessage()
+                  }
+                }}
+              />
+              <Button
+                type="primary"
+                onClick={sendAiDiagnoseUserMessage}
+                disabled={!aiDiagnoseDraft.trim() || aiDiagnoseSending}
+                style={{ minWidth: 88, marginBottom: 2 }}
+              >
+                发送
+              </Button>
+            </div>
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+              Enter 发送，Shift+Enter 换行。回复为前端规则 Mock，未调用真实大模型 API。
+            </Text>
+          </div>
+        )}
+      </Modal>
+
+      {/* Pod 事件：从视口底部拉起，避免插在卡片内导致需整页下滑才能看到 */}
+      <Drawer
+        title={
+          <Space>
+            <Text strong>事件</Text>
+            {podEventsPanelRecord ? (
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+                {podEventsPanelRecord.service}
+              </Text>
+            ) : null}
+          </Space>
+        }
+        placement="bottom"
+        height="58vh"
+        open={Boolean(podEventsPanelRecord)}
+        onClose={() => setPodEventsPanelRecord(null)}
+        destroyOnClose
+        styles={{ body: { paddingTop: 8 } }}
+      >
+        {podEventsPanelRecord && (
+          <div>
+            <Space wrap size={[12, 8]} style={{ marginBottom: 12 }}>
+              <Space size={6} align="center">
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  类型
+                </Text>
+                <Select<'all' | 'Normal' | 'Warning'>
+                  value={podEventTypeFilter}
+                  onChange={v => setPodEventTypeFilter(v)}
+                  style={{ width: 128 }}
+                  options={[
+                    { label: '全部', value: 'all' },
+                    { label: 'Normal', value: 'Normal' },
+                    { label: 'Warning', value: 'Warning' }
+                  ]}
+                />
+              </Space>
+              
+            </Space>
+            <Table<K8sPodEventRow>
+              size="small"
+              rowKey="key"
+              columns={podEventColumns}
+              dataSource={displayedPodEvents}
+              pagination={false}
+              scroll={{ x: 1100, y: 'min(360px, 42vh)' }}
+              locale={{ emptyText: '暂无事件' }}
+              onRow={record => ({
+                style: record.eventType === 'Warning' ? { background: 'rgba(250, 173, 20, 0.1)' } : undefined
+              })}
+            />
           </div>
         )}
       </Drawer>
