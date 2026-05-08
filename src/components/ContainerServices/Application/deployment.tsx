@@ -38,9 +38,10 @@ import {
   RobotOutlined
 } from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
-import DeploymentRecords, { 
-  type DeployGroup as CommonDeployGroup, 
-  type DeployConfig as CommonDeployConfig 
+import DeploymentRecords, {
+  type DeployGroup as CommonDeployGroup,
+  type DeployConfig as CommonDeployConfig,
+  computeDefaultDeployTimeoutSec
 } from './DeploymentRecords'
 import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
@@ -410,7 +411,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   const [selectedGroup, setSelectedGroup] = useState<DeployGroup | null>(null)
 
   // 部署管理表格的 mock 数据与列定义
-  const deployConfigs = [
+  const deployConfigs: CommonDeployConfig[] = [
     {
       key: 'd1',
       image: 'integration-server:7.8.0-amd64',
@@ -422,24 +423,83 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       mounts: 1,
       preStop: '未配置',
       graceful: '5s',
-      externalPort: 8080
+      externalPort: 8080,
+      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 300 }),
+      deployStartedAt: '2026-04-20 10:00:00',
+      deployFinishedAt: '2026-04-20 10:08:32',
+      deployStatus: 'success'
+    },
+    {
+      key: 'd2',
+      image: 'integration-server:7.7.2-amd64',
+      envCount: 2,
+      cmd: '未配置',
+      ports: '8080',
+      health: { type: 'httpGet', path: '/health', port: 8080, initialDelay: 45000 },
+      protocol: 'HTTP',
+      mounts: 1,
+      preStop: '未配置',
+      graceful: '10s',
+      externalPort: 8080,
+      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 45000 }),
+      deployStartedAt: '2026-04-18 15:12:00',
+      deployFinishedAt: '2026-04-18 15:47:21',
+      deployStatus: 'failed'
+    },
+    {
+      key: 'd3',
+      image: 'integration-server:7.7.0-amd64',
+      envCount: 1,
+      cmd: '未配置',
+      ports: '8080',
+      health: { type: 'httpGet', path: '/test', port: 8080, initialDelay: 300 },
+      protocol: 'HTTP',
+      mounts: 1,
+      preStop: '未配置',
+      graceful: '5s',
+      externalPort: 8080,
+      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 300 }),
+      deployStartedAt: '2026-04-17 09:00:00',
+      deployFinishedAt: '2026-04-17 09:03:18',
+      deployStatus: 'cancelled',
+      cancelReason: 'manual'
+    },
+    {
+      key: 'd4',
+      image: 'integration-server:7.6.9-amd64',
+      envCount: 1,
+      cmd: '未配置',
+      ports: '8080',
+      health: { type: 'httpGet', path: '/test', port: 8080, initialDelay: 180000 },
+      protocol: 'HTTP',
+      mounts: 1,
+      preStop: '未配置',
+      graceful: '30s',
+      externalPort: 8080,
+      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 180000 }),
+      deployStartedAt: '2026-04-16 20:00:00',
+      deployFinishedAt: '2026-04-16 20:15:00',
+      deployStatus: 'cancelled',
+      cancelReason: 'timeout'
+    },
+    {
+      key: 'd5',
+      image: 'integration-server:7.8.1-amd64',
+      envCount: 1,
+      cmd: '未配置',
+      ports: '8080',
+      health: { type: 'httpGet', path: '/test', port: 8080, initialDelay: 60000 },
+      protocol: 'HTTP',
+      mounts: 1,
+      preStop: '未配置',
+      graceful: '5s',
+      externalPort: 8080,
+      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 60000 }),
+      deployStartedAt: '2026-04-24 14:30:00',
+      deployFinishedAt: null,
+      deployStatus: 'running'
     }
   ]
-
-  interface DeployConfig {
-    key: string
-    image: string
-    envCount: number
-    cmd: string
-    ports: string
-    health: { type: string; path: string; port: number; initialDelay: number }
-    protocol: string
-    mounts: number
-    preStop: string
-    graceful: string
-    externalPort: number
-  }
-
 
   // ==================== 文件下载相关 ====================
   const downloadInfo: DownloadInfo = {
@@ -967,7 +1027,7 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
   ]
 
   // 部署配置表格列定义
-  const deployColumns: ColumnsType<DeployConfig> = [
+  const deployColumns: ColumnsType<CommonDeployConfig> = [
     { title: '镜像', dataIndex: 'image', key: 'image' },
     { title: '环境变量', dataIndex: 'envCount', key: 'envCount', render: (val: number) => `${val}个` },
     { title: '启动命令', dataIndex: 'cmd', key: 'cmd' },

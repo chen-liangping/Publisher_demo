@@ -22,9 +22,12 @@ import {
   Descriptions,
   Card,
   Progress,
-  DatePicker
+  DatePicker,
+  Divider,
+  Row,
+  Col
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 
 const { Title, Text } = Typography
@@ -76,6 +79,113 @@ interface DBInstance {
   shardCount?: number
   // Mock相关字段
   domainUsed?: boolean // 公网域名是否已被使用
+}
+
+/** 存储实例备份策略（按类型分结构；仅展示，由 buildDefaultBackupPolicy 派生） */
+type StorageBackupPolicy =
+  | MongoBasicBackupPolicy
+  | RedisScheduledBackupPolicy
+  | MysqlAdvancedBackupPolicy
+  | ZookeeperScheduledBackupPolicy
+
+interface MongoBasicBackupPolicy {
+  variant: 'mongo_basic'
+  method: string
+  fullRetentionDays: number
+  secondLevelEnabled: boolean
+  backupTimeWindow: string
+  weekdaysLabel: string
+}
+
+interface RedisScheduledBackupPolicy {
+  variant: 'redis_scheduled'
+  retentionDays: number
+  cycleLabel: string
+  backupTimeWindow: string
+  nextBackupAt: string
+}
+
+/** MySQL：高级面板 + 基础面板字段并存；UI 可切换仅展示不同布局 */
+interface MysqlAdvancedBackupPolicy {
+  variant: 'mysql_advanced'
+  primaryBackupSummary: string
+  primaryBackupHint: string
+  backupCycleParen: string
+  backupStartWindowParen: string
+  retentionParen: string
+  secondaryBackupLabel: string
+  logRetentionLabel: string
+  clusterRetentionNote: string
+  basicMethod: string
+  basicFullRetentionDays: number
+  basicSecondLevelEnabled: boolean
+  basicTimeWindow: string
+  basicWeekdaysLabel: string
+}
+
+interface ZookeeperScheduledBackupPolicy {
+  variant: 'zookeeper_scheduled'
+  retentionDays: number
+  cycleLabel: string
+  backupTimeWindow: string
+  nextBackupAt: string
+}
+
+function normalizeStorageType(type: string | undefined): 'mysql' | 'mongo' | 'redis' | 'zookeeper' | 'other' {
+  const t = (type || '').toLowerCase()
+  if (t === 'mysql') return 'mysql'
+  if (t === 'mongo' || t === 'mongodb') return 'mongo'
+  if (t === 'redis') return 'redis'
+  if (t === 'zookeeper') return 'zookeeper'
+  return 'other'
+}
+
+function buildDefaultBackupPolicy(inst: DBInstance): StorageBackupPolicy {
+  const k = normalizeStorageType(inst.type)
+  if (k === 'mongo') {
+    return {
+      variant: 'mongo_basic',
+      method: '常规备份',
+      fullRetentionDays: 7,
+      secondLevelEnabled: false,
+      backupTimeWindow: '03:00-04:00',
+      weekdaysLabel: '星期一、星期二、星期三、星期四、星期五、星期六、星期日'
+    }
+  }
+  if (k === 'redis') {
+    return {
+      variant: 'redis_scheduled',
+      retentionDays: 10,
+      cycleLabel: '星期一, 星期二, 星期三, 星期四, 星期五',
+      backupTimeWindow: '20:00-21:00',
+      nextBackupAt: '2026-04-29 20:04:00'
+    }
+  }
+  if (k === 'mysql') {
+    return {
+      variant: 'mysql_advanced',
+      primaryBackupSummary: '常规备份（按备份周期）',
+      primaryBackupHint: '（如需提升备份频率，可切换为高频备份）',
+      backupCycleParen: '（周一、周二、周三、周四、周五、周六、周日）',
+      backupStartWindowParen: '（20:00 - 21:00）',
+      retentionParen: '（7天）',
+      secondaryBackupLabel: '关闭',
+      logRetentionLabel: '7天',
+      clusterRetentionNote: '释放集群时会自动备份，长期保留该备份集。',
+      basicMethod: '常规备份',
+      basicFullRetentionDays: 7,
+      basicSecondLevelEnabled: false,
+      basicTimeWindow: '03:00-04:00',
+      basicWeekdaysLabel: '星期一、星期二、星期三、星期四、星期五、星期六、星期日'
+    }
+  }
+  return {
+    variant: 'zookeeper_scheduled',
+    retentionDays: 14,
+    cycleLabel: '星期六, 星期日',
+    backupTimeWindow: '02:00-03:00',
+    nextBackupAt: '2026-04-26 02:10:00'
+  }
 }
 
 // 白名单条目类型
@@ -529,7 +639,17 @@ export default function ContainerDatabase() {
   // 规格详情 Modal
   const [specDetailOpen, setSpecDetailOpen] = useState<boolean>(false)
   const [selectedSpecInstance, setSelectedSpecInstance] = useState<DBInstance | null>(null)
-  
+  // 备份策略：仅展示，数据来自 buildDefaultBackupPolicy(inst.type)
+  const [backupPolicyOpen, setBackupPolicyOpen] = useState<boolean>(false)
+  const [backupPolicyInstance, setBackupPolicyInstance] = useState<DBInstance | null>(null)
+  const [mysqlBackupPanel, setMysqlBackupPanel] = useState<'basic' | 'advanced'>('advanced')
+
+  useEffect(() => {
+    if (backupPolicyOpen && backupPolicyInstance && normalizeStorageType(backupPolicyInstance.type) === 'mysql') {
+      setMysqlBackupPanel('advanced')
+    }
+  }, [backupPolicyOpen, backupPolicyInstance])
+
   // MongoDB 权限管理相关状态
   const [dbPermissionOpen, setDbPermissionOpen] = useState<boolean>(false)
   const [selectedDbInstance, setSelectedDbInstance] = useState<DBInstance | null>(null)
@@ -997,6 +1117,16 @@ export default function ContainerDatabase() {
       setBatchCreating(false)
       setCreationProgress(null)
     }
+  }
+
+  const resolvedBackupPolicy = (inst: DBInstance | null): StorageBackupPolicy | null => {
+    if (!inst) return null
+    return buildDefaultBackupPolicy(inst)
+  }
+
+  const openBackupPolicyModal = (inst: DBInstance) => {
+    setBackupPolicyInstance(inst)
+    setBackupPolicyOpen(true)
   }
 
   // 通用复制文本（与密码复制逻辑一致）
@@ -1823,6 +1953,9 @@ export default function ContainerDatabase() {
                             </Descriptions.Item>
                             <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
                             <Descriptions.Item label="默认端口" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                            <Descriptions.Item label="备份策略" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }} span={2}>
+                              <Typography.Link onClick={() => openBackupPolicyModal(inst)}>备份策略</Typography.Link>
+                            </Descriptions.Item>
                           </Descriptions>
                         ) : (
                           /* 其他数据库类型的通用显示 */
@@ -1855,6 +1988,9 @@ export default function ContainerDatabase() {
                             </Descriptions.Item>
                             <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
                             <Descriptions.Item label="默认端口" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                            <Descriptions.Item label="备份策略" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }} span={2}>
+                              <Typography.Link onClick={() => openBackupPolicyModal(inst)}>备份策略</Typography.Link>
+                            </Descriptions.Item>
                           </Descriptions>
                         )}
                       </div>
@@ -2559,6 +2695,186 @@ export default function ContainerDatabase() {
             </div>
           )}
         </Form>
+      </Modal>
+
+      {/* 备份策略：只读展示（按存储类型切换布局） */}
+      <Modal
+        title={backupPolicyInstance ? `备份策略 · ${backupPolicyInstance.alias}` : '备份策略'}
+        open={backupPolicyOpen}
+        onCancel={() => {
+          setBackupPolicyOpen(false)
+          setBackupPolicyInstance(null)
+        }}
+        footer={[
+          <Button
+            key="close"
+            type="primary"
+            onClick={() => {
+              setBackupPolicyOpen(false)
+              setBackupPolicyInstance(null)
+            }}
+          >
+            关闭
+          </Button>
+        ]}
+        width={720}
+        destroyOnClose
+      >
+        {backupPolicyInstance &&
+          (() => {
+            const p = resolvedBackupPolicy(backupPolicyInstance)
+            if (!p) return null
+            const sectionBarTitle = (title: string) => (
+              <div
+                style={{
+                  borderLeft: '3px solid #1677ff',
+                  paddingLeft: 10,
+                  marginBottom: 10,
+                  fontWeight: 600
+                }}
+              >
+                {title}
+              </div>
+            )
+            if (p.variant === 'mongo_basic') {
+              return (
+                <div>
+                  <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 12 }}>
+                    基础备份
+                  </Text>
+                  <Descriptions column={1} size="small" bordered>
+                    <Descriptions.Item label="备份方式">{p.method}</Descriptions.Item>
+                    <Descriptions.Item label="全量备份保留天数">{p.fullRetentionDays} 天</Descriptions.Item>
+                    <Descriptions.Item label="秒级备份">{p.secondLevelEnabled ? '开启' : '关闭'}</Descriptions.Item>
+                    <Descriptions.Item label="备份时间">{p.backupTimeWindow}</Descriptions.Item>
+                    <Descriptions.Item label="星期">{p.weekdaysLabel}</Descriptions.Item>
+                  </Descriptions>
+                  <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 13 }}>
+                    为了数据安全，请一周至少备份两次 MongoDB
+                  </Text>
+                </div>
+              )
+            }
+            if (p.variant === 'redis_scheduled' || p.variant === 'zookeeper_scheduled') {
+              return (
+                <div>
+                  <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 16 }}>
+                    当前定时配置
+                  </Text>
+                  <Row gutter={[24, 16]}>
+                    <Col span={12}>
+                      <Text type="secondary">保留天数：</Text>
+                      <Text>{p.retentionDays}</Text>
+                    </Col>
+                    <Col span={12}>
+                      <Text type="secondary">备份周期：</Text>
+                      <Text>{p.cycleLabel}</Text>
+                    </Col>
+                    <Col span={12}>
+                      <Text type="secondary">备份时间：</Text>
+                      <Text>{p.backupTimeWindow}</Text>
+                    </Col>
+                    <Col span={12}>
+                      <Text type="secondary">预计下次备份时间：</Text>
+                      <Text>{p.nextBackupAt}</Text>
+                    </Col>
+                  </Row>
+                </div>
+              )
+            }
+            if (p.variant === 'mysql_advanced') {
+              return (
+                <div>
+                  <div style={{ marginBottom: 12 }}>
+                    <Typography.Link onClick={() => setMysqlBackupPanel((prev) => (prev === 'advanced' ? 'basic' : 'advanced'))}>
+                      {mysqlBackupPanel === 'advanced' ? '切换基础备份设置' : '切换高级备份设置'}
+                    </Typography.Link>
+                  </div>
+                  {mysqlBackupPanel === 'basic' ? (
+                    <div>
+                      <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 12 }}>
+                        基础备份
+                      </Text>
+                      <Descriptions column={1} size="small" bordered>
+                        <Descriptions.Item label="备份方式">{p.basicMethod}</Descriptions.Item>
+                        <Descriptions.Item label="全量备份保留天数">{p.basicFullRetentionDays} 天</Descriptions.Item>
+                        <Descriptions.Item label="秒级备份">{p.basicSecondLevelEnabled ? '开启' : '关闭'}</Descriptions.Item>
+                        <Descriptions.Item label="备份时间">{p.basicTimeWindow}</Descriptions.Item>
+                        <Descriptions.Item label="星期">{p.basicWeekdaysLabel}</Descriptions.Item>
+                      </Descriptions>
+                      <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 13 }}>
+                        建议定期校验备份集可恢复性，并结合业务窗口调整备份时段。
+                      </Text>
+                    </div>
+                  ) : (
+                    <div>
+                      <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 16 }}>
+                        备份策略设置
+                      </Text>
+                      <div style={{ marginBottom: 16 }}>
+                        {sectionBarTitle('数据备份')}
+                        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                          使用存储层的快照技术对数据库进行无锁备份
+                        </Text>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          <Text>一级备份</Text>
+                          <Tooltip title="按周期与时间段执行备份任务（示意说明）">
+                            <QuestionCircleOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+                          </Tooltip>
+                        </div>
+                        <div style={{ marginBottom: 8 }}>
+                          <Text>{p.primaryBackupSummary}</Text>
+                          <Text style={{ marginLeft: 8, color: '#1677ff' }}>{p.primaryBackupHint}</Text>
+                        </div>
+                        <div style={{ marginBottom: 4 }}>
+                          备份周期 <span style={{ color: 'rgba(0,0,0,0.45)' }}>{p.backupCycleParen}</span>
+                        </div>
+                        <div style={{ marginBottom: 4 }}>
+                          备份开始时间段 <span style={{ color: 'rgba(0,0,0,0.45)' }}>{p.backupStartWindowParen}</span>
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                          备份保留时长 <span style={{ color: 'rgba(0,0,0,0.45)' }}>{p.retentionParen}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Text>二级备份</Text>
+                          <Tooltip title="跨地域或复制型二级备份能力（示意）">
+                            <QuestionCircleOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+                          </Tooltip>
+                        </div>
+                        <Text>{p.secondaryBackupLabel}</Text>
+                      </div>
+                      <Divider style={{ margin: '16px 0' }} />
+                      <div style={{ marginBottom: 16 }}>
+                        {sectionBarTitle('日志备份')}
+                        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                          离线保存每一个数据库 Redo 日志文件
+                        </Text>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                          <Text>同地域备份保留</Text>
+                          <Tooltip title="同地域日志备份保留策略（示意）">
+                            <QuestionCircleOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+                          </Tooltip>
+                          <Text>{p.logRetentionLabel}</Text>
+                        </div>
+                      </div>
+                      <Divider style={{ margin: '16px 0' }} />
+                      <div>
+                        {sectionBarTitle('通用')}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 6 }}>
+                          <Text>集群备份保留</Text>
+                          <Tooltip title="集群释放场景下的备份保留说明（示意）">
+                            <QuestionCircleOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+                          </Tooltip>
+                        </div>
+                        <Text style={{ display: 'block', marginTop: 8 }}>{p.clusterRetentionNote}</Text>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            }
+            return null
+          })()}
       </Modal>
 
       {/* 规格详情 Modal */}
