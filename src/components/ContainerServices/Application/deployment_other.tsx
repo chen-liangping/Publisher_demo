@@ -32,7 +32,6 @@ import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
 import DeploymentRecords, {
   type DeployGroup as CommonDeployGroup,
   type DeployConfig as CommonDeployConfig,
-  computeDefaultDeployTimeoutSec
 } from './DeploymentRecords'
 import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
@@ -155,7 +154,6 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
       preStop: '未配置',
       graceful: '5s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 300 }),
       deployStartedAt: '2026-04-20 10:00:00',
       deployFinishedAt: '2026-04-20 10:08:32',
       deployStatus: 'success'
