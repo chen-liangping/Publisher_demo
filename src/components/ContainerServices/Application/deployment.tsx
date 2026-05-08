@@ -41,7 +41,6 @@ import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
 import DeploymentRecords, {
   type DeployGroup as CommonDeployGroup,
   type DeployConfig as CommonDeployConfig,
-  computeDefaultDeployTimeoutSec
 } from './DeploymentRecords'
 import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
@@ -424,7 +423,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       preStop: '未配置',
       graceful: '5s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 300 }),
       deployStartedAt: '2026-04-20 10:00:00',
       deployFinishedAt: '2026-04-20 10:08:32',
       deployStatus: 'success'
@@ -441,7 +439,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       preStop: '未配置',
       graceful: '10s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 45000 }),
       deployStartedAt: '2026-04-18 15:12:00',
       deployFinishedAt: '2026-04-18 15:47:21',
       deployStatus: 'failed'
@@ -458,7 +455,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       preStop: '未配置',
       graceful: '5s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 300 }),
       deployStartedAt: '2026-04-17 09:00:00',
       deployFinishedAt: '2026-04-17 09:03:18',
       deployStatus: 'cancelled',
@@ -476,7 +472,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       preStop: '未配置',
       graceful: '30s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 180000 }),
       deployStartedAt: '2026-04-16 20:00:00',
       deployFinishedAt: '2026-04-16 20:15:00',
       deployStatus: 'cancelled',
@@ -494,7 +489,6 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
       preStop: '未配置',
       graceful: '5s',
       externalPort: 8080,
-      defaultDeployTimeoutSec: computeDefaultDeployTimeoutSec({ initialDelay: 60000 }),
       deployStartedAt: '2026-04-24 14:30:00',
       deployFinishedAt: null,
       deployStatus: 'running'
