@@ -2,11 +2,14 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message, Switch } from 'antd'
+import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message, Switch, Tabs } from 'antd'
 import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined, ExportOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
 const { Title, Text } = Typography
+
+// 导入自定义告警规则组件
+import CustomAlertRule from './CustomAlertRule'
 
 // 应用告警配置接口
 interface AlertConfig {
@@ -396,7 +399,7 @@ initializeFaro({
       {/* 运行时指标采集（独立卡片） */}
       <Card
         style={{ marginBottom: 24, borderRadius: 12, padding: 0, overflow: 'hidden' }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         <div
           style={{
@@ -440,7 +443,14 @@ initializeFaro({
         </div>
       </Card>
 
-      {/* 主要内容 - 故障报警 */}
+      {/* 主要内容 - Tabs：故障报警 / 自定义告警规则 */}
+      <Tabs
+        defaultActiveKey="pod-alert"
+        items={[
+          {
+            key: 'pod-alert',
+            label: '故障报警',
+            children: (
       <Card title="故障报警">
         {/* 顶部：全局前置控制区（快速开关） */}
         <div
@@ -519,6 +529,23 @@ initializeFaro({
           />
         </div>
       </Card>
+            ),
+          },
+          {
+            key: 'custom-alert',
+            label: '自定义告警规则',
+            children: (
+      <Card>
+        {/* 自定义告警规则说明 */}
+        <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f0f5ff', borderRadius: 4, color: '#1d39c4' }}>
+          通过引导式表单配置自定义监控指标与阈值，系统将在 Grafana 中自动创建对应的告警规则。告警通知将通过当前配置的通知渠道发送。
+        </div>
+        <CustomAlertRule />
+      </Card>
+            ),
+          },
+        ]}
+      />
 
       {/* 故障报警配置抽屉：配置应用与报警频率 */}
       <Drawer

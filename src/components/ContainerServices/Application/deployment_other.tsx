@@ -29,9 +29,9 @@ import {
 } from 'antd'
 import { MoreOutlined, EditOutlined, ReloadOutlined, CopyOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
-import DeploymentRecords, { 
-  type DeployGroup as CommonDeployGroup, 
-  type DeployConfig as CommonDeployConfig 
+import DeploymentRecords, {
+  type DeployGroup as CommonDeployGroup,
+  type DeployConfig as CommonDeployConfig,
 } from './DeploymentRecords'
 import FileDownload, { type ServerItem, type DownloadInfo } from './FileDownload'
 
@@ -141,7 +141,7 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
   const [selectedGroup, setSelectedGroup] = useState<DeployGroup | null>(null)
 
   // 部署管理表格的 mock 数据与列定义
-  const deployConfigs = [
+  const deployConfigs: CommonDeployConfig[] = [
     {
       key: 'd1',
       image: 'integration-server:7.8.0-amd64',
@@ -153,24 +153,12 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
       mounts: 1,
       preStop: '未配置',
       graceful: '5s',
-      externalPort: 8080
+      externalPort: 8080,
+      deployStartedAt: '2026-04-20 10:00:00',
+      deployFinishedAt: '2026-04-20 10:08:32',
+      deployStatus: 'success'
     }
   ]
-
-  interface DeployConfig {
-    key: string
-    image: string
-    envCount: number
-    cmd: string
-    ports: string
-    health: { type: string; path: string; port: number; initialDelay: number }
-    protocol: string
-    mounts: number
-    preStop: string
-    graceful: string
-    externalPort: number
-  }
-
 
   // ==================== 文件下载相关 ====================
   const downloadInfo: DownloadInfo = {
@@ -471,7 +459,7 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
   ]
 
   // 部署配置表格列定义
-  const deployColumns: ColumnsType<DeployConfig> = [
+  const deployColumns: ColumnsType<CommonDeployConfig> = [
     { title: '镜像', dataIndex: 'image', key: 'image' },
     { title: '环境变量', dataIndex: 'envCount', key: 'envCount', render: (val: number) => `${val}个` },
     { title: '启动命令', dataIndex: 'cmd', key: 'cmd' },

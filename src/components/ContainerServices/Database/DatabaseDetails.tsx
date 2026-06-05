@@ -2,9 +2,10 @@
 
 import React from 'react'
 import { Drawer, Button, Tag, Typography, Space, Tooltip, message, Row, Col } from 'antd'
-import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, CopyOutlined, SlidersOutlined } from '@ant-design/icons'
+import { formatRedisNotifySummary } from './redisNotifyKeyspaceMeta'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 interface DBInstance {
   id: string
@@ -26,6 +27,8 @@ interface DBInstance {
   shardSpec?: string
   mangoCount?: number
   shardCount?: number
+  redisNotifyKeyspaceEventsEnabled?: boolean
+  redisNotifyKeyspaceEvents?: string
 }
 
 const typeColorMap: Record<string, string> = {
@@ -38,9 +41,11 @@ const typeColorMap: Record<string, string> = {
 interface Props {
   instance: DBInstance
   onBack?: () => void
+  /** Redis：打开 notify-keyspace-events 配置（由列表页注入，产生真实弹窗编辑效果） */
+  onConfigureRedisNotify?: () => void
 }
 
-export default function DatabaseDetails({ instance, onBack }: Props) {
+export default function DatabaseDetails({ instance, onBack, onConfigureRedisNotify }: Props) {
   const [messageApi, contextHolder] = message.useMessage()
 
   // 通用复制文字到剪贴板并提示
@@ -118,6 +123,20 @@ export default function DatabaseDetails({ instance, onBack }: Props) {
             <div style={{ flex: 1, fontSize: 14 }}>{val}</div>
           </div>
         ))}
+
+        {(instance.type || '').toLowerCase() === 'redis' && (
+          <div style={{ display: 'flex', padding: '12px 0', alignItems: 'center', borderBottom: '1px solid #f5f5f5' }}>
+            <div style={{ width: 160, color: '#666', fontSize: 14 }}>通知场景</div>
+            <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              <Text style={{ margin: 0 }}>{formatRedisNotifySummary(instance)}</Text>
+              {onConfigureRedisNotify ? (
+                <Button type="default" size="small" icon={<SlidersOutlined />} onClick={onConfigureRedisNotify}>
+                  修改
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', padding: '12px 0', alignItems: 'center' }}>
           <div style={{ width: 160, color: '#666', fontSize: 14 }}>登录密码</div>

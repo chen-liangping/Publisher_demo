@@ -7,7 +7,9 @@ import {
   AppstoreOutlined,
   DatabaseOutlined,
   FileTextOutlined,
-  BellOutlined
+  BellOutlined,
+  KeyOutlined,
+  HistoryOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
@@ -17,6 +19,8 @@ import Announcement from '../../components/Admin/Announcement'
 import YamlViewer from '../../components/Admin/yaml'
 import NotificationControl from '../../components/Admin/NotificationControl'
 import GlobalNoticeConfig from '../../components/Admin/GlobalNoticeConfig'
+import { SAPermissions } from '../../components/Admin/sa-permissions'
+import OperationLog from '../../components/Admin/OperationLog'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -29,6 +33,8 @@ type AdminMenuKey =
   | 'global-notice-config'
   | 'yaml'
   | 'notification-control'
+  | 'sa-permissions'
+  | 'operation-log'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -65,6 +71,10 @@ export default function AdminPage() {
         return <YamlViewer />
       case 'notification-control':
         return <NotificationControl />
+      case 'sa-permissions':
+        return <SAPermissions />
+      case 'operation-log':
+        return <OperationLog />
       default:
         return <GameManagement />
     }
@@ -111,10 +121,22 @@ export default function AdminPage() {
                 onClick: () => handleMenuClick('game-management')
               },
               {
+                key: 'sa-permissions',
+                icon: <KeyOutlined />,
+                label: 'SA 权限管理',
+                onClick: () => handleMenuClick('sa-permissions')
+              },
+              {
                 key: 'resource-configuration',
                 icon: <DatabaseOutlined />,
                 label: '游戏资源配置',
                 onClick: () => handleMenuClick('resource-configuration')
+              },
+              {
+                key: 'operation-log',
+                icon: <HistoryOutlined />,
+                label: '操作日志',
+                onClick: () => handleMenuClick('operation-log')
               },
              /* {
                 key: 'test-initialization',
