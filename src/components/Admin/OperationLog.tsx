@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useMemo, useState, useCallback } from 'react'
-import { Card, DatePicker, Table, Tag, Space, Button, Drawer, Typography, Row, Col, message, Select, Input, Empty, Divider } from 'antd'
+import { Card, DatePicker, Table, Tag, Space, Button, Drawer, Typography, Row, Col, message, Select, Input, Empty } from 'antd'
 import type { TableColumnsType } from 'antd'
 import dayjs from 'dayjs'
 
@@ -310,7 +310,7 @@ const mockData: LogRow[] = [
   }
 ]
 
-export default function LogPage(): React.ReactElement {
+export default function OperationLog(): React.ReactElement {
   const [data, setData] = useState<LogRow[]>(mockData)
   const [open, setOpen] = useState<boolean>(false)
   const [current, setCurrent] = useState<LogRow | null>(null)
@@ -420,11 +420,6 @@ export default function LogPage(): React.ReactElement {
       setCurrentIndex(currentIndex + 1)
       setCurrent(nextRecord)
     }
-  }
-
-  // 格式化请求参数显示（简化版）
-  const formatRequestParams = (params: Record<string, unknown>): string => {
-    return JSON.stringify(params, null, 2)
   }
 
   const columns: TableColumnsType<LogRow> = [
@@ -565,7 +560,6 @@ export default function LogPage(): React.ReactElement {
               <Button
                 type="text"
                 size="small"
-                icon="↑"
                 disabled={currentIndex <= 0}
                 onClick={onPrevious}
                 title="上一条"
@@ -575,7 +569,6 @@ export default function LogPage(): React.ReactElement {
               <Button
                 type="text"
                 size="small"
-                icon="↓"
                 disabled={currentIndex >= filteredList.length - 1 || currentIndex < 0}
                 onClick={onNext}
                 title="下一条"
@@ -717,4 +710,3 @@ export default function LogPage(): React.ReactElement {
     </div>
   )
 }
-

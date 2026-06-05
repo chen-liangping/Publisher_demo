@@ -29,8 +29,56 @@ import {
 } from 'antd'
 import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
+import {
+  REDIS_NOTIFY_KEYSPACE_PRESETS,
+  redisNotifyFormToStorage,
+  redisNotifyStorageToForm,
+  formatRedisNotifySummary,
+  type RedisNotifyFormShape,
+  type RedisNotifyKeyspaceTemplateChoice
+} from './redisNotifyKeyspaceMeta'
 
 const { Title, Text } = Typography
+
+const REDIS_NOTIFY_SCENARIO_SELECT_OPTIONS: Array<{
+  value: RedisNotifyKeyspaceTemplateChoice
+  label: string
+}> = [
+  ...REDIS_NOTIFY_KEYSPACE_PRESETS.map((p) => ({
+    value: p.id,
+    label: p.name
+  })),
+  { value: 'custom', label: '其他（自定义参数）' }
+]
+
+interface RedisNotifyKeyspaceEditorFieldsProps {
+  templateWatch: string | undefined
+}
+
+/** 产品意图：页面上只暴露「场景」选择；底层 notify-keyspace-events 由预设映射，自定义为兜底入口 */
+function RedisNotifyKeyspaceEditorFields({ templateWatch }: RedisNotifyKeyspaceEditorFieldsProps) {
+  return (
+    <>
+      <Form.Item
+        name="redisNotifyKeyspaceTemplate"
+        label="通知场景"
+        rules={[{ required: true, message: '请选择场景' }]}
+        initialValue="off"
+      >
+        <Select options={REDIS_NOTIFY_SCENARIO_SELECT_OPTIONS} placeholder="请选择场景" />
+      </Form.Item>
+      {templateWatch === 'custom' ? (
+        <Form.Item
+          name="redisNotifyKeyspaceCustomValue"
+          label="自定义参数"
+          rules={[{ required: true, message: '请输入参数' }]}
+        >
+          <Input placeholder="特殊场景使用" allowClear />
+        </Form.Item>
+      ) : null}
+    </>
+  )
+}
 // v5 推荐使用 options 写法
 
 interface DBInstance {
@@ -77,6 +125,10 @@ interface DBInstance {
   shardSpec?: string
   MongoCount?: number
   shardCount?: number
+  /** Redis：是否由控制台写入 notify-keyspace-events（关闭则不下发该参数，由云厂商默认行为决定） */
+  redisNotifyKeyspaceEventsEnabled?: boolean
+  /** Redis：notify-keyspace-events 参数值，仅在开关开启时有效（对应 Redis CONFIG SET notify-keyspace-events） */
+  redisNotifyKeyspaceEvents?: string
   // Mock相关字段
   domainUsed?: boolean // 公网域名是否已被使用
 }
@@ -265,7 +317,7 @@ const AUTO_GAME_ID = 'gamedemo'
 
 const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
-  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
+  { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00', redisNotifyKeyspaceEventsEnabled: true, redisNotifyKeyspaceEvents: 'xE' },
   { id: '3', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '分片集群', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
   { 
     id: '4', 
@@ -592,6 +644,7 @@ export default function ContainerDatabase() {
   const [data, setData] = useState<DBInstance[]>(mockData)
   const [showCreate, setShowCreate] = useState(false)
   const [form] = Form.useForm()
+  const [redisKeyspaceForm] = Form.useForm<RedisNotifyFormShape>()
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined)
   const [searchAlias, setSearchAlias] = useState<string>('')
   const [modal, modalContextHolder] = Modal.useModal()
@@ -602,6 +655,8 @@ export default function ContainerDatabase() {
   }, {})
   // 监听表单中 arch 字段的值，以触发组件重渲染（用于显示分片数量等条件字段）
   const archValue = Form.useWatch('arch', form)
+  const redisNotifyTemplateWatch = Form.useWatch('redisNotifyKeyspaceTemplate', form)
+  const redisKeyspaceModalTemplateWatch = Form.useWatch('redisNotifyKeyspaceTemplate', redisKeyspaceForm)
 
   // 当架构选择为分片集群时，自动注入不可编辑的分片数量默认值 3
   useEffect(() => {
@@ -643,6 +698,50 @@ export default function ContainerDatabase() {
   const [backupPolicyOpen, setBackupPolicyOpen] = useState<boolean>(false)
   const [backupPolicyInstance, setBackupPolicyInstance] = useState<DBInstance | null>(null)
   const [mysqlBackupPanel, setMysqlBackupPanel] = useState<'basic' | 'advanced'>('advanced')
+
+  // Redis notify-keyspace-events：独立表单弹窗（卡片 / 详情抽屉中共用）
+  const [redisKeyspaceModalOpen, setRedisKeyspaceModalOpen] = useState<boolean>(false)
+  const [redisKeyspaceTarget, setRedisKeyspaceTarget] = useState<DBInstance | null>(null)
+
+  const openRedisKeyspaceModal = (inst: DBInstance): void => {
+    // 交互：打开 Redis 通知场景配置；保存后写回列表态数据（原型不接后端）。
+    setRedisKeyspaceTarget(inst)
+    redisKeyspaceForm.setFieldsValue(redisNotifyStorageToForm(inst))
+    setRedisKeyspaceModalOpen(true)
+  }
+
+  const saveRedisKeyspaceModal = async (): Promise<void> => {
+    try {
+      const vals = await redisKeyspaceForm.validateFields()
+      if (!redisKeyspaceTarget) return
+      const patch = redisNotifyFormToStorage(vals)
+      setData((prev) =>
+        prev.map((d) =>
+          d.id === redisKeyspaceTarget.id
+            ? {
+                ...d,
+                redisNotifyKeyspaceEventsEnabled: patch.redisNotifyKeyspaceEventsEnabled,
+                redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents
+              }
+            : d
+        )
+      )
+      setSelectedInstance((prev) =>
+        prev && prev.id === redisKeyspaceTarget.id
+          ? {
+              ...prev,
+              redisNotifyKeyspaceEventsEnabled: patch.redisNotifyKeyspaceEventsEnabled,
+              redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents
+            }
+          : prev
+      )
+      setRedisKeyspaceModalOpen(false)
+      setRedisKeyspaceTarget(null)
+      messageApi.success('已保存')
+    } catch {
+      // 校验失败时不提示，Ant Design 表单会展示错误信息
+    }
+  }
 
   useEffect(() => {
     if (backupPolicyOpen && backupPolicyInstance && normalizeStorageType(backupPolicyInstance.type) === 'mysql') {
@@ -1428,6 +1527,15 @@ export default function ContainerDatabase() {
         // 自动注入 gameId（原型模拟，生产应由后端提供）
         gameId: AUTO_GAME_ID,
       }
+      if (values.type === 'Redis') {
+        const notifyVals: RedisNotifyFormShape = {
+          redisNotifyKeyspaceTemplate: values.redisNotifyKeyspaceTemplate ?? 'off',
+          redisNotifyKeyspaceCustomValue: values.redisNotifyKeyspaceCustomValue
+        }
+        const patch = redisNotifyFormToStorage(notifyVals)
+        newItem.redisNotifyKeyspaceEventsEnabled = patch.redisNotifyKeyspaceEventsEnabled
+        newItem.redisNotifyKeyspaceEvents = patch.redisNotifyKeyspaceEvents
+      }
       // 模拟异步创建流程：先把实例插入为 creating 状态并展示进度
       const creatingItem = { ...newItem, status: 'creating', creatingProgress: 5, creatingStep: '初始化' }
       setData([creatingItem, ...data])
@@ -1822,6 +1930,12 @@ export default function ContainerDatabase() {
                                         备份
                                       </Button>
                                       <Button 
+                                        icon={<SlidersOutlined />} 
+                                        onClick={() => inst && openRedisKeyspaceModal(inst)}
+                                      >
+                                        通知场景
+                                      </Button>
+                                      <Button 
                                         icon={<UserAddOutlined />} 
                                         onClick={() => { 
                                           setWhitelistInstance(inst); 
@@ -1988,6 +2102,20 @@ export default function ContainerDatabase() {
                             </Descriptions.Item>
                             <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
                             <Descriptions.Item label="默认端口" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.defaultPort ?? '-'}</Descriptions.Item>
+                            {normalizeStorageType(inst.type) === 'redis' && (
+                              <Descriptions.Item
+                                label="通知场景"
+                                labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}
+                                span={2}
+                              >
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+                                  <Text style={{ margin: 0 }}>{formatRedisNotifySummary(inst)}</Text>
+                                  <Button type="default" size="small" icon={<SlidersOutlined />} onClick={() => openRedisKeyspaceModal(inst)}>
+                                    修改
+                                  </Button>
+                                </div>
+                              </Descriptions.Item>
+                            )}
                             <Descriptions.Item label="备份策略" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }} span={2}>
                               <Typography.Link onClick={() => openBackupPolicyModal(inst)}>备份策略</Typography.Link>
                             </Descriptions.Item>
@@ -2004,7 +2132,15 @@ export default function ContainerDatabase() {
         // 表格模式（>4 条）
         return (
           selectedInstance ? (
-            <DatabaseDetails instance={selectedInstance} onBack={() => setSelectedInstance(null)} />
+            <DatabaseDetails
+              instance={selectedInstance}
+              onBack={() => setSelectedInstance(null)}
+              onConfigureRedisNotify={
+                selectedInstance && (selectedInstance.type || '').toLowerCase() === 'redis'
+                  ? () => openRedisKeyspaceModal(selectedInstance)
+                  : undefined
+              }
+            />
           ) : (
             <>
               <Card style={{ marginBottom: 12 }} styles={{ body: { padding: 16 }}}>
@@ -2380,6 +2516,10 @@ export default function ContainerDatabase() {
               if (val === 'MySQL') {
                 form.setFieldsValue({ version: 'MySQL 8.0.1',  arch: '标准' })
               }
+              if (val === 'Redis') {
+                // 产品意图：默认「关闭通知」，模板或自定义由用户再选。
+                form.setFieldsValue({ redisNotifyKeyspaceTemplate: 'off', redisNotifyKeyspaceCustomValue: '' })
+              }
             }}
               options={[
                 { value: 'MySQL', label: (<Tooltip title={(typeCounts['MySQL'] || 0) >= 3 ? '实例数量已超出最大限制' : ''}><span>MySQL</span></Tooltip>), disabled: (typeCounts['MySQL'] || 0) >= 3 },
@@ -2433,6 +2573,9 @@ export default function ContainerDatabase() {
                   <Input placeholder="3" disabled />
                 </Form.Item>
               )}
+              <Divider style={{ margin: '12px 0' }} />
+              {/* 交互：仅场景下拉；选「其他」才出现自定义输入 */}
+              <RedisNotifyKeyspaceEditorFields templateWatch={redisNotifyTemplateWatch} />
             </>
           )}
 
@@ -2504,6 +2647,23 @@ export default function ContainerDatabase() {
               </Form.Item>
             </>
           )}
+        </Form>
+      </Modal>
+
+      <Modal
+        title="通知场景"
+        open={redisKeyspaceModalOpen}
+        okText="保存"
+        onOk={() => void saveRedisKeyspaceModal()}
+        onCancel={() => {
+          setRedisKeyspaceModalOpen(false)
+          setRedisKeyspaceTarget(null)
+        }}
+        destroyOnClose
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} message="按业务场景选择即可；「关闭通知」表示本实例不下发该配置。" />
+        <Form form={redisKeyspaceForm} layout="vertical">
+          <RedisNotifyKeyspaceEditorFields templateWatch={redisKeyspaceModalTemplateWatch} />
         </Form>
       </Modal>
 

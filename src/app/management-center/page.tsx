@@ -43,7 +43,7 @@ export default function ManagementCenterPage(): React.ReactElement {
 
   const initialKey = ((): ManagementCenterKey => {
     const k = searchParams.get('key')
-    // 兼容：历史 key=notice-config（旧“通知配置”页面）已移除菜单入口，默认落到“站内通知配置”
+    // 兼容：历史 key=notice-config（旧"通知配置"页面）已移除菜单入口，默认落到"站内通知配置"
     if (k === 'notice-config') return 'notice-config-site-notice'
     if (
       k === 'operation-log' ||
@@ -89,10 +89,10 @@ export default function ManagementCenterPage(): React.ReactElement {
   const renderContent = (): React.ReactElement => {
     switch (activeKey) {
       case 'operation-log':
-        // 需求：日志页面内容不变，仅作为“管理中心”中的一个入口收拢。
+        // 需求：日志页面内容不变，仅作为"管理中心"中的一个入口收拢。
         return <LogPage />
       case 'site-notice':
-        // 需求：站内通知为“整页内容”，不再包一层弹窗容器。
+        // 需求：站内通知为"整页内容"，不再包一层弹窗容器。
         return <MessageNotification containerPadding={0} />
       case 'notice-config-site-notice':
         return <SiteNoticeConfig />
@@ -119,7 +119,7 @@ export default function ManagementCenterPage(): React.ReactElement {
         aria-label="关闭管理中心"
         icon={<CloseOutlined />}
         onClick={() => {
-          // 交互逻辑：从“管理中心”返回用户之前所在页面，尽量贴近“关闭”体验。
+          // 交互逻辑：从"管理中心"返回用户之前所在页面，尽量贴近"关闭"体验。
           router.back()
           // 若没有历史记录，back 可能无效；这里补一个轻量兜底。
           setTimeout(() => {

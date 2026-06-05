@@ -2,8 +2,8 @@
 
 import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer, Dropdown, Modal, Switch } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
-import { 
-  CloudServerOutlined, 
+import {
+  CloudServerOutlined,
   CodeOutlined,
   AppstoreOutlined,
   DatabaseOutlined,
