@@ -340,8 +340,8 @@ export default function LogPage(): React.ReactElement {
   }, [data, searchDesc, searchOperator, searchModule, searchResourceId, dateRange])
 
   // 交互：筛选日期
-  const onRangeChange = (dates: null | [dayjs.Dayjs, dayjs.Dayjs]): void => {
-    setDateRange(dates)
+  const onRangeChange = (dates: null | [dayjs.Dayjs | null, dayjs.Dayjs | null]): void => {
+    setDateRange(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null)
   }
 
   // 交互：重置筛选条件

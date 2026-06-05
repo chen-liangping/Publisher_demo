@@ -57,7 +57,7 @@ export default function CreateAlertRuleDrawer({
   // 新建渠道表单状态
   const [showNewChannel, setShowNewChannel] = useState(false)
   const [newChannelName, setNewChannelName] = useState('')
-  const [newChannelType, setNewChannelType] = useState<'dingtalk' | 'webhook' | 'email'>('dingtalk')
+  const [newChannelType, setNewChannelType] = useState<'dingtalk' | 'feishu'>('dingtalk')
   const [newChannelWebhook, setNewChannelWebhook] = useState('')
 
   useEffect(() => {
@@ -123,14 +123,15 @@ export default function CreateAlertRuleDrawer({
   // 新建渠道
   const handleConfirmNewChannel = useCallback(() => {
     if (!newChannelName.trim()) return
-    if ((newChannelType === 'dingtalk' || newChannelType === 'webhook') && !newChannelWebhook.trim()) return
+    if (newChannelType !== 'dingtalk' && newChannelType !== 'feishu') return
+    if (!newChannelWebhook.trim()) return
 
     const id = `ch-${Date.now()}`
     const channel: AlertChannel = {
       id,
       name: newChannelName.trim(),
       type: newChannelType,
-      webhookUrl: newChannelType === 'email' ? undefined : newChannelWebhook.trim(),
+      webhookUrl: newChannelWebhook.trim(),
     }
     onCreateChannel(channel)
     setForm(prev => ({ ...prev, channelIds: [...prev.channelIds, id] }))
@@ -369,7 +370,7 @@ export default function CreateAlertRuleDrawer({
                     options={CHANNEL_TYPE_OPTIONS}
                   />
                 </Form.Item>
-                {newChannelType !== 'email' && (
+                {newChannelType && (
                   <Form.Item label="Webhook 地址" required style={{ marginBottom: 8 }}>
                     <Input
                       value={newChannelWebhook}
@@ -383,7 +384,7 @@ export default function CreateAlertRuleDrawer({
                     type="primary"
                     size="small"
                     onClick={handleConfirmNewChannel}
-                    disabled={!newChannelName.trim() || (newChannelType !== 'email' && !newChannelWebhook.trim())}
+                    disabled={!newChannelName.trim() || !newChannelWebhook.trim()}
                   >
                     确认添加
                   </Button>
