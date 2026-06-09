@@ -9,7 +9,8 @@ import {
   FileTextOutlined,
   BellOutlined,
   KeyOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
@@ -21,6 +22,7 @@ import NotificationControl from '../../components/Admin/NotificationControl'
 import GlobalNoticeConfig from '../../components/Admin/GlobalNoticeConfig'
 import { SAPermissions } from '../../components/Admin/sa-permissions'
 import OperationLog from '../../components/Admin/OperationLog'
+import GameFaroConfig from '../../components/Admin/GameFaroConfig'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -35,6 +37,7 @@ type AdminMenuKey =
   | 'notification-control'
   | 'sa-permissions'
   | 'operation-log'
+  | 'game-faro-config'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -75,6 +78,8 @@ export default function AdminPage() {
         return <SAPermissions />
       case 'operation-log':
         return <OperationLog />
+      case 'game-faro-config':
+        return <GameFaroConfig />
       default:
         return <GameManagement />
     }
@@ -112,61 +117,96 @@ export default function AdminPage() {
           <Menu
             mode="inline"
             selectedKeys={[selectedMenu]}
+            defaultOpenKeys={['game-env', 'permission-config', 'message-notice', 'audit']}
             style={{ height: '100%', borderRight: 0 }}
             items={[
               {
-                key: 'game-management',
+                key: 'game-env',
                 icon: <AppstoreOutlined />,
-                label: '游戏管理',
-                onClick: () => handleMenuClick('game-management')
+                label: '游戏与环境',
+                children: [
+                  {
+                    key: 'game-management',
+                    icon: <AppstoreOutlined />,
+                    label: '游戏管理',
+                    onClick: () => handleMenuClick('game-management')
+                  },
+                  {
+                    key: 'resource-configuration',
+                    icon: <DatabaseOutlined />,
+                    label: '游戏资源配置',
+                    onClick: () => handleMenuClick('resource-configuration')
+                  }
+                  /* {
+                    key: 'test-initialization',
+                    icon: <ExperimentOutlined />,
+                    label: '测试初始化',
+                    onClick: () => handleMenuClick('test-initialization')
+                  },*/
+                ]
               },
               {
-                key: 'sa-permissions',
+                key: 'permission-config',
                 icon: <KeyOutlined />,
-                label: 'SA 权限管理',
-                onClick: () => handleMenuClick('sa-permissions')
+                label: '权限与配置',
+                children: [
+                  {
+                    key: 'sa-permissions',
+                    icon: <KeyOutlined />,
+                    label: 'SA 权限管理',
+                    onClick: () => handleMenuClick('sa-permissions')
+                  },
+                  {
+                    key: 'game-faro-config',
+                    icon: <SettingOutlined />,
+                    label: 'Game Faro配置',
+                    onClick: () => handleMenuClick('game-faro-config')
+                  }
+                ]
               },
               {
-                key: 'resource-configuration',
-                icon: <DatabaseOutlined />,
-                label: '游戏资源配置',
-                onClick: () => handleMenuClick('resource-configuration')
+                key: 'message-notice',
+                icon: <BellOutlined />,
+                label: '消息与通知',
+                children: [
+                  {
+                    key: 'announcement',
+                    icon: <NotificationOutlined />,
+                    label: '公告管理',
+                    onClick: () => handleMenuClick('announcement')
+                  },
+                  {
+                    key: 'global-notice-config',
+                    icon: <BellOutlined />,
+                    label: '游戏通知配置',
+                    onClick: () => handleMenuClick('global-notice-config')
+                  }
+                  /*{
+                    key: 'notification-control',
+                    icon: <BellOutlined />,
+                    label: '通知总开关',
+                    onClick: () => handleMenuClick('notification-control')
+                  },*/
+                ]
               },
               {
-                key: 'operation-log',
+                key: 'audit',
                 icon: <HistoryOutlined />,
-                label: '操作日志',
-                onClick: () => handleMenuClick('operation-log')
-              },
-             /* {
-                key: 'test-initialization',
-                icon: <ExperimentOutlined />,
-                label: '测试初始化',
-                onClick: () => handleMenuClick('test-initialization')
-              },*/
-              {
-                key: 'announcement',
-                icon: <NotificationOutlined />,
-                label: '公告管理',
-                onClick: () => handleMenuClick('announcement')
-              },
-              {
-                key: 'global-notice-config',
-                icon: <BellOutlined />,
-                label: '游戏通知配置',
-                onClick: () => handleMenuClick('global-notice-config')
-              },
-              /*{
-                key: 'notification-control',
-                icon: <BellOutlined />,
-                label: '通知总开关',
-                onClick: () => handleMenuClick('notification-control')
-              },*/
-              {
-                key: 'yaml',
-                icon: <FileTextOutlined />,
-                label: 'YAML 备份',
-                onClick: () => handleMenuClick('yaml')
+                label: '审计',
+                children: [
+                  {
+                    key: 'operation-log',
+                    icon: <HistoryOutlined />,
+                    label: '操作日志',
+                    onClick: () => handleMenuClick('operation-log')
+                  },
+                  {
+                    key: 'yaml',
+                    icon: <FileTextOutlined />,
+                    label: 'YAML 备份',
+                    onClick: () => handleMenuClick('yaml')
+                  }
+                ]
               }
             ]}
           />
