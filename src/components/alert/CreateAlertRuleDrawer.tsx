@@ -1,23 +1,29 @@
 'use client'
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { Drawer, Steps, Form, Input, Radio, Select, InputNumber, Space, Typography, Tag, Button, Divider } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { Drawer, Steps, Form, Input, Radio, Select, InputNumber, Space, Typography, Tag, Button, Divider, Switch } from 'antd'
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   METRIC_TYPES,
   DATASOURCE_OPTIONS,
   OPERATOR_OPTIONS,
   DURATION_OPTIONS,
   CHANNEL_TYPE_OPTIONS,
-  LOKI_TIME_RANGE_OPTIONS,
+  LOKI_CONDITION_OPERATOR_OPTIONS,
+  LOKI_VISUAL_AGGREGATION_OPTIONS,
   translateToQuery,
   generateRuleName,
   createDefaultFormValue,
+  createDefaultLokiCondition,
+  normalizeKeywordList,
+  normalizeLokiConditions,
+  parseListInput,
   type DatasourceType,
   type AlertRuleFormValue,
   type GrafanaAlertRule,
   type MetricTypeOption,
   type AlertChannel,
+  type LokiFilterCondition,
 } from './mock-data'
 
 const { Text } = Typography
@@ -38,6 +44,31 @@ function findMetricOption(datasource: DatasourceType, key: string): MetricTypeOp
   return METRIC_TYPES[datasource].find(m => m.key === key)
 }
 
+function renderTags(values: string[], color: string): React.ReactElement {
+  return (
+    <Space wrap>
+      {values.map(value => (
+        <Tag key={value} color={color}>{value}</Tag>
+      ))}
+    </Space>
+  )
+}
+
+function getConditionName(index: number): string {
+  const chineseNumbers = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+  return `条件${chineseNumbers[index] ?? index + 1}`
+}
+
+function getConditionOperatorLabel(value: LokiFilterCondition['operator']): string {
+  return LOKI_CONDITION_OPERATOR_OPTIONS.find(option => option.value === value)?.label ?? value
+}
+
+function getConditionTagColor(operator: LokiFilterCondition['operator']): string {
+  return operator === 'not_contains' || operator === 'regex_not_contains' || operator === 'any_not_contains'
+    ? 'red'
+    : 'green'
+}
+
 /**
  * 分步引导式表单 Drawer：创建自定义告警规则
  * Step 1 - 选择数据源、指标类型
@@ -53,6 +84,7 @@ export default function CreateAlertRuleDrawer({
 }: CreateAlertRuleDrawerProps): React.ReactElement {
   const [currentStep, setCurrentStep] = useState(0)
   const [form, setForm] = useState<AlertRuleFormValue>(createDefaultFormValue())
+  const [aggregateKeywordInput, setAggregateKeywordInput] = useState('')
 
   // 新建渠道表单状态
   const [showNewChannel, setShowNewChannel] = useState(false)
@@ -66,24 +98,72 @@ export default function CreateAlertRuleDrawer({
       setShowNewChannel(false)
       setNewChannelName('')
       setNewChannelWebhook('')
+      setAggregateKeywordInput('')
       setForm(createDefaultFormValue())
     }
   }, [open])
 
   const metricTypeOptions = useMemo(() => getMetricTypeOptions(form.datasource), [form.datasource])
   const currentMetricOption = useMemo(() => findMetricOption(form.datasource, form.metricType), [form.datasource, form.metricType])
-  const timeRangeLabel = useMemo(() => {
-    return LOKI_TIME_RANGE_OPTIONS.find(o => o.value === form.timeRangeMinutes)?.label || `${form.timeRangeMinutes} 分钟`
-  }, [form.timeRangeMinutes])
+  const validLokiConditions = useMemo(() => normalizeLokiConditions(form.lokiConditions), [form.lokiConditions])
+  const aggregateKeywords = useMemo(() => normalizeKeywordList(form.aggregateKeywords), [form.aggregateKeywords])
+  const isKeywordAggregation = form.aggregationMode === 'sum_by'
+  const isRawLogQL = form.queryMode === 'raw'
+
+  const queryPreview = useMemo(() => {
+    return translateToQuery(
+      form.datasource,
+      form.metricType,
+      form.datasource === 'loki'
+        ? {
+            queryMode: form.queryMode,
+            rawLogQL: form.rawLogQL,
+            selectorMatchers: form.selectorMatchers,
+            aggregateKeywords: form.queryMode === 'visual' ? aggregateKeywords : [],
+            lokiConditions: form.queryMode === 'visual' ? form.lokiConditions : [],
+            parserStages: [],
+            aggregationMode: form.aggregationMode,
+            aggregationLabels: form.aggregationMode === 'sum_by' ? ['keyword'] : [],
+            range: form.timeRangeExpression,
+            zeroFill: 'none',
+            requiredKeywords: [],
+            excludedKeywords: [],
+            ignoreCase: form.ignoreCase,
+          }
+        : undefined,
+      undefined,
+    )
+  }, [
+    form.datasource,
+    form.metricType,
+    form.queryMode,
+    form.rawLogQL,
+    form.selectorMatchers,
+    aggregateKeywords,
+    form.lokiConditions,
+    form.aggregationMode,
+    form.timeRangeExpression,
+    form.ignoreCase,
+  ])
 
   const handleDatasourceChange = (value: DatasourceType) => {
     const firstMetric = METRIC_TYPES[value][0]
+    setAggregateKeywordInput('')
     setForm(prev => ({
       ...prev,
       datasource: value,
       metricType: firstMetric.key,
       threshold: firstMetric.defaultThreshold,
       keyword: '',
+      aggregateKeywords: [],
+      lokiConditions: [createDefaultLokiCondition()],
+      aggregationMode: 'sum',
+      aggregationLabels: [],
+      timeRangeExpression: '5m',
+      queryMode: 'visual',
+      rawLogQL: '',
+      zeroFill: 'none',
+      ignoreCase: true,
     }))
   }
 
@@ -96,24 +176,69 @@ export default function CreateAlertRuleDrawer({
     }))
   }
 
+  const handleQueryModeChange = (value: AlertRuleFormValue['queryMode']) => {
+    setForm(prev => ({ ...prev, queryMode: value }))
+  }
+
+  const handleAggregationChange = (value: AlertRuleFormValue['aggregationMode']) => {
+    const nextLabels = value === 'sum_by' ? ['keyword'] : []
+    setForm(prev => ({
+      ...prev,
+      aggregationMode: value,
+      aggregationLabels: nextLabels,
+    }))
+  }
+
+  const handleAggregateKeywordInputChange = (value: string) => {
+    setAggregateKeywordInput(value)
+    setForm(prev => ({ ...prev, aggregateKeywords: parseListInput(value) }))
+  }
+
+  const handleLokiConditionChange = (id: string, patch: Partial<LokiFilterCondition>) => {
+    setForm(prev => ({
+      ...prev,
+      lokiConditions: prev.lokiConditions.map(condition => (
+        condition.id === id ? { ...condition, ...patch } : condition
+      )),
+    }))
+  }
+
+  const handleAddLokiCondition = () => {
+    setForm(prev => ({
+      ...prev,
+      lokiConditions: [
+        ...prev.lokiConditions,
+        {
+          ...createDefaultLokiCondition(prev.lokiConditions.length),
+          id: `condition-${Date.now()}`,
+        },
+      ],
+    }))
+  }
+
+  const handleRemoveLokiCondition = (id: string) => {
+    setForm(prev => ({
+      ...prev,
+      lokiConditions: prev.lokiConditions.length > 1
+        ? prev.lokiConditions.filter(condition => condition.id !== id)
+        : prev.lokiConditions,
+    }))
+  }
+
   const handleNext = () => {
     if (currentStep === 1 && !form.name) {
-      const autoName = generateRuleName(form.metricType, form.operator, form.threshold, form.datasource === 'loki' ? form.keyword : undefined)
+      const autoName = generateRuleName(
+        form.metricType,
+        form.operator,
+        form.threshold,
+        form.datasource === 'loki' && form.queryMode === 'visual' ? aggregateKeywords : undefined,
+      )
       setForm(prev => ({ ...prev, name: autoName }))
     }
     setCurrentStep(prev => Math.min(prev + 1, 2))
   }
 
   const handlePrev = () => setCurrentStep(prev => Math.max(prev - 1, 0))
-
-  const queryPreview = useMemo(() => {
-    return translateToQuery(
-      form.datasource,
-      form.metricType,
-      form.datasource === 'loki' ? form.keyword : undefined,
-      form.datasource === 'loki' ? form.timeRangeMinutes : undefined,
-    )
-  }, [form.datasource, form.metricType, form.keyword, form.timeRangeMinutes])
 
   // 渠道选择变化
   const handleChannelChange = (selectedIds: string[]) => {
@@ -143,22 +268,41 @@ export default function CreateAlertRuleDrawer({
   // Step 校验
   const isStep1Valid = form.metricType !== ''
   const isStep1FullyValid = form.datasource === 'loki' && form.metricType === 'keyword_match'
-    ? isStep1Valid && form.keyword.trim() !== ''
+    ? isStep1Valid && (
+        isRawLogQL
+          ? form.rawLogQL.trim() !== ''
+          : isKeywordAggregation ? aggregateKeywords.length > 0 : validLokiConditions.length > 0
+      )
     : isStep1Valid
   const isStep2Valid = form.threshold !== undefined && form.threshold !== null && form.channelIds.length > 0 &&
     (form.datasource === 'prometheus' ? form.duration !== '' : true) &&
-    (form.datasource === 'loki' ? form.timeRangeMinutes > 0 : true)
+    (form.datasource === 'loki' && form.queryMode === 'visual' ? form.timeRangeExpression.trim() !== '' : true)
 
   const handleSubmit = () => {
     const now = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
     const rule: GrafanaAlertRule = {
       id: `rule-${Date.now()}`,
-      name: form.name || generateRuleName(form.metricType, form.operator, form.threshold, form.datasource === 'loki' ? form.keyword : undefined),
+      name: form.name || generateRuleName(
+        form.metricType,
+        form.operator,
+        form.threshold,
+        form.datasource === 'loki' && form.queryMode === 'visual' ? aggregateKeywords : undefined,
+      ),
       datasource: form.datasource,
       state: 'normal',
       metricScope: {
         metricType: form.metricType,
-        keyword: form.datasource === 'loki' ? form.keyword : undefined,
+        keyword: form.datasource === 'loki' && form.queryMode === 'visual' ? aggregateKeywords.join('、') : undefined,
+        aggregateKeywords: form.datasource === 'loki' && form.queryMode === 'visual' ? aggregateKeywords : undefined,
+        lokiConditions: form.datasource === 'loki' && form.queryMode === 'visual' ? validLokiConditions : undefined,
+        aggregationMode: form.datasource === 'loki' && form.queryMode === 'visual' ? form.aggregationMode : undefined,
+        aggregationLabels: form.datasource === 'loki' && form.queryMode === 'visual'
+          ? form.aggregationMode === 'sum_by' ? ['keyword'] : []
+          : undefined,
+        range: form.datasource === 'loki' && form.queryMode === 'visual' ? form.timeRangeExpression.trim() : undefined,
+        queryMode: form.datasource === 'loki' ? form.queryMode : undefined,
+        rawLogQL: form.datasource === 'loki' && form.queryMode === 'raw' ? form.rawLogQL.trim() : undefined,
+        ignoreCase: form.datasource === 'loki' && form.queryMode === 'visual' ? form.ignoreCase : undefined,
       },
       condition: {
         operator: form.operator,
@@ -176,7 +320,7 @@ export default function CreateAlertRuleDrawer({
     <Drawer
       title="创建告警规则"
       placement="right"
-      width={560}
+      width={680}
       open={open}
       onClose={onClose}
       destroyOnClose
@@ -243,13 +387,129 @@ export default function CreateAlertRuleDrawer({
           </Form.Item>
 
           {form.datasource === 'loki' && (
-            <Form.Item label="匹配关键字" required>
-              <Input
-                value={form.keyword}
-                onChange={e => setForm(prev => ({ ...prev, keyword: e.target.value }))}
-                placeholder="如 OutOfMemoryError、NullPointerException"
-              />
-            </Form.Item>
+            <>
+              <Form.Item label="配置方式" required>
+                <Radio.Group
+                  value={form.queryMode}
+                  onChange={e => handleQueryModeChange(e.target.value)}
+                  optionType="button"
+                  buttonStyle="solid"
+                  options={[
+                    { label: '可视化条件', value: 'visual' },
+                    { label: '直接输入 LogQL', value: 'raw' },
+                  ]}
+                />
+              </Form.Item>
+
+              {form.queryMode === 'raw' ? (
+                <Form.Item label="LogQL" required>
+                  <Input.TextArea
+                    value={form.rawLogQL}
+                    onChange={e => setForm(prev => ({ ...prev, rawLogQL: e.target.value }))}
+                    autoSize={{ minRows: 10, maxRows: 18 }}
+                    placeholder="粘贴完整 LogQL"
+                  />
+                </Form.Item>
+              ) : (
+                <>
+                  <Form.Item
+                    label="匹配条件"
+                    tooltip="条件之间是 AND 关系；只有任一包含、任一不包含输入框内的逗号表示 OR。"
+                    extra="条件之间是 AND；只有“任一包含 / 任一不包含”的逗号表示 OR。普通“包含 / 不包含”请输入单个关键词。"
+                  >
+                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                      {form.lokiConditions.map((condition, index) => (
+                        <div
+                          key={condition.id}
+                          style={{
+                            padding: 12,
+                            border: '1px solid rgba(0,0,0,0.08)',
+                            borderRadius: 8,
+                            background: 'rgba(0,0,0,0.015)',
+                          }}
+                        >
+                          <Space
+                            align="center"
+                            style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}
+                          >
+                            <Text strong>{getConditionName(index)}</Text>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              disabled={form.lokiConditions.length === 1}
+                              onClick={() => handleRemoveLokiCondition(condition.id)}
+                            />
+                          </Space>
+
+                          <Space.Compact style={{ width: '100%' }}>
+                            <Select
+                              value={condition.operator}
+                              onChange={value => handleLokiConditionChange(condition.id, { operator: value })}
+                              options={LOKI_CONDITION_OPERATOR_OPTIONS}
+                              style={{ width: 138 }}
+                            />
+                            <Input
+                              value={condition.value}
+                              onChange={e => handleLokiConditionChange(condition.id, { value: e.target.value })}
+                              placeholder={
+                                condition.operator === 'any_contains'
+                                  ? '多个关键词用逗号分隔，表示 OR'
+                                  : condition.operator === 'any_not_contains'
+                                    ? '多个排除词用逗号分隔，任一命中即排除'
+                                    : condition.operator.includes('regex') ? '输入 LogQL 正则' : '输入单个关键词'
+                              }
+                            />
+                          </Space.Compact>
+                        </div>
+                      ))}
+
+                      <Button block icon={<PlusOutlined />} onClick={handleAddLokiCondition}>
+                        添加条件
+                      </Button>
+                    </Space>
+                  </Form.Item>
+
+                  <Form.Item
+                    label="大小写"
+                    tooltip="开启后，普通包含/不包含会转换成 (?i) 正则匹配"
+                  >
+                    <Space>
+                      <Switch
+                        checked={form.ignoreCase}
+                        onChange={checked => setForm(prev => ({ ...prev, ignoreCase: checked }))}
+                      />
+                      <Text>{form.ignoreCase ? '不区分大小写' : '区分大小写'}</Text>
+                    </Space>
+                  </Form.Item>
+
+                  <Divider orientation="left" style={{ margin: '20px 0 16px' }}>统计方式</Divider>
+
+                  <Form.Item label="统计方式" required>
+                    <Select
+                      value={form.aggregationMode}
+                      onChange={handleAggregationChange}
+                      options={LOKI_VISUAL_AGGREGATION_OPTIONS}
+                    />
+                  </Form.Item>
+
+                  {isKeywordAggregation && (
+                    <Form.Item
+                      label="统计关键词"
+                      required
+                      tooltip="多个关键词用逗号分隔，按匹配到的 keyword 分组统计"
+                    >
+                      <Input
+                        value={aggregateKeywordInput}
+                        onChange={e => handleAggregateKeywordInputChange(e.target.value)}
+                        placeholder="error, handle msg, 节点离线"
+                      />
+                    </Form.Item>
+                  )}
+
+                </>
+              )}
+            </>
           )}
         </Form>
       )}
@@ -259,24 +519,38 @@ export default function CreateAlertRuleDrawer({
         <Form layout="vertical">
           <Form.Item label="触发条件">
             {form.datasource === 'loki' ? (
-              <Space align="center" size="middle">
-                <Select
-                  value={form.timeRangeMinutes}
-                  onChange={value => setForm(prev => ({ ...prev, timeRangeMinutes: value }))}
-                  options={LOKI_TIME_RANGE_OPTIONS}
-                  style={{ width: 120 }}
-                  placeholder="时间范围"
-                />
-                <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>内出现</span>
-                <InputNumber
-                  value={form.threshold}
-                  onChange={value => setForm(prev => ({ ...prev, threshold: value ?? 0 }))}
-                  min={1}
-                  style={{ width: 120 }}
-                  placeholder="次数"
-                />
-                <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>次或以上</span>
-              </Space>
+              isRawLogQL ? (
+                <Space align="center" size="middle">
+                  <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>LogQL 查询结果达到</span>
+                  <InputNumber
+                    value={form.threshold}
+                    onChange={value => setForm(prev => ({ ...prev, threshold: value ?? 0 }))}
+                    min={1}
+                    style={{ width: 120 }}
+                    placeholder="阈值"
+                  />
+                  <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>或以上</span>
+                </Space>
+              ) : (
+                <Space align="center" size="middle">
+                  <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>最近</span>
+                  <Input
+                    value={form.timeRangeExpression}
+                    onChange={e => setForm(prev => ({ ...prev, timeRangeExpression: e.target.value }))}
+                    style={{ width: 120 }}
+                    placeholder="如 3m"
+                  />
+                  <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>内出现</span>
+                  <InputNumber
+                    value={form.threshold}
+                    onChange={value => setForm(prev => ({ ...prev, threshold: value ?? 0 }))}
+                    min={1}
+                    style={{ width: 120 }}
+                    placeholder="次数"
+                  />
+                  <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)' }}>次或以上</span>
+                </Space>
+              )
             ) : (
               <Space align="center" size="middle">
                 <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)', whiteSpace: 'nowrap' }}>
@@ -419,17 +693,61 @@ export default function CreateAlertRuleDrawer({
                 <Tag color="blue">{currentMetricOption?.label ?? form.metricType}</Tag>
               </Form.Item>
 
-              {form.datasource === 'loki' && form.keyword && (
-                <Form.Item label="匹配关键字">
-                  <Tag color="orange">{form.keyword}</Tag>
-                </Form.Item>
+              {form.datasource === 'loki' && (
+                <>
+                  <Form.Item label="配置方式">
+                    <Tag color={isRawLogQL ? 'geekblue' : 'green'}>
+                      {isRawLogQL ? '直接输入 LogQL' : '可视化条件'}
+                    </Tag>
+                  </Form.Item>
+
+                  {!isRawLogQL && (
+                    <>
+                      {validLokiConditions.length > 0 && (
+                        <Form.Item label="匹配条件">
+                          <Space wrap>
+                            {validLokiConditions.map((condition, index) => (
+                              <Tag key={condition.id} color={getConditionTagColor(condition.operator)}>
+                                {getConditionName(index)}：{getConditionOperatorLabel(condition.operator)} {condition.value}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </Form.Item>
+                      )}
+
+                      <Form.Item label="统计方式">
+                        <Tag color="blue">
+                          {LOKI_VISUAL_AGGREGATION_OPTIONS.find(option => option.value === form.aggregationMode)?.label}
+                        </Tag>
+                      </Form.Item>
+
+                      {aggregateKeywords.length > 0 && (
+                        <Form.Item label="统计关键词">
+                          {renderTags(aggregateKeywords, 'orange')}
+                        </Form.Item>
+                      )}
+
+                      <Form.Item label="大小写">
+                        <Tag color={form.ignoreCase ? 'blue' : 'default'}>
+                          {form.ignoreCase ? '不区分大小写' : '区分大小写'}
+                        </Tag>
+                      </Form.Item>
+                    </>
+                  )}
+                </>
               )}
 
               <Form.Item label="触发条件">
                 {form.datasource === 'loki' ? (
-                  <Text>
-                    <Text strong>{timeRangeLabel}</Text> 内出现 <Text strong>{form.threshold}</Text> 次或以上
-                  </Text>
+                  isRawLogQL ? (
+                    <Text>
+                      LogQL 查询结果达到 <Text strong>{form.threshold}</Text> 或以上
+                    </Text>
+                  ) : (
+                    <Text>
+                      最近 <Text strong>{form.timeRangeExpression}</Text> 内出现 <Text strong>{form.threshold}</Text> 次或以上
+                    </Text>
+                  )
                 ) : (
                   <Text>
                     指标值 <Text strong>{form.operator} {form.threshold} {currentMetricOption?.unit ?? ''}</Text>，
@@ -474,8 +792,8 @@ export default function CreateAlertRuleDrawer({
               <br />
               {form.datasource === 'loki' ? (
                 <>
-                  <span style={{ color: '#569cd6' }}># 条件:</span> count &gt;= {form.threshold}<br />
-                  <span style={{ color: '#569cd6' }}># 时间范围:</span> {form.timeRangeMinutes} 分钟
+                  <span style={{ color: '#569cd6' }}># 配置方式:</span> {isRawLogQL ? '直接输入 LogQL' : '可视化条件'}<br />
+                  <span style={{ color: '#569cd6' }}># 条件:</span> count &gt;= {form.threshold}
                 </>
               ) : (
                 <>

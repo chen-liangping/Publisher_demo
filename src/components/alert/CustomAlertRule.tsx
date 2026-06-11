@@ -8,10 +8,15 @@ import {
   INITIAL_MOCK_CHANNELS,
   METRIC_TYPES,
   DURATION_OPTIONS,
+  LOKI_CONDITION_OPERATOR_OPTIONS,
+  LOKI_VISUAL_AGGREGATION_OPTIONS,
+  normalizeKeywordList,
+  normalizeLokiConditions,
   type GrafanaAlertRule,
   type AlertChannel,
   type AlertRuleState,
   type DatasourceType,
+  type LokiFilterCondition,
 } from './mock-data'
 import CreateAlertRuleDrawer from './CreateAlertRuleDrawer'
 
@@ -20,6 +25,32 @@ const { Text } = Typography
 const DS_TAG_MAP: Record<DatasourceType, { color: string; label: string }> = {
   prometheus: { color: 'blue', label: 'Prometheus' },
   loki: { color: 'purple', label: 'Loki' },
+}
+
+function renderKeywordTags(keywords: string[], color: string): React.ReactElement | null {
+  const normalized = normalizeKeywordList(keywords)
+  if (normalized.length === 0) return null
+
+  return (
+    <Space wrap>
+      {normalized.map(keyword => (
+        <Tag key={keyword} color={color}>{keyword}</Tag>
+      ))}
+    </Space>
+  )
+}
+
+function getConditionName(index: number): string {
+  const chineseNumbers = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+  return `条件${chineseNumbers[index] ?? index + 1}`
+}
+
+function getConditionOperatorLabel(value: LokiFilterCondition['operator']): string {
+  return LOKI_CONDITION_OPERATOR_OPTIONS.find(option => option.value === value)?.label ?? value
+}
+
+function getConditionTagColor(operator: LokiFilterCondition['operator']): string {
+  return operator === 'not_contains' || operator === 'regex_not_contains' ? 'red' : 'green'
 }
 
 interface CustomAlertRuleProps {
@@ -77,6 +108,31 @@ export default function CustomAlertRule({ gameName = 'gametest' }: CustomAlertRu
   const metricLabel = allMetrics.find(m => m.key === rule.metricScope.metricType)?.label ?? rule.metricScope.metricType
   const dsConfig = DS_TAG_MAP[rule.datasource]
   const durationLabel = DURATION_OPTIONS.find(d => d.value === rule.condition.duration)?.label ?? rule.condition.duration
+  const queryMode = rule.metricScope.queryMode ?? 'visual'
+  const aggregateKeywords = normalizeKeywordList(
+    rule.metricScope.aggregateKeywords?.length
+      ? rule.metricScope.aggregateKeywords
+      : rule.metricScope.keyword
+        ? [rule.metricScope.keyword]
+        : [],
+  )
+  const legacyRequiredConditions = normalizeKeywordList(rule.metricScope.requiredKeywords ?? []).map((value, index) => ({
+    id: `legacy-required-${index}`,
+    operator: 'contains' as const,
+    value,
+  }))
+  const legacyExcludedConditions = normalizeKeywordList(rule.metricScope.excludedKeywords ?? []).map((value, index) => ({
+    id: `legacy-excluded-${index}`,
+    operator: 'not_contains' as const,
+    value,
+  }))
+  const lokiConditions = normalizeLokiConditions(
+    rule.metricScope.lokiConditions?.length
+      ? rule.metricScope.lokiConditions
+      : [...legacyRequiredConditions, ...legacyExcludedConditions],
+  )
+  const aggregationMode = rule.metricScope.aggregationMode ?? 'sum_by'
+  const lokiRange = rule.metricScope.range ?? `${rule.condition.timeRangeMinutes ?? 5}m`
   const channelNames = rule.channelIds
     .map(id => channels.find(c => c.id === id)?.name)
     .filter(Boolean)
@@ -130,15 +186,66 @@ export default function CustomAlertRule({ gameName = 'gametest' }: CustomAlertRu
               </div>
             </div>
 
-            {rule.metricScope.keyword && (
+            {rule.datasource === 'loki' && (
               <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>匹配关键字</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>配置方式</Text>
                 <div style={{ marginTop: 4 }}>
-                  <Tag color="orange">{rule.metricScope.keyword}</Tag>
+                  <Tag color={queryMode === 'raw' ? 'geekblue' : 'green'}>
+                    {queryMode === 'raw' ? '直接输入 LogQL' : '可视化条件'}
+                  </Tag>
+                </div>
+              </div>
+            )}
+
+            {rule.datasource === 'loki' && queryMode === 'visual' && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>统计方式</Text>
+                <div style={{ marginTop: 4 }}>
+                  <Tag color="blue">
+                    {LOKI_VISUAL_AGGREGATION_OPTIONS.find(option => option.value === aggregationMode)?.label}
+                  </Tag>
+                </div>
+              </div>
+            )}
+
+            {rule.datasource === 'loki' && queryMode === 'visual' && aggregateKeywords.length > 0 && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>统计关键词</Text>
+                <div style={{ marginTop: 4 }}>
+                  {renderKeywordTags(aggregateKeywords, 'orange')}
+                </div>
+              </div>
+            )}
+
+            {rule.datasource === 'loki' && queryMode === 'visual' && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>大小写</Text>
+                <div style={{ marginTop: 4 }}>
+                  <Tag color={rule.metricScope.ignoreCase === false ? 'default' : 'blue'}>
+                    {rule.metricScope.ignoreCase === false ? '区分大小写' : '不区分大小写'}
+                  </Tag>
                 </div>
               </div>
             )}
           </Space>
+
+          {rule.datasource === 'loki' && queryMode === 'visual' && lokiConditions.length > 0 && (
+            <>
+              <Divider style={{ margin: '8px 0' }} />
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>匹配条件</Text>
+                <div style={{ marginTop: 4 }}>
+                  <Space wrap>
+                    {lokiConditions.map((condition, index) => (
+                      <Tag key={condition.id} color={getConditionTagColor(condition.operator)}>
+                        {getConditionName(index)}：{getConditionOperatorLabel(condition.operator)} {condition.value}
+                      </Tag>
+                    ))}
+                  </Space>
+                </div>
+              </div>
+            </>
+          )}
 
           <Divider style={{ margin: '8px 0' }} />
 
@@ -147,7 +254,15 @@ export default function CustomAlertRule({ gameName = 'gametest' }: CustomAlertRu
             <div style={{ marginTop: 4 }}>
               {rule.datasource === 'loki' ? (
                 <Text>
-                  <Text strong>5</Text> 分钟内出现 <Text strong>{rule.condition.threshold}</Text> 次或以上
+                  {queryMode === 'visual' ? (
+                    <>
+                      <Text strong>{lokiRange}</Text> 内出现 <Text strong>{rule.condition.threshold}</Text> 次或以上
+                    </>
+                  ) : (
+                    <>
+                      LogQL 查询结果达到 <Text strong>{rule.condition.threshold}</Text> 或以上
+                    </>
+                  )}
                 </Text>
               ) : (
                 <Text>
