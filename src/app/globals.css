@@ -1,3 +1,4 @@
+@import 'antd/dist/reset.css';
 @reference 'tailwindcss';
 
 /* =========================================================
@@ -68,13 +69,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 引入 Ant Design 样式（必须在自定义样式之前） */
-@import 'antd/dist/reset.css';
-
 /* ===== 页面背景：所有页面共用的最底层渐变底色 ===== */
 body {
   min-height: 100vh;
   margin: 0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
   /* 低饱和双主色渐变背景，整体更接近白色，只保留非常轻的色温变化 */
   background: radial-gradient(circle at top left, #fafbff 0%, #f7fbff 35%, #fbf8ff 70%, #ffffff 100%);
   /* 细腻的过渡，保证页面切换/滚动时的平滑感 */

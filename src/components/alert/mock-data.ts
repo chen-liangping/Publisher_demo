@@ -133,7 +133,7 @@ export interface AlertRuleFormValue {
 
 export const DATASOURCE_OPTIONS: { label: string; value: DatasourceType }[] = [
   { label: 'Prometheus（指标）', value: 'prometheus' },
-  { label: 'Loki（日志）', value: 'loki' },
+  { label: '日志（应用日志）', value: 'loki' },
 ]
 
 export const METRIC_TYPES: Record<DatasourceType, MetricTypeOption[]> = {
