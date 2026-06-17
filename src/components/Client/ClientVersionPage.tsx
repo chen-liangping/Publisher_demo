@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
-import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select, Popover } from 'antd'
+import React, { useEffect, useRef, useState } from 'react'
+import { Typography, Card, Tabs, Button, Table, Tag, Row, Col, Space, message, Modal, Form, Input, Tooltip, Alert, Switch, Drawer, Progress, Upload, Select, Popover, Descriptions } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined, ExportOutlined, KeyOutlined } from '@ant-design/icons'
+import { PlusOutlined, UploadOutlined, InboxOutlined, FolderAddOutlined, CheckCircleFilled, CloseOutlined, CopyOutlined, ExportOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons'
 import ClientPage from './ClientPage'
 
 const { Title, Paragraph, Text } = Typography
@@ -14,12 +14,28 @@ interface VersionRow {
   createdAt: string
   isCurrent?: boolean
   // 新增：版本状态（用于渲染状态 Tag）
-  status?: 'current' | 'offline' | 'notOnline'
+  status?: 'current' | 'offline' | 'notOnline' | 'deleting' | 'deleteFailed'
   translationStatus?: 'syncing' | 'done'
   // 新增：表示是否开启自动同步翻译（用于控制按钮可用性）
   autoSync?: boolean
   // 新增：最近一次翻译同步时间（用于展示）
   lastSyncAt?: string
+  deleteTaskId?: string
+}
+
+type DeleteTaskStatus = 'queued' | 'running' | 'success' | 'failed'
+
+interface DeleteTask {
+  taskId: string
+  version: string
+  status: DeleteTaskStatus
+  progress: number
+  deletedFiles: number
+  totalFiles: number
+  startedAt: string
+  finishedAt?: string
+  failureReason?: string
+  shouldFail?: boolean
 }
 
 // 文件/文件夹数据类型
@@ -49,6 +65,18 @@ const GAME_ENTRY_PREFIX = 'https://gamedemo.stg.g123-cpp.com/'
 const G123_STG_ENTRY_URL = 'https://h5.stg.g123.jp/game/gametest'
 const G123_STG_USERNAME = 'testuser'
 const G123_STG_PASSWORD = 'ctwstggame1!'
+
+const versionDeleteFileCounts: Record<string, number> = {
+  'v1.0.1': 8420,
+  'v1.0.2': 3160,
+  'v1.0.3': 5280,
+  'v1.0.2_test': 740,
+  'v1.0.3_test': 1280
+}
+
+const formatDateTime = (date: Date): string => {
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+}
 
 const versionData: VersionRow[] = [
   {
@@ -91,6 +119,12 @@ export default function ClientVersionPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const zipInputRef = useRef<HTMLInputElement>(null)
   const [previewingVersion, setPreviewingVersion] = useState<string | null>(null)
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<VersionRow | null>(null)
+  const [deleteTasks, setDeleteTasks] = useState<Record<string, DeleteTask>>({})
+  const [taskDrawerVisible, setTaskDrawerVisible] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const previousTaskStatusesRef = useRef<Record<string, DeleteTaskStatus>>({})
 
 // “监配置更多入口”相关状态：用于配置多个 H5 外部入口（按版本自动生成 URL）
   interface ExtraEntryConfig {
@@ -193,19 +227,145 @@ export default function ClientVersionPage() {
     }
   }
 
-  const handleDeleteVersion = (version: string): void => {
-    Modal.confirm({
-      title: '删除确认',
-      content: `确定要删除版本 ${version} 吗？`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: () => {
-        const updated = versions.filter(v => v.version !== version)
-        setVersions(updated)
-        message.success('已删除')
+  useEffect(() => {
+    const hasActiveTask = Object.values(deleteTasks).some(task => task.status === 'queued' || task.status === 'running')
+    if (!hasActiveTask) return
+
+    const timer = setTimeout(() => {
+      setDeleteTasks(prev => {
+        let changed = false
+        const next = { ...prev }
+
+        Object.values(prev).forEach(task => {
+          if (task.status !== 'queued' && task.status !== 'running') return
+
+          const increment = task.progress < 30 ? 14 : task.progress < 75 ? 9 : 5
+          const progress = Math.min(100, task.progress + increment)
+          const deletedFiles = Math.min(task.totalFiles, Math.floor((task.totalFiles * progress) / 100))
+
+          if (task.shouldFail && progress >= 72) {
+            next[task.taskId] = {
+              ...task,
+              status: 'failed',
+              progress: 72,
+              deletedFiles: Math.max(deletedFiles, Math.floor(task.totalFiles * 0.72)),
+              finishedAt: formatDateTime(new Date()),
+              failureReason: 'S3 批量删除返回部分对象失败，系统已暂停任务并保留版本记录。'
+            }
+          } else if (progress >= 100) {
+            next[task.taskId] = {
+              ...task,
+              status: 'success',
+              progress: 100,
+              deletedFiles: task.totalFiles,
+              finishedAt: formatDateTime(new Date())
+            }
+          } else {
+            next[task.taskId] = {
+              ...task,
+              status: 'running',
+              progress,
+              deletedFiles
+            }
+          }
+
+          changed = true
+        })
+
+        return changed ? next : prev
+      })
+    }, 700)
+
+    return () => clearTimeout(timer)
+  }, [deleteTasks])
+
+  useEffect(() => {
+    Object.values(deleteTasks).forEach(task => {
+      const previousStatus = previousTaskStatusesRef.current[task.taskId]
+
+      if (previousStatus !== task.status) {
+        if (task.status === 'success') {
+          setVersions(prev => prev.filter(version => version.version !== task.version))
+          message.success(`${task.version} 删除任务完成`)
+        }
+
+        if (task.status === 'failed') {
+          setVersions(prev =>
+            prev.map(version =>
+              version.deleteTaskId === task.taskId
+                ? { ...version, status: 'deleteFailed' }
+                : version
+            )
+          )
+          message.error(`${task.version} 删除失败`)
+        }
       }
+
+      previousTaskStatusesRef.current[task.taskId] = task.status
     })
+  }, [deleteTasks])
+
+  const openDeleteModal = (record: VersionRow): void => {
+    if (record.status === 'current') {
+      message.warning('当前版本正在使用中，不能删除')
+      return
+    }
+
+    setDeleteTarget(record)
+    setDeleteModalVisible(true)
+  }
+
+  const startDeleteTask = (record: VersionRow, shouldFail = false): void => {
+    const taskId = `delete-${Date.now().toString(36)}`
+    const totalFiles = versionDeleteFileCounts[record.version] ?? 1200
+
+    setDeleteTasks(prev => ({
+      ...prev,
+      [taskId]: {
+        taskId,
+        version: record.version,
+        status: 'queued',
+        progress: 0,
+        deletedFiles: 0,
+        totalFiles,
+        startedAt: formatDateTime(new Date()),
+        shouldFail
+      }
+    }))
+
+    setVersions(prev =>
+      prev.map(version =>
+        version.version === record.version
+          ? { ...version, status: 'deleting', deleteTaskId: taskId }
+          : version
+      )
+    )
+
+    setSelectedTaskId(taskId)
+    setTaskDrawerVisible(true)
+    message.success('删除任务已提交')
+  }
+
+  const handleConfirmDeleteVersion = (): void => {
+    if (!deleteTarget) return
+
+    startDeleteTask(deleteTarget, deleteTarget.version === 'v1.0.3_test')
+    setDeleteModalVisible(false)
+    setDeleteTarget(null)
+  }
+
+  const handleRetryDeleteTask = (record: VersionRow): void => {
+    startDeleteTask(record)
+  }
+
+  const handleViewDeleteTask = (record: VersionRow): void => {
+    if (!record.deleteTaskId || !deleteTasks[record.deleteTaskId]) {
+      message.info('暂无删除任务')
+      return
+    }
+
+    setSelectedTaskId(record.deleteTaskId)
+    setTaskDrawerVisible(true)
   }
 
   // 切换自动同步开关
@@ -436,6 +596,83 @@ export default function ClientVersionPage() {
   ]
 
 
+  const renderVersionStatus = (record: VersionRow) => {
+    const status = record.status
+    const task = record.deleteTaskId ? deleteTasks[record.deleteTaskId] : undefined
+
+    if (status === 'deleting') {
+      return (
+        <Space direction="vertical" size={2} style={{ width: 104 }}>
+          <Tag color="processing" style={{ marginRight: 0 }}>删除中</Tag>
+          <Progress percent={task?.progress ?? 0} size="small" showInfo={false} />
+        </Space>
+      )
+    }
+
+    if (status === 'deleteFailed') {
+      return <Tag color="error">删除失败</Tag>
+    }
+
+    // 状态文字展示：当前版本、已下线、未上线，前置小圆点增加视觉层次
+    if (status === 'current') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: '#1890ff',
+            display: 'inline-block'
+          }} />
+          已上线
+        </span>
+      )
+    }
+
+    if (status === 'offline') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: '#ff4d4f',
+            display: 'inline-block'
+          }} />
+          已下线
+        </span>
+      )
+    }
+
+    if (status === 'notOnline') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: '#d9d9d9',
+            display: 'inline-block'
+          }} />
+          未上线
+        </span>
+      )
+    }
+
+    return '-'
+  }
+
+  const getDeleteTaskStatusText = (status: DeleteTaskStatus): string => {
+    const statusText: Record<DeleteTaskStatus, string> = {
+      queued: '排队中',
+      running: '删除中',
+      success: '已完成',
+      failed: '失败'
+    }
+
+    return statusText[status]
+  }
+
   const columns: TableColumnsType<VersionRow> = [
     {
       title: '游戏版本',
@@ -445,7 +682,7 @@ export default function ClientVersionPage() {
       render: (v: string, record) => (
         <Space size={8}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}> {/* 游戏版本 */}
-            <Button type="link" onClick={() => handleEnterVersion(record.version)}>
+            <Button type="link" disabled={record.status === 'deleting'} onClick={() => handleEnterVersion(record.version)}>
               <Text strong>{v}</Text>
             </Button>
           {/* 状态标签：只有当前版本显示 Tag */}
@@ -458,53 +695,8 @@ export default function ClientVersionPage() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
-      render: (status: 'current' | 'offline' | 'notOnline' | undefined) => {
-        // 状态文字展示：当前版本、已下线、未上线，前置小圆点增加视觉层次
-        if (status === 'current') {
-          return (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ 
-                width: 6, 
-                height: 6, 
-                borderRadius: '50%', 
-                backgroundColor: '#1890ff',
-                display: 'inline-block'
-              }} />
-              已上线
-            </span>
-          )
-        }
-        if (status === 'offline') {
-          return (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ 
-                width: 6, 
-                height: 6, 
-                borderRadius: '50%', 
-                backgroundColor: '#ff4d4f',
-                display: 'inline-block'
-              }} />
-              已下线
-            </span>
-          )
-        }
-        if (status === 'notOnline') {
-          return (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ 
-                width: 6, 
-                height: 6, 
-                borderRadius: '50%', 
-                backgroundColor: '#d9d9d9',
-                display: 'inline-block'
-              }} />
-              未上线
-            </span>
-          )
-        }
-        return '-'
-      }
+      width: 150,
+      render: (_: VersionRow['status'], record) => renderVersionStatus(record)
     },
     { 
       title: '发版详情',
@@ -543,31 +735,64 @@ export default function ClientVersionPage() {
       title: '操作',
       key: 'actions',
       width: 360,
-      render: (_: unknown, record: VersionRow) => (
-        <Space size={8}>
-          <Popover
-            content={renderPreviewContent(record.version)}
-            trigger="click"
-            open={previewingVersion === record.version}
-            onOpenChange={(open) => setPreviewingVersion(open ? record.version : null)}
-          >
-            <Button type="link">预览</Button>
-          </Popover>
-          <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
-          <Button type="link" danger onClick={() => handleDeleteVersion(record.version)}>删除</Button>
-          {/* 同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
-          <Button
-            type="link"
-            onClick={() => handleSyncTranslation(record.version)}
-            // 只有在自动同步关闭时才允许手动触发同步，因此 disabled 逻辑取反
-            disabled={!!localVersions[record.version]?.autoSync}
-          >
-            同步翻译
-          </Button>
-        </Space>
-      )
+      render: (_: unknown, record: VersionRow) => {
+        const isDeleting = record.status === 'deleting'
+        const isDeleteFailed = record.status === 'deleteFailed'
+        const isCurrent = record.status === 'current'
+
+        if (isDeleting) {
+          return (
+            <Button type="link" onClick={() => handleViewDeleteTask(record)}>
+              查看任务
+            </Button>
+          )
+        }
+
+        if (isDeleteFailed) {
+          return (
+            <Space size={8}>
+              <Button type="link" danger icon={<ReloadOutlined />} onClick={() => handleRetryDeleteTask(record)}>
+                重试删除
+              </Button>
+              <Button type="link" onClick={() => handleViewDeleteTask(record)}>
+                查看任务
+              </Button>
+            </Space>
+          )
+        }
+
+        return (
+          <Space size={8}>
+            <Popover
+              content={renderPreviewContent(record.version)}
+              trigger="click"
+              open={previewingVersion === record.version}
+              onOpenChange={(open) => setPreviewingVersion(open ? record.version : null)}
+            >
+              <Button type="link">预览</Button>
+            </Popover>
+            <Button type="link" onClick={() => openSwitchModal(record)}>切换版本</Button>
+            <Tooltip title={isCurrent ? '当前版本不能删除' : ''}>
+              <Button type="link" danger disabled={isCurrent} onClick={() => openDeleteModal(record)}>删除</Button>
+            </Tooltip>
+            {/* 同步翻译操作；只有在自动同步开启时可点击，否则置灰 */}
+            <Button
+              type="link"
+              onClick={() => handleSyncTranslation(record.version)}
+              // 只有在自动同步关闭时才允许手动触发同步，因此 disabled 逻辑取反
+              disabled={!!localVersions[record.version]?.autoSync}
+            >
+              同步翻译
+            </Button>
+          </Space>
+        )
+      }
     }
   ]
+
+  const visibleDeleteTasks = Object.values(deleteTasks).filter(task => task.status === 'queued' || task.status === 'running' || task.status === 'failed')
+  const hasFailedDeleteTask = visibleDeleteTasks.some(task => task.status === 'failed')
+  const selectedDeleteTask = selectedTaskId ? deleteTasks[selectedTaskId] : undefined
 
   return (
     // 本页卡片不需要 hover 动效，使用 no-card-motion 包裹；同时与虚机等页面统一左右内边距
@@ -794,18 +1019,65 @@ export default function ClientVersionPage() {
             />
           </>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            {/* 为了支持左右滑动，外层加 overflow-x: auto；并给 Table 设置较大的 minWidth 以触发横向滚动 */}
-            <Table<VersionRow>
-              columns={columns}
-              dataSource={versions}
-              rowKey={(r) => r.version}
-              pagination={false}
-              // Ant Design 的 scroll 可保证表头与内容横向对齐
-              scroll={{ x: 1100 }}
-              style={{ minWidth: 1100 }}
-            />
-          </div>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {visibleDeleteTasks.length > 0 && (
+              <Alert
+                type={hasFailedDeleteTask ? 'error' : 'info'}
+                showIcon
+                message={hasFailedDeleteTask ? '存在删除失败的版本任务' : '版本删除任务执行中'}
+                description={
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    {visibleDeleteTasks.map(task => (
+                      <div
+                        key={task.taskId}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '160px minmax(220px, 1fr) 150px 72px',
+                          alignItems: 'center',
+                          columnGap: 12
+                        }}
+                      >
+                        <Space size={6}>
+                          <Text strong>{task.version}</Text>
+                          <Tag color={task.status === 'failed' ? 'error' : 'processing'}>{getDeleteTaskStatusText(task.status)}</Tag>
+                        </Space>
+                        <Progress
+                          percent={task.progress}
+                          size="small"
+                          status={task.status === 'failed' ? 'exception' : 'active'}
+                        />
+                        <Text type="secondary">
+                          {task.deletedFiles.toLocaleString()}/{task.totalFiles.toLocaleString()} 个文件
+                        </Text>
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() => {
+                            setSelectedTaskId(task.taskId)
+                            setTaskDrawerVisible(true)
+                          }}
+                        >
+                          详情
+                        </Button>
+                      </div>
+                    ))}
+                  </Space>
+                }
+              />
+            )}
+            <div style={{ overflowX: 'auto' }}>
+              {/* 为了支持左右滑动，外层加 overflow-x: auto；并给 Table 设置较大的 minWidth 以触发横向滚动 */}
+              <Table<VersionRow>
+                columns={columns}
+                dataSource={versions}
+                rowKey={(r) => r.version}
+                pagination={false}
+                // Ant Design 的 scroll 可保证表头与内容横向对齐
+                scroll={{ x: 1100 }}
+                style={{ minWidth: 1100 }}
+              />
+            </div>
+          </Space>
         )}
       </Card>
 
@@ -832,6 +1104,97 @@ export default function ClientVersionPage() {
           message="请确保单个文件大小不超过 10MB，超出可能导致加载缓慢或触发游戏频繁重启"
         />
       </Modal>
+
+      {/* 删除版本确认弹窗：提交任务后由后台异步清理 S3 文件 */}
+      <Modal
+        title="删除版本"
+        open={deleteModalVisible}
+        onCancel={() => {
+          setDeleteModalVisible(false)
+          setDeleteTarget(null)
+        }}
+        onOk={handleConfirmDeleteVersion}
+        okText="提交删除任务"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        destroyOnHidden
+      >
+        {deleteTarget && (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Alert
+              type="warning"
+              showIcon
+              message={`确认删除 ${deleteTarget.version} 版本吗？`}
+              description="系统会先创建删除任务，再异步清理该版本目录下的 S3 文件。删除完成后版本将从列表移除。"
+            />
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="版本名">{deleteTarget.version}</Descriptions.Item>
+              <Descriptions.Item label="版本状态">{renderVersionStatus(deleteTarget)}</Descriptions.Item>
+              <Descriptions.Item label="预计文件数">{(versionDeleteFileCounts[deleteTarget.version] ?? 1200).toLocaleString()} 个</Descriptions.Item>
+            </Descriptions>
+          </Space>
+        )}
+      </Modal>
+
+      {/* 删除任务详情 */}
+      <Drawer
+        title="删除任务详情"
+        placement="right"
+        width={560}
+        open={taskDrawerVisible}
+        onClose={() => setTaskDrawerVisible(false)}
+      >
+        {selectedDeleteTask ? (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="任务 ID">{selectedDeleteTask.taskId}</Descriptions.Item>
+              <Descriptions.Item label="版本名">{selectedDeleteTask.version}</Descriptions.Item>
+              <Descriptions.Item label="任务状态">{getDeleteTaskStatusText(selectedDeleteTask.status)}</Descriptions.Item>
+              <Descriptions.Item label="提交时间">{selectedDeleteTask.startedAt}</Descriptions.Item>
+              {selectedDeleteTask.finishedAt && <Descriptions.Item label="结束时间">{selectedDeleteTask.finishedAt}</Descriptions.Item>}
+              <Descriptions.Item label="文件进度">
+                {selectedDeleteTask.deletedFiles.toLocaleString()}/{selectedDeleteTask.totalFiles.toLocaleString()} 个文件
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Progress
+              percent={selectedDeleteTask.progress}
+              status={selectedDeleteTask.status === 'failed' ? 'exception' : selectedDeleteTask.status === 'success' ? 'success' : 'active'}
+            />
+
+            {selectedDeleteTask.status === 'failed' ? (
+              <Alert
+                type="error"
+                showIcon
+                message="删除任务失败"
+                description={selectedDeleteTask.failureReason}
+                action={
+                  <Button
+                    danger
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => {
+                      const record = versions.find(version => version.version === selectedDeleteTask.version)
+                      if (record) handleRetryDeleteTask(record)
+                    }}
+                  >
+                    重试删除
+                  </Button>
+                }
+              />
+            ) : (
+              <Alert
+                type={selectedDeleteTask.status === 'success' ? 'success' : 'info'}
+                showIcon
+                message={selectedDeleteTask.status === 'success' ? '版本删除完成' : '任务正在异步清理版本文件'}
+                description={selectedDeleteTask.status === 'success' ? 'S3 文件已经清理完成，版本记录已从列表移除。' : '页面可继续停留或切换到其他功能，任务完成后列表会自动刷新。'}
+              />
+            )}
+          </Space>
+        ) : (
+          <Text type="secondary">暂无任务数据</Text>
+        )}
+      </Drawer>
 
       {/* 监配置更多入口 - 管理抽屉：多入口编辑 / 复制 */}
       <Drawer
@@ -1097,4 +1460,3 @@ export default function ClientVersionPage() {
     </div>
   )
 }
-

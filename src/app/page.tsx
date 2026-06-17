@@ -684,7 +684,7 @@ export default function Home() {
                     {
                       key: 'cron-job',
                       icon: <CloudServerOutlined />,
-                      label: '定时任务',
+                      label: '任务',
                       onClick: () => handleMenuClick('cron-job')
                     },
                   ] : []),
