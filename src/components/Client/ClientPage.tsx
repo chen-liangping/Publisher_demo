@@ -26,7 +26,7 @@ import {
   Alert
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { EyeOutlined, MinusCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { MinusCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useRouter } from 'next/navigation'
 
 const { Title, Paragraph, Text } = Typography
@@ -100,15 +100,6 @@ interface DetectedFileTypeRow {
 type CacheRefreshTabKey = 'refresh' | 'recent'
 type InvalidationStatus = 'InProgress' | 'Completed'
 
-interface VersionTopLevelEntry {
-  name: string
-  type: 'folder' | 'file'
-  invalidationPath: string
-  fileCount: number
-  sizeLabel: string
-  updatedAt: string
-}
-
 interface CdnInvalidationRequest {
   id: string
   status: InvalidationStatus
@@ -176,39 +167,6 @@ const cacheChangeDiffs: ChangeDiffRow[] = [
 const initialInvalidationPaths = ''
 
 const currentReleasedVersion = 'v1.0.1'
-
-const cacheRefreshVersionOptions = [
-  { label: 'v1.0.1（当前线上）', value: 'v1.0.1' },
-  { label: 'v1.0.2', value: 'v1.0.2' },
-  { label: 'v1.0.3', value: 'v1.0.3' },
-  { label: 'v1.0.2_test', value: 'v1.0.2_test' },
-  { label: 'v1.0.3_test', value: 'v1.0.3_test' }
-]
-
-const versionTopLevelEntriesByVersion: Record<string, VersionTopLevelEntry[]> = {
-  'v1.0.1': [
-    { name: 'assets', type: 'folder', invalidationPath: '/v1.0.1/assets/*', fileCount: 6140, sizeLabel: '约 480 MB', updatedAt: '2024/07/22 23:56:08' },
-    { name: 'config', type: 'folder', invalidationPath: '/v1.0.1/config/*', fileCount: 24, sizeLabel: '约 320 KB', updatedAt: '2024/07/22 23:56:08' },
-    { name: 'g123', type: 'folder', invalidationPath: '/v1.0.1/g123/*', fileCount: 180, sizeLabel: '约 16 MB', updatedAt: '2024/07/22 23:56:08' },
-    { name: 'index.html', type: 'file', invalidationPath: '/v1.0.1/index.html', fileCount: 1, sizeLabel: '12 KB', updatedAt: '2024/07/22 23:56:08' },
-    { name: 'README.md', type: 'file', invalidationPath: '/v1.0.1/README.md', fileCount: 1, sizeLabel: '3 KB', updatedAt: '2024/07/22 23:56:08' }
-  ],
-  'v1.0.2': [
-    { name: 'assets', type: 'folder', invalidationPath: '/v1.0.2/assets/*', fileCount: 3090, sizeLabel: '约 260 MB', updatedAt: '2024/08/28 09:00:00' },
-    { name: 'index.html', type: 'file', invalidationPath: '/v1.0.2/index.html', fileCount: 1, sizeLabel: '14 KB', updatedAt: '2024/08/28 09:00:00' }
-  ],
-  'v1.0.3': [
-    { name: 'assets', type: 'folder', invalidationPath: '/v1.0.3/assets/*', fileCount: 5280, sizeLabel: '约 410 MB', updatedAt: '2024/09/02 09:00:00' },
-    { name: 'index.html', type: 'file', invalidationPath: '/v1.0.3/index.html', fileCount: 1, sizeLabel: '15 KB', updatedAt: '2024/09/02 09:00:00' }
-  ],
-  'v1.0.2_test': [
-    { name: 'test.txt', type: 'file', invalidationPath: '/v1.0.2_test/test.txt', fileCount: 1, sizeLabel: '1 KB', updatedAt: '2024/07/22 23:56:08' }
-  ],
-  'v1.0.3_test': [
-    { name: 'assets', type: 'folder', invalidationPath: '/v1.0.3_test/assets/*', fileCount: 1280, sizeLabel: '约 94 MB', updatedAt: '2024/07/22 23:56:08' },
-    { name: 'index.html', type: 'file', invalidationPath: '/v1.0.3_test/index.html', fileCount: 1, sizeLabel: '13 KB', updatedAt: '2024/07/22 23:56:08' }
-  ]
-}
 
 const initialInvalidations: CdnInvalidationRequest[] = [
   {
@@ -279,43 +237,20 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   const [changeDetailOpen, setChangeDetailOpen] = React.useState<boolean>(false)
   // 新增：CDN 部署状态
   const [cdnDeploying, setCdnDeploying] = React.useState<boolean>(false)
-  const [cdnLastDeployTime, setCdnLastDeployTime] = React.useState<string>('未部署')
   // 缓存失效请求：原型中用本地状态模拟后端调用 CloudFront 的完整页面操作。
   const [cacheRefreshVisible, setCacheRefreshVisible] = React.useState<boolean>(false)
   const [cacheRefreshActiveTab, setCacheRefreshActiveTab] = React.useState<CacheRefreshTabKey>('refresh')
   const [cacheRefreshSubmitting, setCacheRefreshSubmitting] = React.useState<boolean>(false)
   const [cacheRefreshPathsText, setCacheRefreshPathsText] = React.useState<string>(initialInvalidationPaths)
-  const [selectedCacheRefreshVersion, setSelectedCacheRefreshVersion] = React.useState<string>(currentReleasedVersion)
-  const [selectedRefreshPathKeys, setSelectedRefreshPathKeys] = React.useState<string[]>([])
   const [activeInvalidation, setActiveInvalidation] = React.useState<CdnInvalidationRequest | null>(null)
-  const [pollingRound, setPollingRound] = React.useState<number>(0)
   const [invalidationListLoading, setInvalidationListLoading] = React.useState<boolean>(false)
   const [cacheRefreshForm] = Form.useForm<CacheRefreshFormValues>()
   const [invalidations, setInvalidations] = React.useState<CdnInvalidationRequest[]>(initialInvalidations)
-  const [selectedInvalidationId, setSelectedInvalidationId] = React.useState<string>(initialInvalidations[0]?.id || '')
-  const [invalidationListRefreshedAt, setInvalidationListRefreshedAt] = React.useState<string>('未刷新')
-  const versionTopLevelEntries = React.useMemo(
-    () => versionTopLevelEntriesByVersion[selectedCacheRefreshVersion] || [],
-    [selectedCacheRefreshVersion]
-  )
   const manualInvalidationPaths = React.useMemo(
     () => normalizeInvalidationPaths(cacheRefreshPathsText),
     [cacheRefreshPathsText]
   )
-  const selectedInvalidationPaths = React.useMemo(
-    () => dedupeInvalidationPaths([...selectedRefreshPathKeys, ...manualInvalidationPaths]),
-    [manualInvalidationPaths, selectedRefreshPathKeys]
-  )
-  const selectedEstimatedFiles = React.useMemo(
-    () => versionTopLevelEntries
-      .filter((item) => selectedRefreshPathKeys.includes(item.invalidationPath))
-      .reduce((total, item) => total + item.fileCount, manualInvalidationPaths.length),
-    [manualInvalidationPaths.length, selectedRefreshPathKeys, versionTopLevelEntries]
-  )
-  const selectedInvalidation = React.useMemo(
-    () => invalidations.find((item) => item.id === selectedInvalidationId) || invalidations[0],
-    [invalidations, selectedInvalidationId]
-  )
+  const selectedEstimatedFiles = manualInvalidationPaths.length
   // 表格列定义：只显示缓存类型，无操作列
   const detectedColumns: TableColumnsType<DetectedFileTypeRow> = [
     { title: '缓存类型', dataIndex: 'ext', key: 'ext' }
@@ -325,37 +260,8 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     { title: '变更前', dataIndex: 'before', key: 'before' },
     { title: '变更后', dataIndex: 'after', key: 'after' }
   ]
-  const versionTopLevelColumns: TableColumnsType<VersionTopLevelEntry> = [
-    {
-      title: '名称',
-      dataIndex: 'name',
-      key: 'name',
-      width: 180,
-      render: (name: string, record: VersionTopLevelEntry) => (
-        <Space size={8}>
-          <Tag color={record.type === 'folder' ? 'blue' : 'processing'}>{record.type === 'folder' ? '目录' : '文件'}</Tag>
-          <Text>{name}</Text>
-        </Space>
-      )
-    },
-    {
-      title: '刷新路径',
-      dataIndex: 'invalidationPath',
-      key: 'invalidationPath',
-      render: (path: string) => <Text code>{path}</Text>
-    },
-    {
-      title: '预计文件数',
-      dataIndex: 'fileCount',
-      key: 'fileCount',
-      width: 120,
-      render: (fileCount: number) => fileCount.toLocaleString()
-    },
-    { title: '大小', dataIndex: 'sizeLabel', key: 'sizeLabel', width: 120 },
-    { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 }
-  ]
   const invalidationColumns: TableColumnsType<CdnInvalidationRequest> = [
-    { title: '请求 ID', dataIndex: 'id', key: 'id', width: 180 },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -367,13 +273,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
         </Tag>
       )
     },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180 },
-    {
-      title: '路径数量',
-      key: 'pathCount',
-      width: 110,
-      render: (_: unknown, record: CdnInvalidationRequest) => record.paths.length
-    },
+    { title: '路径', dataIndex: 'paths', key: 'paths', width: 110, render: (paths: string[]) => paths.join('\n') },
     {
       title: '操作',
       key: 'actions',
@@ -381,19 +281,12 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       render: (_: unknown, record: CdnInvalidationRequest) => (
         <Button
           type="link"
-          icon={<EyeOutlined />}
-          onClick={() => {
-            setSelectedInvalidationId(record.id)
-          }}
+          icon={<ReloadOutlined />}
+          onClick={() => handleResubmitInvalidation(record)}
         >
-          详情
-        </Button>
-      )
+          重新发起
+        </Button>)
     }
-  ]
-
-  const invalidationPathColumns: TableColumnsType<{ path: string }> = [
-    { title: '刷新路径', dataIndex: 'path', key: 'path' }
   ]
 
   // 交互：添加源站
@@ -426,19 +319,30 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     setInvalidationListLoading(true)
     message.loading({ content: '正在拉取最近缓存请求...', key: 'cacheInvalidationList', duration: 0 })
     window.setTimeout(() => {
-      setInvalidationListRefreshedAt(formatDateTime(new Date()))
       setInvalidationListLoading(false)
       message.success({ content: '最近缓存请求已刷新', key: 'cacheInvalidationList' })
     }, 500)
   }
 
+  const handleResubmitInvalidation = (record: CdnInvalidationRequest): void => {
+    const pathsText = record.paths.join('\n')
+    cacheRefreshForm.setFieldsValue({ pathsText })
+    setCacheRefreshPathsText(pathsText)
+    void handleSubmitInvalidation()
+  }
+
   const handleSubmitInvalidation = async (): Promise<void> => {
     try {
+      if (activeInvalidation?.status === 'InProgress') {
+        message.warning('当前缓存失效请求仍在处理中，请完成后再提交')
+        return
+      }
+
       const values = await cacheRefreshForm.validateFields()
       const manualPaths = normalizeInvalidationPaths(values.pathsText || '')
-      const paths = dedupeInvalidationPaths([...selectedRefreshPathKeys, ...manualPaths])
+      const paths = dedupeInvalidationPaths(manualPaths)
       if (paths.length === 0) {
-        message.warning('请选择版本文件或输入至少一个需要刷新的文件路径')
+        message.warning('请输入至少一个需要刷新的文件路径')
         return
       }
 
@@ -449,7 +353,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       }
 
       setCacheRefreshSubmitting(true)
-      setPollingRound(0)
       setActiveInvalidation(null)
       const now = new Date()
       const id = `I${Math.random().toString(36).slice(2, 14).toUpperCase()}`
@@ -464,25 +367,17 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
       message.loading({ content: '正在调用 CreateInvalidation...', key: 'cacheInvalidation', duration: 0 })
       window.setTimeout(() => {
         setInvalidations((prev) => [nextRequest, ...prev])
-        setSelectedInvalidationId(id)
         setActiveInvalidation(nextRequest)
-        setPollingRound(1)
         setCacheRefreshSubmitting(false)
         message.loading({ content: `已返回 InvalidationId：${id}，正在轮询 GetInvalidation...`, key: 'cacheInvalidation', duration: 0 })
-
-        window.setTimeout(() => {
-          setPollingRound(2)
-        }, 900)
 
         window.setTimeout(() => {
           const completedRequest: CdnInvalidationRequest = { ...nextRequest, status: 'Completed' }
           setInvalidations((prev) => prev.map((item) => item.id === id ? completedRequest : item))
           setActiveInvalidation(completedRequest)
-          setPollingRound(0)
           setCacheRefreshActiveTab('recent')
           setInvalidationListLoading(true)
           window.setTimeout(() => {
-            setInvalidationListRefreshedAt(formatDateTime(new Date()))
             setInvalidationListLoading(false)
             message.success({ content: '缓存失效已完成，已自动刷新最近缓存请求', key: 'cacheInvalidation' })
           }, 400)
@@ -494,11 +389,9 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
   }
 
   const handleResetInvalidationForm = (): void => {
-    setSelectedRefreshPathKeys([])
     cacheRefreshForm.setFieldsValue({ pathsText: '' })
     setCacheRefreshPathsText('')
     setActiveInvalidation(null)
-    setPollingRound(0)
   }
 
   // 交互：执行 CDN 部署（模拟实际部署流程）
@@ -506,9 +399,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     setCdnDeploying(true)
     message.loading({ content: 'CDN 部署中...', key: 'cdnDeploy', duration: 0 })
     window.setTimeout(() => {
-      const now = new Date()
-      // 部署完成后更新时间与状态，形成真实业务反馈
-      setCdnLastDeployTime(now.toLocaleString('zh-CN'))
       setCdnDeploying(false)
       message.success({ content: 'CDN 部署完成', key: 'cdnDeploy' })
     }, 900)
@@ -843,18 +733,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
             <div style={{ color: '#999' }}>缓存失效请求</div>
             <Button type="link" onClick={handleOpenInvalidationList}>查看最近缓存请求</Button>
           </Col>
-          <Col xs={24} md={8}>
-            <div style={{ color: '#999' }}>部署状态</div>
-            <Text type={cdnLastDeployTime === '未部署' ? 'secondary' : undefined}>
-              {cdnLastDeployTime === '未部署' ? '未部署' : '已部署'}
-            </Text>
-          </Col>
-          <Col xs={24} md={8}>
-            <div style={{ color: '#999' }}>最近部署时间</div>
-            <Text type={cdnLastDeployTime === '未部署' ? 'secondary' : undefined}>
-              {cdnLastDeployTime}
-            </Text>
-          </Col>
         </Row>
       </Card>
 
@@ -881,53 +759,7 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               label: '刷新指定文件缓存',
               children: (
                 <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="操作说明"
-                    description="先选择版本最外层文件或目录，也可以手动补充具体文件路径。"
-                  />
-
-                  <Card title="选择版本文件" size="small">
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      <Row gutter={[16, 12]} align="bottom">
-                        <Col xs={24} md={10}>
-                          <div style={{ marginBottom: 8 }}>
-                            <Text strong>版本</Text>
-                          </div>
-                          <Select
-                            showSearch
-                            value={selectedCacheRefreshVersion}
-                            style={{ width: '100%' }}
-                            options={cacheRefreshVersionOptions}
-                            onChange={(value) => {
-                              setSelectedCacheRefreshVersion(value)
-                              setSelectedRefreshPathKeys([])
-                            }}
-                          />
-                        </Col>
-                        <Col xs={24} md={14}>
-                          <Text type="secondary">
-                            仅展示该版本最外层文件和目录；目录按 <Text code>{'/*'}</Text> 作为刷新范围。
-                          </Text>
-                        </Col>
-                      </Row>
-                      <Table<VersionTopLevelEntry>
-                        size="small"
-                        columns={versionTopLevelColumns}
-                        dataSource={versionTopLevelEntries}
-                        rowKey={(row) => row.invalidationPath}
-                        rowSelection={{
-                          selectedRowKeys: selectedRefreshPathKeys,
-                          onChange: (keys) => setSelectedRefreshPathKeys(keys.map(String))
-                        }}
-                        pagination={false}
-                        scroll={{ x: 820 }}
-                      />
-                    </Space>
-                  </Card>
-
-                  <Card title="手动补充路径" size="small">
+                  <Card title="输入路径" size="small">
                     <Form
                       form={cacheRefreshForm}
                       layout="vertical"
@@ -939,39 +771,24 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
                       <Form.Item
                         label="刷新指定文件"
                         name="pathsText"
-                        extra="可选。一行一个文件路径，提交时会自动补齐 / 并去重；手动输入不支持 /* 或带 * 的范围刷新。"
+                        extra="一行一个路径。将“当前版本目录”替换为文件实际所在的版本目录；支持 /* 或带 * 的通配。"
                       >
-                        <Input.TextArea
-                          rows={4}
-                          placeholder={`/${selectedCacheRefreshVersion}/index.html\n/${selectedCacheRefreshVersion}/config/app.json`}
-                        />
+                          <Input.TextArea rows={4} placeholder={`/${currentReleasedVersion}/index.html
+/${currentReleasedVersion}/config/app.json
+/${currentReleasedVersion}/assets/images/logo.png
+/${currentReleasedVersion}/assets/*`} />
                       </Form.Item>
                     </Form>
-                  </Card>
-
-                  <Card title="提交失效请求" size="small">
                     <Space direction="vertical" size={12} style={{ width: '100%' }}>
-
-                      {selectedEstimatedFiles >= 3000 && (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message="本次选择覆盖文件较多，缓存刷新可能持续数分钟。"
-                        />
-                      )}
-
-                      <Space>
-                        <Button
-                          type="primary"
-                          loading={cacheRefreshSubmitting}
-                          disabled={selectedInvalidationPaths.length === 0 || activeInvalidation?.status === 'InProgress'}
-                          onClick={handleSubmitInvalidation}
-                        >
-                          提交失效请求
-                        </Button>
-                        <Button onClick={handleResetInvalidationForm}>清空选择</Button>
-                      </Space>
-
+                      <Button
+                        type="primary"
+                        loading={cacheRefreshSubmitting}
+                        disabled={manualInvalidationPaths.length === 0 || activeInvalidation?.status === 'InProgress'}
+                        onClick={handleSubmitInvalidation}
+                      >
+                        提交失效请求
+                      </Button>
+                      <Button onClick={handleResetInvalidationForm}>清空选择</Button>
                     </Space>
                   </Card>
                 </Space>
@@ -982,82 +799,32 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
               label: '最近缓存请求',
               children: (
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                      <Row justify="end">
-                        <Col>
-                          <Button
-                            icon={<ReloadOutlined />}
-                            loading={invalidationListLoading}
-                            onClick={handleRefreshInvalidationList}
-                          >
-                            查看最近缓存请求
-                          </Button>
-                        </Col>
-                      </Row>
-                      <Table<CdnInvalidationRequest>
-                        size="small"
+                  <Row justify="end">
+                    <Col>
+                      <Button
+                        icon={<ReloadOutlined />}
                         loading={invalidationListLoading}
-                        columns={invalidationColumns}
-                        dataSource={invalidations}
-                        rowKey={(row) => row.id}
-                        pagination={{ pageSize: 6, showSizeChanger: true }}
-                        scroll={{ x: 720 }}
-                      />
-
-                      {selectedInvalidation ? (
-                        <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
-                          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                            <Row align="middle" justify="space-between" gutter={[12, 8]}>
-                              <Col>
-                                <Text strong>请求详情</Text>
-                              </Col>
-                              <Col>
-                                <Select
-                                  showSearch
-                                  value={selectedInvalidation.id}
-                                  style={{ width: 220 }}
-                                  options={invalidations.map((item) => ({ label: item.id, value: item.id }))}
-                                  onChange={(value) => setSelectedInvalidationId(value)}
-                                />
-                              </Col>
-                            </Row>
-                            <Row gutter={[16, 12]}>
-                              <Col xs={24} md={12}>
-                                <div style={{ color: '#999' }}>请求 ID</div>
-                                <Text code>{selectedInvalidation.id}</Text>
-                              </Col>
-                              <Col xs={24} md={12}>
-                                <div style={{ color: '#999' }}>状态</div>
-                                <Tag color={selectedInvalidation.status === 'Completed' ? 'green' : 'processing'}>
-                                  {selectedInvalidation.status === 'Completed' ? 'Completed' : 'InProgress'}
-                                </Tag>
-                              </Col>
-                              <Col xs={24} md={12}>
-                                <div style={{ color: '#999' }}>创建时间</div>
-                                <Text>{selectedInvalidation.createdAt}</Text>
-                              </Col>
-                              <Col xs={24} md={12}>
-                                <div style={{ color: '#999' }}>Caller Reference</div>
-                                <Text code>{selectedInvalidation.callerReference}</Text>
-                              </Col>
-                            </Row>
-                            <Table<{ path: string }>
-                              size="small"
-                              columns={invalidationPathColumns}
-                              dataSource={selectedInvalidation.paths.map((path) => ({ path }))}
-                              rowKey={(row) => row.path}
-                              pagination={selectedInvalidation.paths.length > 6 ? { pageSize: 6 } : false}
-                            />
-                          </Space>
-                        </div>
-                      ) : (
-                        <Alert type="info" showIcon message="暂无缓存失效请求" />
-                      )}
-                    </Space>
-                )
-              }
-            ]}
-          />
-        </Drawer>
+                        onClick={handleRefreshInvalidationList}
+                      >
+                        查看最近缓存请求
+                      </Button>
+                    </Col>
+                  </Row>
+                  <Table<CdnInvalidationRequest>
+                    size="small"
+                    loading={invalidationListLoading}
+                    columns={invalidationColumns}
+                    dataSource={invalidations}
+                    rowKey={(row) => row.id}
+                    pagination={{ pageSize: 6, showSizeChanger: true }}
+                    scroll={{ x: 720 }}
+                  />
+                </Space>
+              )
+            }
+          ]}
+        />
+      </Drawer>
 
       {/* S3 加速设置：入口 Card，放在源站配置上方 */}
       <Card
