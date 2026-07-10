@@ -30,6 +30,7 @@ import {
   ArrowRightOutlined
 } from '@ant-design/icons'
 import type { FormInstance } from 'antd/es/form'
+import ManagedProcessPanel from './ManagedProcessPanel'
 
 const { Title } = Typography
 
@@ -621,6 +622,11 @@ export default function VirtualMachineDetails({ vm, onBack, onOperation, onNavig
                   </Row>
                 </div>
               ),
+            },
+            {
+              key: 'processes',
+              label: '进程',
+              children: <ManagedProcessPanel vmName={vm.name} vmStatus={vm.status} />,
             },
             {
               key: 'security-groups',
