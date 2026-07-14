@@ -172,8 +172,10 @@ const EditableCell = ({
   const form = Form.useFormInstance<StrategyFormValues>()
   const [editing, setEditing] = useState(false)
   // getFieldValue 需要完整路径（含 Form.List 名），Form.Item 内部用相对路径自动补前缀
-  const value = form.getFieldValue([listName, ...name]) as number | undefined
-  const unit = unitName ? (form.getFieldValue([listName, ...unitName]) as AfterUnit | undefined) : undefined
+  // 路径为运行期拼接的动态数组，无法满足 AntD 对 StrategyFormValues 的强键路径约束，故在此收窄类型
+  type FieldNamePath = Parameters<typeof form.getFieldValue>[0]
+  const value = form.getFieldValue([listName, ...name] as FieldNamePath) as number | undefined
+  const unit = unitName ? (form.getFieldValue([listName, ...unitName] as FieldNamePath) as AfterUnit | undefined) : undefined
 
   if (editing) {
     return (
