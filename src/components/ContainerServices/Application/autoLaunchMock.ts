@@ -5,8 +5,8 @@
 // 开服策略类型：cron = 定时开服，strategy = 条件开服
 export type StrategyType = 'cron' | 'strategy'
 
-// 开服流程状态：idle = 待机，processing = 开服进行中
-export type AutoLaunchStatus = 'idle' | 'processing'
+// 开服流程状态：idle = 待机，processing = 开服进行中，suspended = 未开启（回退至启用自动开服前）
+export type AutoLaunchStatus = 'idle' | 'processing' | 'suspended'
 
 // 开服步骤状态：等待执行 / 执行中 / 等待回调 / 成功 / 失败
 export type ActionStepStatus = 'need_execute' | 'executing' | 'wait_callback' | 'ok' | 'failed'
@@ -40,8 +40,46 @@ export type AppResource = {
   details: Array<{ name: string; cpu: string; memory: string }>
 }
 
-// 分区 ID：global 为全局默认策略，ja/en/ko 为语种区覆盖
-export type ZoneId = 'global' | 'ja' | 'en' | 'ko'
+// 分区 ID：global 为全局默认策略，其余以分区值（lang/country/currency）作为 id，保证同维度下值唯一即分区唯一
+export type ZoneId = string
+
+// 分区维度：lang = 语种，country = 国家，currency = 货币；启用自动开服前可选，启用后锁定
+export type PartitionDimension = 'lang' | 'country' | 'currency'
+
+// 分区维度选项
+export const PARTITION_DIMENSION_OPTIONS: { value: PartitionDimension; label: string }[] = [
+  { value: 'lang', label: '语种 lang' },
+  { value: 'country', label: '国家 country' },
+  { value: 'currency', label: '货币 currency' },
+]
+
+// 语种可选值（区名由值推导，如 en → 英语区）
+export const LANG_OPTIONS = [
+  { value: 'en', label: 'en' },
+  { value: 'ja', label: 'ja' },
+  { value: 'ko', label: 'ko' },
+  { value: 'zh', label: 'zh' },
+]
+
+// 国家可选值（区名由值推导，如 JP → 日本区）
+export const COUNTRY_OPTIONS = [
+  { value: 'JP', label: 'JP' },
+  { value: 'US', label: 'US' },
+  { value: 'KR', label: 'KR' },
+  { value: 'CN', label: 'CN' },
+]
+
+// 货币可选值（区名由值推导，如 JPY → 日元区）
+export const CURRENCY_OPTIONS = [
+  { value: 'JPY', label: 'JPY' },
+  { value: 'USD', label: 'USD' },
+  { value: 'KRW', label: 'KRW' },
+  { value: 'CNY', label: 'CNY' },
+]
+
+// 按维度取分区值下拉选项
+export const partitionValueOptions = (dim: PartitionDimension) =>
+  dim === 'country' ? COUNTRY_OPTIONS : dim === 'currency' ? CURRENCY_OPTIONS : LANG_OPTIONS
 
 // 导流服组（AI 开服）：语种 + 当前最大服 ID
 export type ZoneServiceId = {
@@ -75,6 +113,10 @@ export type AiLaunchState = {
 export type ZoneLaunch = {
   zoneId: ZoneId
   zoneName: string
+  // 该区分区值（lang/country/currency），如 'ja'/'JP'/'JPY'；global 不填
+  lang?: string
+  // 分区维度：lang/country/currency；global 不填
+  dimension?: PartitionDimension
   // 是否覆盖全局默认策略（global 自身恒为 true；非 global 区为 false 时继承 global 策略）
   override: boolean
   // 策略开服
@@ -180,6 +222,8 @@ const globalZone: ZoneLaunch = {
 const jaZone: ZoneLaunch = {
   zoneId: 'ja',
   zoneName: '日语区',
+  lang: 'ja',
+  dimension: 'lang',
   override: true,
   strategyType: 'strategy',
   autoLaunchStatus: 'idle',
@@ -229,6 +273,8 @@ const jaZone: ZoneLaunch = {
 const enZone: ZoneLaunch = {
   zoneId: 'en',
   zoneName: '英语区',
+  lang: 'en',
+  dimension: 'lang',
   override: false,
   strategyType: 'strategy',
   autoLaunchStatus: 'idle',
@@ -257,6 +303,8 @@ const enZone: ZoneLaunch = {
 const koZone: ZoneLaunch = {
   zoneId: 'ko',
   zoneName: '韩语区',
+  lang: 'ko',
+  dimension: 'lang',
   override: true,
   strategyType: 'cron',
   autoLaunchStatus: 'idle',
@@ -283,6 +331,44 @@ const koZone: ZoneLaunch = {
 // 初始分区集合
 export const initialZones: ZoneLaunch[] = [globalZone, jaZone, enZone, koZone]
 
+// 由区名推导默认 lang（新增区时联动填充，用户可手动覆盖）
+export const guessLangByZoneName = (name: string): string => {
+  if (/英|english|en/i.test(name)) return 'en'
+  if (/日|japanese|ja/i.test(name)) return 'ja'
+  if (/韩|korean|ko/i.test(name)) return 'ko'
+  if (/中|chinese|zh/i.test(name)) return 'zh'
+  return ''
+}
+
+// 新增分区工厂：默认继承全局策略，自带一条导流服（分区值 + serverId）
+// zoneId 以分区值作为唯一标识，保证同维度同值只能有一个区
+export const createZone = (
+  zoneName: string,
+  value: string,
+  serverId: number,
+  dimension: PartitionDimension = 'lang',
+): ZoneLaunch => ({
+  zoneId: value,
+  zoneName,
+  lang: value,
+  dimension,
+  override: false,
+  strategyType: 'strategy',
+  autoLaunchStatus: 'idle',
+  curMaxServiceId: serverId,
+  rollbackProdOpen: false,
+  applications: [],
+  steps: [],
+  ai: { status: 'idle', openedCount: 0, onboardingServers: [{ lang: value, serverId }] },
+  launchHistory: [],
+})
+
+// 自定义策略分区：override=true，承载该分区独立的开服策略
+export const createCustomZone = (zoneName: string, value: string, serverId = 1, dimension: PartitionDimension = 'lang'): ZoneLaunch => ({
+  ...createZone(zoneName, value, serverId, dimension),
+  override: true,
+})
+
 // 取某分区的"生效策略"：非覆盖分区回退到 global 的策略字段（curMaxServiceId / ai / history 仍用自身）
 export const getEffectiveStrategy = (zones: ZoneLaunch[], zoneId: ZoneId): ZoneLaunch => {
   const zone = zones.find(z => z.zoneId === zoneId)
@@ -306,6 +392,23 @@ export const formatZoneLangLabel = (lang: string): string => {
   const map: Record<string, string> = { ja: '日语', en: '英语', ko: '韩语', zh: '中文' }
   return map[lang] ?? lang.toUpperCase()
 }
+
+// 按维度展示分区值文案：lang → 日语/英语…；country → 日本/美国…；currency → 日元/美元…
+export const formatZoneValueLabel = (dimension: PartitionDimension, value: string): string => {
+  if (dimension === 'country') {
+    const map: Record<string, string> = { JP: '日本', US: '美国', KR: '韩国', CN: '中国' }
+    return map[value] ?? value
+  }
+  if (dimension === 'currency') {
+    const map: Record<string, string> = { JPY: '日元', USD: '美元', KRW: '韩元', CNY: '人民币' }
+    return map[value] ?? value
+  }
+  return formatZoneLangLabel(value)
+}
+
+// 分区维度展示文案
+export const formatDimensionLabel = (dimension: PartitionDimension): string =>
+  dimension === 'country' ? '国家' : dimension === 'currency' ? '货币' : '语种'
 
 // 分区下拉选项
 export const zoneSelectOptions = (zones: ZoneLaunch[]) =>

@@ -423,12 +423,6 @@ export const AutoLaunchStrategyForm = () => {
               ) : null}
             </Flex>
           </Form.Item>
-
-          <Alert
-            type="info"
-            showIcon
-            message="创角人数基于游戏客户端上报的 [g_createrole] 埋点统计，区别于服务端创角数据。"
-          />
         </Flex>
       ) : null}
     </Flex>

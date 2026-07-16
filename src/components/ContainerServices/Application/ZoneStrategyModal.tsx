@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { Modal, Form, Flex, Typography, Tag, Switch, Alert, Popconfirm, Button } from 'antd'
-import { ArrowRightOutlined } from '@ant-design/icons'
+import { ArrowRightOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import { AutoLaunchStrategyForm, type StrategyFormValues } from './AutoLaunchStrategyForm'
-import { type ZoneLaunch, type ZoneId } from './autoLaunchMock'
+import { type ZoneLaunch, type ZoneId, type PartitionDimension, formatDimensionLabel } from './autoLaunchMock'
 
 const { Text } = Typography
 
@@ -39,27 +39,33 @@ const strategySummary = (zone: ZoneLaunch, globalZone: ZoneLaunch): string => {
   return parts.length ? `${parts.join('，')} 任一` : '条件开服'
 }
 
-// 多分区策略弹窗：顶部全局 AI 开服开关 + 左侧分区列表 + 右侧该分区策略表单
+// 多分区策略弹窗：顶部 AI 开服 / 分区维度（锁定） + 左侧分区列表 + 右侧该分区策略表单
 export default function ZoneStrategyModal({
   open,
   zones,
   defaultZoneId,
-  aiEnabled,
   onClose,
   onSave,
-  onAiEnabledChange,
+  partitionDimension,
+  aiConfigured,
+  onAiConfiguredChange,
   onResetZone,
+  onDeleteZone,
 }: {
   open: boolean
   zones: ZoneLaunch[]
   defaultZoneId: ZoneId
-  // AI 开服全局开关（单一按钮，对所有区域生效）
-  aiEnabled: boolean
   onClose: () => void
   onSave: (zoneId: ZoneId, values: StrategyFormValues) => void
-  onAiEnabledChange: (enabled: boolean) => void
+  // 分区维度：启用后锁定，运行态不可改，仅展示
+  partitionDimension: PartitionDimension
+  // AI 开服配置状态（已配置/未配置）：仅标记策略是否已配置，不影响导流服触发；实际启停由运营脚本
+  aiConfigured: boolean
+  onAiConfiguredChange: (configured: boolean) => void
   // 独立分区恢复继承全局默认策略
   onResetZone: (zoneId: ZoneId) => void
+  // 删除某个分区（global 不可删除）
+  onDeleteZone: (zoneId: ZoneId) => void
 }) {
   const [selected, setSelected] = useState<ZoneId>(defaultZoneId)
   const [form] = Form.useForm<StrategyFormValues>()
@@ -96,22 +102,37 @@ export default function ZoneStrategyModal({
       styles={{ body: { maxHeight: '72vh', overflow: 'auto' } }}
     >
       <Flex vertical gap={16}>
-        {/* AI 开服全局开关：单一按钮，开启后 AI 可基于导流服自行判定触发各区域开服 */}
+        {/* AI 开服：展示配置状态（已配置/未配置），仅标记策略是否就绪；实际启停由运营脚本，不影响导流服触发 */}
         <Alert
           type="info"
           showIcon
-          icon={null}
           message={
             <Flex align="center" gap={12}>
               <Text strong>AI 开服</Text>
-              <Switch checked={aiEnabled} onChange={onAiEnabledChange} checkedChildren="开启" unCheckedChildren="关闭" />
+              <Switch
+                checked={aiConfigured}
+                onChange={onAiConfiguredChange}
+                checkedChildren="已配置"
+                unCheckedChildren="未配置"
+              />
               <Text type="secondary" style={{ fontSize: 12 }}>
-                开启后，AI 可基于各区域导流服数据自行判定并触发开服；关闭则仅按下方策略触发
+                AI 开服策略由运营人员配置脚本维护；此处仅展示配置状态，实际启停由运营脚本控制。导流服始终按下方策略触发自动开服。
               </Text>
             </Flex>
           }
           style={{ padding: '10px 16px' }}
         />
+
+        {/* 分区维度：启用后锁定，运行态不可改，仅展示；如需更换维度须关闭自动开服重新配置 */}
+        <Flex align="center" gap={8} style={{ paddingInline: 4 }}>
+          <Text strong>分区维度</Text>
+          <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(0,0,0,0.06)', color: 'rgba(0,0,0,0.65)', margin: 0 }}>
+            {formatDimensionLabel(partitionDimension)}
+          </Tag>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            已锁定（启用自动开服时确定）；如需更换维度，请关闭自动开服后重新配置
+          </Text>
+        </Flex>
 
         <Flex gap={16}>
         {/* 左：分区列表，展示所有区域策略摘要 */}
@@ -138,13 +159,33 @@ export default function ZoneStrategyModal({
                 >
                   <Flex justify="space-between" align="center">
                     <Text strong={active}>{z.zoneId === 'global' ? '全局默认' : z.zoneName}</Text>
-                    {z.zoneId === 'global' ? (
-                      <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(0,0,0,0.06)', margin: 0 }}>默认</Tag>
-                    ) : inherit ? (
-                      <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(0,0,0,0.06)', color: 'rgba(0,0,0,0.45)', margin: 0 }}>继承</Tag>
-                    ) : (
-                      <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(82,196,26,0.12)', color: '#52c41a', margin: 0 }}>独立</Tag>
-                    )}
+                    <Flex align="center" gap={6}>
+                      {z.zoneId === 'global' ? (
+                        <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(0,0,0,0.06)', margin: 0 }}>默认</Tag>
+                      ) : inherit ? (
+                        <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(0,0,0,0.06)', color: 'rgba(0,0,0,0.45)', margin: 0 }}>继承</Tag>
+                      ) : (
+                        <Tag style={{ borderRadius: 999, border: 0, background: 'rgba(82,196,26,0.12)', color: '#52c41a', margin: 0 }}>独立</Tag>
+                      )}
+                      {z.zoneId !== 'global' ? (
+                        <Popconfirm
+                          title="删除该分区？"
+                          description="删除后该分区导流服将不再触发自动开服。"
+                          onConfirm={(e) => { e?.stopPropagation(); onDeleteZone(z.zoneId) }}
+                          onCancel={(e) => e?.stopPropagation()}
+                          okText="删除"
+                          cancelText="取消"
+                        >
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </Popconfirm>
+                      ) : null}
+                    </Flex>
                   </Flex>
                   <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>
                     {strategySummary(z, globalZone)}
@@ -167,23 +208,22 @@ export default function ZoneStrategyModal({
                 title="恢复继承全局默认策略？"
                 description="该区域当前的独立策略将被清除，回退为跟随全局默认策略。"
                 onConfirm={() => onResetZone(selected)}
-                okText="恢复继承"
+                okText="继承默认服策略"
                 cancelText="取消"
               >
                 <Button size="small" icon={<ArrowRightOutlined />}>
-                  恢复继承
+                  继承默认服策略
                 </Button>
               </Popconfirm>
             ) : null}
           </Flex>
           {selected !== 'global' && selectedZone && !selectedZone.override ? (
-            <Alert
-              type="info"
-              showIcon
-              message="该区域当前继承全局默认策略"
-              description="修改并保存后将为其创建独立策略覆盖全局默认。"
-              style={{ marginBottom: 12 }}
-            />
+            <Flex align="center" gap={6} style={{ marginBottom: 8 }}>
+              <InfoCircleOutlined style={{ color: '#1677ff', fontSize: 12 }} />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                该区域当前继承全局默认策略，修改并保存后将为其创建独立策略覆盖全局默认。
+              </Text>
+            </Flex>
           ) : null}
           <Form form={form} layout="vertical">
             <AutoLaunchStrategyForm />
