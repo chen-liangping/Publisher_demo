@@ -129,10 +129,9 @@ const summarizeStrategy = (v: StrategyFormValues | undefined): string => {
   return '策略开服'
 }
 
-// 配置向导确认时回传：策略表单值 + AI 开服配置状态 + 分区维度 + 分区开服开关 + 新增/编辑后的分区列表（不含 global）+ 各自定义分区的策略值
+// 配置向导确认时回传：策略表单值 + 分区维度 + 分区开服开关 + 新增/编辑后的分区列表（不含 global）+ 各自定义分区的策略值
 export type ConfigConfirmResult = {
   strategy: StrategyFormValues
-  aiConfigured: boolean
   partitionDimension: PartitionDimension
   zoneLaunchEnabled: boolean
   zones: ZoneLaunch[]
@@ -169,8 +168,6 @@ export default function ConfigAutoLaunchModal({
   const [zoneLaunchEnabled, setZoneLaunchEnabled] = useState(false)
   // 分区维度：lang/country/currency，默认 lang；启用自动开服后锁定，运行态不可改
   const [partitionDimension, setPartitionDimension] = useState<PartitionDimension>(initialDimension)
-  // AI 开服配置状态（已配置/未配置）：仅标记策略是否就绪，不影响导流服触发；实际启停由运营脚本
-  const [aiLaunchConfigured, setAiLaunchConfigured] = useState(false)
   const [localZones, setLocalZones] = useState<ZoneLaunch[]>(() => zones.filter(z => z.zoneId !== 'global'))
   const [newZoneLang, setNewZoneLang] = useState('')
   // 各自定义分区的策略值（zoneId -> StrategyFormValues）
@@ -273,7 +270,7 @@ export default function ConfigAutoLaunchModal({
       return
     }
     const values = form.getFieldsValue() as ConfigFormValues
-    onConfirm({ strategy: values, aiConfigured: aiLaunchConfigured, partitionDimension, zoneLaunchEnabled, zones: localZones, customStrategies })
+    onConfirm({ strategy: values, partitionDimension, zoneLaunchEnabled, zones: localZones, customStrategies })
   }
 
   const okText = current === 2 ? '开启自动开服' : '保存并下一步'
@@ -339,34 +336,23 @@ export default function ConfigAutoLaunchModal({
               </Flex>
             ) : null}
 
-            {/* AI 开服：展示配置状态（已配置/未配置），仅标记策略是否就绪；实际启停由运营脚本，不影响导流服触发 */}
-            <div
-              style={{
-                padding: '10px 12px',
-                background: 'rgba(0,0,0,0.02)',
-                borderRadius: 8,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              <Flex align="center" gap={8}>
-                <Text strong>AI 开服</Text>
-                <Switch
-                  size="small"
-                  checked={aiLaunchConfigured}
-                  onChange={setAiLaunchConfigured}
-                  checkedChildren="已配置"
-                  unCheckedChildren="未配置"
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  AI 开服策略由运营人员配置脚本维护；此处仅展示配置状态，实际启停由运营脚本控制。
-                </Text>
-              </Flex>
-              <Text type="warning" style={{ fontSize: 12, paddingLeft: 4 }}>
-                导流服始终按下方策略触发自动开服；AI 推断触发是否生效取决于运营脚本配置。
-              </Text>
-            </div>
+            {/* AI 开服：纯提示，策略由运营人员配置脚本维护；实际启停由运营脚本，不影响导流服触发，本页不提供开关 */}
+            <Alert
+              type="info"
+              showIcon
+              message={<Text strong>AI 开服</Text>}
+              description={
+                <Flex vertical gap={2}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    AI 开服策略由运营人员配置脚本维护；实际启停由运营脚本控制，本页不提供开关。
+                  </Text>
+                  <Text type="warning" style={{ fontSize: 12 }}>
+                    导流服始终按下方策略触发自动开服；AI 推断触发是否生效取决于运营脚本配置。
+                  </Text>
+                </Flex>
+              }
+              style={{ padding: '10px 12px' }}
+            />
 
             {/* 分区开服（可折叠）：开启后可为各分区单独配置开服策略 */}
             <Collapse
@@ -427,7 +413,6 @@ export default function ConfigAutoLaunchModal({
             stepConfigures={stepConfigures}
             strategies={form.getFieldValue('strategies')}
             effectPeriodType={form.getFieldValue('effectPeriodType')}
-            aiLaunchConfigured={aiLaunchConfigured}
             partitionDimension={partitionDimension}
             zoneLaunchEnabled={zoneLaunchEnabled}
             zones={localZones}
@@ -562,7 +547,6 @@ const ConfirmStep = ({
   stepConfigures,
   strategies,
   effectPeriodType,
-  aiLaunchConfigured,
   partitionDimension,
   zoneLaunchEnabled,
   zones,
@@ -573,7 +557,6 @@ const ConfirmStep = ({
   stepConfigures?: StepConfigure[]
   strategies?: StrategyRow[]
   effectPeriodType?: 'all' | 'part'
-  aiLaunchConfigured?: boolean
   partitionDimension?: PartitionDimension
   zoneLaunchEnabled?: boolean
   zones?: ZoneLaunch[]
@@ -606,15 +589,10 @@ const ConfirmStep = ({
   if (stepConfigures?.[3]?.enabled) {
     rows.push({ label: '新建预备服应用', children: (stepConfigures?.[3]?.gameAppNames ?? []).join('、') || '-' })
   }
-  // AI 开服摘要：展示配置状态（已配置/未配置），实际启停由运营脚本
+  // AI 开服摘要：纯提示，实际启停由运营脚本，本页不提供开关
   rows.push({
     label: 'AI 开服',
-    children: aiLaunchConfigured ? (
-      <Flex vertical gap={2}>
-        <Text>已配置</Text>
-        <Text type="secondary" style={{ fontSize: 12 }}>实际启停由运营配置脚本控制，导流服始终按策略触发</Text>
-      </Flex>
-    ) : '未配置',
+    children: <Text type="secondary" style={{ fontSize: 12 }}>由运营配置脚本维护，本页不提供开关；导流服始终按策略触发</Text>,
   })
   // 分区开服摘要
   rows.push({ label: '分区开服', children: zoneLaunchEnabled ? '已开启' : '未开启' })

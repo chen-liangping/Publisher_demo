@@ -98,8 +98,6 @@ const ResourceItem = ({ app }: { app: AppResource }) => (
 // 自动开服运行态主卡：默认展示全局策略；多区域策略在「更新开服策略」弹窗统一管理
 export default function AutoLaunchCard() {
   const [zones, setZones] = useState<ZoneLaunch[]>(initialZones)
-  // AI 开服配置状态（已配置/未配置）：仅标记策略是否就绪，不影响导流服触发；实际启停由运营脚本
-  const [aiConfigured, setAiConfigured] = useState(false)
   // 分区维度：lang/country/currency，启用自动开服前在向导配置，启用后锁定，运行态不可改
   const [partitionDimension, setPartitionDimension] = useState<PartitionDimension>('lang')
   // 分区开服：由是否存在非 global 分区派生（有分区即视为开启），不再用独立 state，避免与 zones 不同步
@@ -412,9 +410,8 @@ export default function AutoLaunchCard() {
   // 配置向导确认：将向导中配置的策略应用到全局分区，启用自动开服并触发一次开服流程
   // 同时写回分区开服开关与分区列表（新增/删除的用户分区）
   const onConfigConfirm = (result: ConfigConfirmResult) => {
-    const { strategy: values, aiConfigured: nextAiConfigured, partitionDimension: nextDim, zoneLaunchEnabled: nextZoneLaunchEnabled, zones: nextZones, customStrategies } = result
-    // 写回 AI 开服配置状态（仅标记，不影响触发）与分区维度（启用后锁定）
-    setAiConfigured(nextAiConfigured)
+    const { strategy: values, partitionDimension: nextDim, zoneLaunchEnabled: nextZoneLaunchEnabled, zones: nextZones, customStrategies } = result
+    // 写回分区维度（启用后锁定）
     setPartitionDimension(nextDim)
     // 分区开服关闭时，所有非 global 分区强制继承默认服策略
     const forceInherit = (z: ZoneLaunch): ZoneLaunch =>
@@ -775,8 +772,6 @@ export default function AutoLaunchCard() {
         zones={zones}
         defaultZoneId="global"
         partitionDimension={partitionDimension}
-        aiConfigured={aiConfigured}
-        onAiConfiguredChange={setAiConfigured}
         onClose={() => setStrategyOpen(false)}
         onSave={onStrategySave}
         onResetZone={onResetZone}

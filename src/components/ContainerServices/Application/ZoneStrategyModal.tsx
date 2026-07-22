@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Modal, Form, Flex, Typography, Tag, Switch, Alert, Popconfirm, Button } from 'antd'
+import { Modal, Form, Flex, Typography, Tag, Alert, Popconfirm, Button } from 'antd'
 import { ArrowRightOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import { AutoLaunchStrategyForm, type StrategyFormValues } from './AutoLaunchStrategyForm'
 import { type ZoneLaunch, type ZoneId, type PartitionDimension, formatDimensionLabel } from './autoLaunchMock'
@@ -39,7 +39,7 @@ const strategySummary = (zone: ZoneLaunch, globalZone: ZoneLaunch): string => {
   return parts.length ? `${parts.join('，')} 任一` : '条件开服'
 }
 
-// 多分区策略弹窗：顶部 AI 开服 / 分区维度（锁定） + 左侧分区列表 + 右侧该分区策略表单
+// 多分区策略弹窗：顶部 AI 开服（纯提示）/ 分区维度（锁定） + 左侧分区列表 + 右侧该分区策略表单
 export default function ZoneStrategyModal({
   open,
   zones,
@@ -47,8 +47,6 @@ export default function ZoneStrategyModal({
   onClose,
   onSave,
   partitionDimension,
-  aiConfigured,
-  onAiConfiguredChange,
   onResetZone,
   onDeleteZone,
 }: {
@@ -59,9 +57,6 @@ export default function ZoneStrategyModal({
   onSave: (zoneId: ZoneId, values: StrategyFormValues) => void
   // 分区维度：启用后锁定，运行态不可改，仅展示
   partitionDimension: PartitionDimension
-  // AI 开服配置状态（已配置/未配置）：仅标记策略是否已配置，不影响导流服触发；实际启停由运营脚本
-  aiConfigured: boolean
-  onAiConfiguredChange: (configured: boolean) => void
   // 独立分区恢复继承全局默认策略
   onResetZone: (zoneId: ZoneId) => void
   // 删除某个分区（global 不可删除）
@@ -102,23 +97,15 @@ export default function ZoneStrategyModal({
       styles={{ body: { maxHeight: '72vh', overflow: 'auto' } }}
     >
       <Flex vertical gap={16}>
-        {/* AI 开服：展示配置状态（已配置/未配置），仅标记策略是否就绪；实际启停由运营脚本，不影响导流服触发 */}
+        {/* AI 开服：纯提示，策略由运营人员配置脚本维护；实际启停由运营脚本，不影响导流服触发，本页不提供开关 */}
         <Alert
           type="info"
           showIcon
-          message={
-            <Flex align="center" gap={12}>
-              <Text strong>AI 开服</Text>
-              <Switch
-                checked={aiConfigured}
-                onChange={onAiConfiguredChange}
-                checkedChildren="已配置"
-                unCheckedChildren="未配置"
-              />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                AI 开服策略由运营人员配置脚本维护；此处仅展示配置状态，实际启停由运营脚本控制。导流服始终按下方策略触发自动开服。
-              </Text>
-            </Flex>
+          message={<Text strong>AI 开服</Text>}
+          description={
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              AI 开服策略由运营人员配置脚本维护；实际启停由运营脚本控制，本页不提供开关。导流服始终按下方策略触发自动开服。
+            </Text>
           }
           style={{ padding: '10px 16px' }}
         />
