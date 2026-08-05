@@ -42,7 +42,7 @@ import { apps as demoApps } from '../ContainerServices/Application/apps'
 const { Title, Text } = Typography
 const { TextArea } = Input
 
-type TaskMode = 'function' | 'container'
+type TaskKind = 'function' | 'container'
 type JobType = 'manual' | 'scheduled'
 type CronJobStatus = 'failed' | 'complete' | 'suspend' | 'progressing'
 type ConcurrentPolicy = 'Allow' | 'Forbid' | 'Replace'
@@ -105,10 +105,11 @@ interface ContainerTaskFormValues {
   concurrencyPolicy: ConcurrentPolicy
 }
 
-type DetailState =
-  | { kind: 'function'; task: FunctionTask }
-  | { kind: 'container'; task: ContainerTask }
-  | null
+type FunctionTaskItem = FunctionTask & { kind: 'function' }
+type ContainerTaskItem = ContainerTask & { kind: 'container' }
+type TaskItem = FunctionTaskItem | ContainerTaskItem
+
+type DetailState = TaskItem | null
 
 type DeleteState =
   | { kind: 'function'; id: string }
@@ -326,14 +327,16 @@ const initialContainerTasks: ContainerTask[] = [
   }
 ]
 
+const initialTasks: TaskItem[] = [
+  ...initialFunctionTasks.map((task) => ({ ...task, kind: 'function' as const })),
+  ...initialContainerTasks.map((task) => ({ ...task, kind: 'container' as const }))
+]
+
 export default function Task(): React.ReactElement {
-  const [mode, setMode] = useState<TaskMode>('function')
-  const [functionTasks, setFunctionTasks] = useState<FunctionTask[]>(initialFunctionTasks)
-  const [containerTasks, setContainerTasks] = useState<ContainerTask[]>(initialContainerTasks)
-  const [functionDrawerOpen, setFunctionDrawerOpen] = useState(false)
-  const [containerDrawerOpen, setContainerDrawerOpen] = useState(false)
-  const [editingFunctionTask, setEditingFunctionTask] = useState<FunctionTask | null>(null)
-  const [editingContainerTask, setEditingContainerTask] = useState<ContainerTask | null>(null)
+  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks)
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false)
+  const [taskKind, setTaskKind] = useState<TaskKind>('function')
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null)
   const [detailState, setDetailState] = useState<DetailState>(null)
   const [deleteState, setDeleteState] = useState<DeleteState>(null)
   const [switchState, setSwitchState] = useState<SwitchState>(null)
@@ -346,14 +349,21 @@ export default function Task(): React.ReactElement {
   const functionExpression = Form.useWatch('expression', functionForm)
   const containerExpression = Form.useWatch('expression', containerForm)
   const imageRepoName = Form.useWatch('imageRepoName', containerForm)
+  const editingFunctionTask = editingTask?.kind === 'function' ? editingTask : null
+  const editingContainerTask = editingTask?.kind === 'container' ? editingTask : null
 
   const tagOptions = useMemo(() => {
     return (imageTags[imageRepoName || 'proxyman'] || []).map((tag) => ({ value: tag, label: tag }))
   }, [imageRepoName])
 
-  const openCreateFunctionTask = () => {
-    setEditingFunctionTask(null)
+  const clearTaskEditorResult = () => {
     setFunctionTestResult(null)
+    setContainerTestResult(null)
+    setFunctionTestRunning(false)
+    setContainerTestRunning(false)
+  }
+
+  const setDefaultFunctionTaskValues = () => {
     functionForm.setFieldsValue({
       name: 'clear-rank-cache',
       applicationName: 'xcron-cloud',
@@ -364,36 +374,76 @@ export default function Task(): React.ReactElement {
       timeoutSeconds: 60,
       notifyOnFailure: true
     })
-    setFunctionDrawerOpen(true)
   }
 
-  const openEditFunctionTask = (task: FunctionTask) => {
-    setEditingFunctionTask(task)
-    setFunctionTestResult(null)
-    functionForm.setFieldsValue({
-      name: task.name,
-      applicationName: task.applicationName,
-      runtime: task.runtime,
-      expression: task.expression,
-      code: task.code,
-      input: task.input,
-      timeoutSeconds: task.timeoutSeconds,
-      notifyOnFailure: task.notifyOnFailure
+  const setDefaultContainerTaskValues = () => {
+    containerForm.setFieldsValue({
+      name: 'demo',
+      imageRepoName: 'proxyman',
+      tag: 'v1.0.5',
+      expression: DEFAULT_EXPRESSION,
+      command: 'echo demo',
+      concurrencyPolicy: 'Forbid'
     })
-    setFunctionDrawerOpen(true)
   }
 
-  const closeFunctionDrawer = () => {
-    setFunctionDrawerOpen(false)
-    setEditingFunctionTask(null)
-    setFunctionTestResult(null)
-    setFunctionTestRunning(false)
+  const openCreateTask = () => {
+    setEditingTask(null)
+    setTaskKind('function')
+    clearTaskEditorResult()
+    functionForm.resetFields()
+    containerForm.resetFields()
+    setDefaultFunctionTaskValues()
+    setDefaultContainerTaskValues()
+    setTaskDrawerOpen(true)
+  }
+
+  const openEditTask = (task: TaskItem) => {
+    setEditingTask(task)
+    setTaskKind(task.kind)
+    clearTaskEditorResult()
+
+    if (task.kind === 'function') {
+      functionForm.setFieldsValue({
+        name: task.name,
+        applicationName: task.applicationName,
+        runtime: task.runtime,
+        expression: task.expression,
+        code: task.code,
+        input: task.input,
+        timeoutSeconds: task.timeoutSeconds,
+        notifyOnFailure: task.notifyOnFailure
+      })
+    } else {
+      containerForm.setFieldsValue({
+        name: task.name,
+        imageRepoName: task.imageRepoName,
+        tag: task.tag,
+        expression: task.expression,
+        command: task.command,
+        concurrencyPolicy: task.concurrencyPolicy
+      })
+    }
+
+    setTaskDrawerOpen(true)
+  }
+
+  const closeTaskDrawer = () => {
+    setTaskDrawerOpen(false)
+    setEditingTask(null)
+    clearTaskEditorResult()
+  }
+
+  const updateTaskKind = (nextKind: TaskKind) => {
+    setTaskKind(nextKind)
+    clearTaskEditorResult()
   }
 
   const submitFunctionTask = async () => {
     const values = await functionForm.validateFields()
-    const nextTask: FunctionTask = {
-      id: editingFunctionTask?.id ?? `${values.name}-${Date.now()}`,
+    const nextTask: FunctionTaskItem = {
+      kind: 'function',
+      id: editingFunctionTask?.id ?? `fn-${values.name}-${Date.now()}`,
       name: values.name,
       applicationName: values.applicationName,
       runtime: values.runtime,
@@ -407,11 +457,11 @@ export default function Task(): React.ReactElement {
       histories: editingFunctionTask?.histories ?? [createHistory('complete', '函数任务执行完成')]
     }
 
-    setFunctionTasks((prev) => {
+    setTasks((prev) => {
       if (!editingFunctionTask) return [nextTask, ...prev]
-      return prev.map((item) => (item.id === editingFunctionTask.id ? nextTask : item))
+      return prev.map((item) => (item.kind === 'function' && item.id === editingFunctionTask.id ? nextTask : item))
     })
-    closeFunctionDrawer()
+    closeTaskDrawer()
     functionForm.resetFields()
     message.success(editingFunctionTask ? '函数任务已更新' : '函数任务已创建')
   }
@@ -430,46 +480,12 @@ export default function Task(): React.ReactElement {
     message[status === 'complete' ? 'success' : 'error'](status === 'complete' ? '测试运行完成' : '测试运行失败')
   }
 
-  const openCreateContainerTask = () => {
-    setEditingContainerTask(null)
-    setContainerTestResult(null)
-    containerForm.setFieldsValue({
-      name: 'demo',
-      imageRepoName: 'proxyman',
-      tag: 'v1.0.5',
-      expression: DEFAULT_EXPRESSION,
-      command: 'echo demo',
-      concurrencyPolicy: 'Forbid'
-    })
-    setContainerDrawerOpen(true)
-  }
-
-  const openEditContainerTask = (task: ContainerTask) => {
-    setEditingContainerTask(task)
-    setContainerTestResult(null)
-    containerForm.setFieldsValue({
-      name: task.name,
-      imageRepoName: task.imageRepoName,
-      tag: task.tag,
-      expression: task.expression,
-      command: task.command,
-      concurrencyPolicy: task.concurrencyPolicy
-    })
-    setContainerDrawerOpen(true)
-  }
-
-  const closeContainerDrawer = () => {
-    setContainerDrawerOpen(false)
-    setEditingContainerTask(null)
-    setContainerTestResult(null)
-    setContainerTestRunning(false)
-  }
-
   const submitContainerTask = async () => {
     const values = await containerForm.validateFields()
     const image = { [values.imageRepoName]: values.tag }
-    const nextTask: ContainerTask = {
-      id: editingContainerTask?.id ?? `${values.name}-${Date.now()}`,
+    const nextTask: ContainerTaskItem = {
+      kind: 'container',
+      id: editingContainerTask?.id ?? `container-${values.name}-${Date.now()}`,
       name: values.name,
       imageRepoName: values.imageRepoName,
       tag: values.tag,
@@ -481,11 +497,11 @@ export default function Task(): React.ReactElement {
       histories: editingContainerTask?.histories ?? [createHistory('complete', '容器任务执行完成', image)]
     }
 
-    setContainerTasks((prev) => {
+    setTasks((prev) => {
       if (!editingContainerTask) return [nextTask, ...prev]
-      return prev.map((item) => (item.id === editingContainerTask.id ? nextTask : item))
+      return prev.map((item) => (item.kind === 'container' && item.id === editingContainerTask.id ? nextTask : item))
     })
-    closeContainerDrawer()
+    closeTaskDrawer()
     containerForm.resetFields()
     message.success(editingContainerTask ? '容器任务已更新' : '容器任务已创建')
   }
@@ -507,8 +523,8 @@ export default function Task(): React.ReactElement {
   const runFunctionTask = (task: FunctionTask) => {
     const status: CronJobStatus = Math.random() > 0.2 ? 'complete' : 'failed'
     const record = createHistory(status, status === 'failed' ? '应用函数任务执行失败' : '应用函数任务执行完成')
-    setFunctionTasks((prev) => prev.map((item) => {
-      if (item.id !== task.id) return item
+    setTasks((prev) => prev.map((item) => {
+      if (item.kind !== 'function' || item.id !== task.id) return item
       return { ...item, histories: [record, ...item.histories].slice(0, 10) }
     }))
     message.success('任务已触发执行')
@@ -518,8 +534,8 @@ export default function Task(): React.ReactElement {
     const status: CronJobStatus = Math.random() > 0.35 ? 'complete' : 'failed'
     const image = { [task.imageRepoName]: task.tag }
     const record = createHistory(status, status === 'failed' ? '容器任务执行失败' : '容器任务执行完成', image)
-    setContainerTasks((prev) => prev.map((item) => {
-      if (item.id !== task.id) return item
+    setTasks((prev) => prev.map((item) => {
+      if (item.kind !== 'container' || item.id !== task.id) return item
       return { ...item, histories: [record, ...item.histories].slice(0, 10) }
     }))
     message.success('任务已触发执行')
@@ -527,51 +543,58 @@ export default function Task(): React.ReactElement {
 
   const updateSwitch = (next: SwitchState) => {
     if (!next) return
-    if (next.kind === 'function') {
-      setFunctionTasks((prev) => prev.map((item) => item.id === next.id ? { ...item, switchOn: next.checked } : item))
-    } else {
-      setContainerTasks((prev) => prev.map((item) => item.id === next.id ? { ...item, switchOn: next.checked } : item))
-    }
+    setTasks((prev) => prev.map((item) => {
+      if (item.kind !== next.kind || item.id !== next.id) return item
+      return { ...item, switchOn: next.checked }
+    }))
   }
 
   const confirmDelete = () => {
     if (!deleteState) return
-    if (deleteState.kind === 'function') {
-      setFunctionTasks((prev) => prev.filter((item) => item.id !== deleteState.id))
-    } else {
-      setContainerTasks((prev) => prev.filter((item) => item.id !== deleteState.id))
-    }
+    setTasks((prev) => prev.filter((item) => item.kind !== deleteState.kind || item.id !== deleteState.id))
     setDeleteState(null)
     message.success('该任务已删除')
   }
 
-  const functionColumns: ColumnsType<FunctionTask> = useMemo(() => [
+  const taskColumns: ColumnsType<TaskItem> = [
+    {
+      dataIndex: 'kind',
+      title: '类型',
+      width: 120,
+      render: (_: TaskKind, record: TaskItem) => <TaskKindTag kind={record.kind} />
+    },
     {
       dataIndex: 'name',
       title: '名称',
-      width: 100
+      width: 150
     },
     {
-      dataIndex: 'applicationName',
-      title: '目标应用',
-      width: 180,
-      render: (value: string) => (
-        <Space size={6}>
-          <CloudServerOutlined style={{ color: '#1677ff' }} />
-          <Text>{value}</Text>
-        </Space>
-      )
+      key: 'target',
+      title: '目标资源',
+      width: 220,
+      render: (_: unknown, record: TaskItem) => {
+        if (record.kind === 'function') {
+          return (
+            <Space size={6}>
+              <CloudServerOutlined style={{ color: '#1677ff' }} />
+              <Text>{record.applicationName}</Text>
+            </Space>
+          )
+        }
+        return <Text>{`${record.imageRepoName}:${record.tag}`}</Text>
+      }
     },
     {
-      dataIndex: 'runtime',
-      title: '运行时',
-      width: 120
+      key: 'runtime',
+      title: '运行配置',
+      width: 220,
+      render: (_: unknown, record: TaskItem) => record.kind === 'function' ? record.runtime : (record.command || '-')
     },
     {
       dataIndex: 'expression',
       title: '执行计划（北京时间）',
       width: 180,
-      render: (value: string, record: FunctionTask) => record.jobType === 'manual' ? '手动执行' : formatExpression(value)
+      render: (value: string, record: TaskItem) => record.jobType === 'manual' ? '手动执行' : formatExpression(value)
     },
     {
       dataIndex: 'histories',
@@ -583,10 +606,18 @@ export default function Task(): React.ReactElement {
       key: 'action',
       title: '操作',
       width: 100,
-      render: (_: unknown, record: FunctionTask) => (
+      render: (_: unknown, record: TaskItem) => (
         <Flex gap={16}>
           {record.expression === '' ? (
-            <Button type="link" size="small" onClick={() => runFunctionTask(record)} style={{ paddingInline: 0 }}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                if (record.kind === 'function') runFunctionTask(record)
+                else runContainerTask(record)
+              }}
+              style={{ paddingInline: 0 }}
+            >
               执行任务
             </Button>
           ) : (
@@ -595,7 +626,9 @@ export default function Task(): React.ReactElement {
               unCheckedChildren="OFF"
               checked={record.switchOn}
               onChange={(checked) => {
-                const next = { kind: 'function' as const, id: record.id, checked }
+                const next = record.kind === 'function'
+                  ? { kind: 'function' as const, id: record.id, checked }
+                  : { kind: 'container' as const, id: record.id, checked }
                 if (!checked) {
                   setSwitchState(next)
                   return
@@ -605,342 +638,272 @@ export default function Task(): React.ReactElement {
             />
           )}
           <TaskActionDropdown
-            onEdit={() => openEditFunctionTask(record)}
-            onView={() => setDetailState({ kind: 'function', task: record })}
-            onDelete={() => setDeleteState({ kind: 'function', id: record.id })}
+            onEdit={() => openEditTask(record)}
+            onView={() => setDetailState(record)}
+            onDelete={() => setDeleteState(record.kind === 'function'
+              ? { kind: 'function', id: record.id }
+              : { kind: 'container', id: record.id })}
           />
         </Flex>
       )
     }
-  ], [])
-
-  const containerColumns: ColumnsType<ContainerTask> = useMemo(() => [
-    {
-      dataIndex: 'name',
-      title: '名称',
-      width: 100
-    },
-    {
-      dataIndex: 'command',
-      title: <QuestionLabel title="该命令会覆盖Dockerfile内定义的ENTRYPOINT。若Dockfile内已定义ENTRYPOINT，此处可为空">启动命令ENTRYPOINT</QuestionLabel>,
-      width: 220
-    },
-    {
-      dataIndex: 'tag',
-      title: '镜像版本',
-      width: 200,
-      render: (tag: string, { imageRepoName }: ContainerTask) => `${imageRepoName}:${tag}`
-    },
-    {
-      dataIndex: 'expression',
-      title: '执行计划（北京时间）',
-      width: 180,
-      render: (value: string, record: ContainerTask) => record.jobType === 'manual' ? '手动执行' : formatExpression(value)
-    },
-    {
-      dataIndex: 'histories',
-      width: 180,
-      title: <StatusTitle />,
-      render: (histories: CronJobHistory[]) => <StatusHistory histories={histories} />
-    },
-    {
-      key: 'action',
-      title: '操作',
-      width: 100,
-      render: (_: unknown, record: ContainerTask) => (
-        <Flex gap={16}>
-          {record.expression === '' ? (
-            <Button type="link" size="small" onClick={() => runContainerTask(record)} style={{ paddingInline: 0 }}>
-              执行任务
-            </Button>
-          ) : (
-            <Switch
-              checkedChildren="ON"
-              unCheckedChildren="OFF"
-              checked={record.switchOn}
-              onChange={(checked) => {
-                const next = { kind: 'container' as const, id: record.id, checked }
-                if (!checked) {
-                  setSwitchState(next)
-                  return
-                }
-                updateSwitch(next)
-              }}
-            />
-          )}
-          <TaskActionDropdown
-            onEdit={() => openEditContainerTask(record)}
-            onView={() => setDetailState({ kind: 'container', task: record })}
-            onDelete={() => setDeleteState({ kind: 'container', id: record.id })}
-          />
-        </Flex>
-      )
-    }
-  ], [])
+  ]
 
   return (
     <div style={{ padding: 24 }}>
       <Flex vertical gap={16}>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '16px 24px' }}>
-          <Flex align="flex-start" justify="space-between" gap={16}>
-            <div>
-              <Title level={3} style={{ marginBottom: 4 }}>任务</Title>
-              <Text type="secondary">
-                可按设定周期或手动触发执行任务（如重启服务、备份数据、清理缓存、更新配置），支持并发控制与失败重试，保障服务稳定性并提升运维效率。
-              </Text>
-            </div>
+          <Title level={3} style={{ marginBottom: 4 }}>任务</Title>
+          <Text type="secondary">
+            可按设定周期或手动触发执行任务（如重启服务、备份数据、清理缓存、更新配置），支持并发控制与失败重试，保障服务稳定性并提升运维效率。
+          </Text>
+        </div>
+
+        <Alert
+          showIcon
+          type="info"
+          message="任务类型"
+          description="列表统一展示函数任务和容器任务。新增任务时选择类型后，编辑页会展示对应配置项：函数任务运行平台 Runner 代码，容器任务使用镜像版本、ENTRYPOINT 和执行计划。"
+        />
+
+        <Card
+          title="列表"
+          extra={
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateTask}>
+              添加
+            </Button>
+          }
+        >
+          <Table<TaskItem>
+            rowKey={(record) => `${record.kind}-${record.id}`}
+            columns={taskColumns}
+            dataSource={tasks}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
+        </Card>
+      </Flex>
+
+      <Drawer
+        title={editingTask ? '编辑任务' : '新增任务'}
+        width={taskKind === 'function' ? 720 : 560}
+        open={taskDrawerOpen}
+        onClose={closeTaskDrawer}
+        destroyOnClose
+        footer={
+          <Space>
+            <Button
+              onClick={taskKind === 'function' ? testRunFunctionTask : testRunContainerTask}
+              loading={taskKind === 'function' ? functionTestRunning : containerTestRunning}
+            >
+              测试运行
+            </Button>
+            <Button type="primary" onClick={taskKind === 'function' ? submitFunctionTask : submitContainerTask}>确 定</Button>
+            <Button onClick={closeTaskDrawer}>关 闭</Button>
+          </Space>
+        }
+      >
+        <Form layout="vertical" requiredMark>
+          <Form.Item label="任务类型" required>
             <Segmented
-              value={mode}
-              onChange={(value) => setMode(value as TaskMode)}
+              value={taskKind}
+              disabled={!!editingTask}
+              onChange={(value) => updateTaskKind(value as TaskKind)}
               options={[
                 { label: '函数任务', value: 'function', icon: <CodeOutlined /> },
                 { label: '容器任务', value: 'container', icon: <ApiOutlined /> }
               ]}
             />
-          </Flex>
-        </div>
-
-        {mode === 'function' ? (
-          <Alert
-            showIcon
-            type="info"
-            message="应用函数任务"
-            description="用户不需要上传镜像。平台使用统一 Runner 运行代码，并把所选应用的访问能力放进 ctx.app。若要清应用进程内缓存，需要应用本身提供管理接口，函数任务负责安全调用。"
-          />
-        ) : (
-          <Alert
-            showIcon
-            type="warning"
-            message="容器任务"
-            description="这是当前生产控制台的任务形态：先上传镜像，再配置镜像版本、ENTRYPOINT 和执行计划。"
-          />
-        )}
-
-        <Card
-          title="列表"
-          extra={
-            <Button type="primary" icon={<PlusOutlined />} onClick={mode === 'function' ? openCreateFunctionTask : openCreateContainerTask}>
-              添加
-            </Button>
-          }
-        >
-          {mode === 'function' ? (
-            <Table<FunctionTask> rowKey="name" columns={functionColumns} dataSource={functionTasks} pagination={false} />
-          ) : (
-            <Table<ContainerTask> rowKey="name" columns={containerColumns} dataSource={containerTasks} pagination={false} />
-          )}
-        </Card>
-      </Flex>
-
-      <Drawer
-        title={editingFunctionTask ? '编辑任务' : '新增任务'}
-        width={720}
-        open={functionDrawerOpen}
-        onClose={closeFunctionDrawer}
-        destroyOnClose
-        footer={
-          <Space>
-            <Button onClick={testRunFunctionTask} loading={functionTestRunning}>测试运行</Button>
-            <Button type="primary" onClick={submitFunctionTask}>确 定</Button>
-            <Button onClick={closeFunctionDrawer}>关 闭</Button>
-          </Space>
-        }
-      >
-        <Form
-          form={functionForm}
-          layout="vertical"
-          requiredMark
-          initialValues={{
-            name: 'clear-rank-cache',
-            applicationName: 'xcron-cloud',
-            runtime: 'Node.js 20',
-            expression: DEFAULT_EXPRESSION,
-            code: functionTemplate,
-            input: JSON.stringify({ key: 'rank_cache' }, null, 2),
-            timeoutSeconds: 60,
-            notifyOnFailure: true
-          }}
-        >
-          <Form.Item
-            name="name"
-            label="名称"
-            required
-            rules={[
-              { required: true, message: '请输入名称' },
-              { pattern: /^[a-z0-9-]+$/, message: '只能输入小写英文或数字或-' }
-            ]}
-          >
-            <Input placeholder="请输入小写英文或数字或-" disabled={!!editingFunctionTask} />
           </Form.Item>
-
-          <Form.Item label="目标资源" required>
-            <Space.Compact style={{ width: '100%' }}>
-              <Input disabled value="应用" style={{ width: 120 }} />
-              <Form.Item name="applicationName" noStyle rules={[{ required: true, message: '请选择应用' }]}>
-                <Select options={appOptions} showSearch placeholder="请选择应用" />
-              </Form.Item>
-            </Space.Compact>
-          </Form.Item>
-
-          <Form.Item label="运行时" name="runtime" rules={[{ required: true }]}>
-            <Select options={runtimeOptions} />
-          </Form.Item>
-
-          <Form.Item
-            label="执行计划"
-            name="expression"
-            required
-            extra={functionExpression ? <ExpressionPreview value={functionExpression} /> : null}
-            rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
-          >
-            <CronExpressionSelect
-              disabled={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
-              restrictToManualMode={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
-              restrictToScheduledMode={!!editingFunctionTask && editingFunctionTask.jobType === 'scheduled'}
-            />
-          </Form.Item>
-
-          <Form.Item
-            label="函数代码"
-            name="code"
-            rules={[
-              { required: true, message: '请输入函数代码' },
-              {
-                validator: (_, value: string) => {
-                  if (!value || value.includes('handler')) return Promise.resolve()
-                  return Promise.reject(new Error('代码中需要包含 handler 函数'))
-                }
-              }
-            ]}
-            extra="函数任务不会暴露接口；它在平台 Runner 中执行，并通过 ctx.app 调用所选应用。"
-          >
-            <TextArea rows={12} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
-          </Form.Item>
-
-          <Form.Item label="测试入参 JSON" name="input" rules={[{ validator: (_, value) => validateJson(value) }]}>
-            <TextArea rows={5} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
-          </Form.Item>
-
-          <Space size={16} style={{ width: '100%' }} align="start">
-            <Form.Item label="超时时间" required>
-              <Space.Compact>
-                <Form.Item name="timeoutSeconds" noStyle rules={[{ required: true, message: '请输入超时时间' }]}>
-                  <InputNumber min={10} max={600} />
-                </Form.Item>
-                <DisabledLabel>秒</DisabledLabel>
-              </Space.Compact>
-            </Form.Item>
-            <Form.Item label="失败通知" name="notifyOnFailure" valuePropName="checked">
-              <Switch checkedChildren="ON" unCheckedChildren="OFF" />
-            </Form.Item>
-          </Space>
         </Form>
 
-        {functionTestResult && (
-          <FunctionTestResultPanel result={functionTestResult} />
-        )}
-      </Drawer>
-
-      <Drawer
-        title={editingContainerTask ? '编辑任务' : '新增任务'}
-        width={520}
-        open={containerDrawerOpen}
-        onClose={closeContainerDrawer}
-        destroyOnClose
-        footer={
-          <Space>
-            <Button onClick={testRunContainerTask} loading={containerTestRunning}>测试运行</Button>
-            <Button type="primary" onClick={submitContainerTask}>确 定</Button>
-            <Button onClick={closeContainerDrawer}>关 闭</Button>
-          </Space>
-        }
-      >
-        <Form
-          form={containerForm}
-          layout="vertical"
-          requiredMark
-          initialValues={{
-            imageRepoName: 'proxyman',
-            tag: 'v1.0.5',
-            expression: DEFAULT_EXPRESSION,
-            command: 'echo demo',
-            concurrencyPolicy: 'Forbid'
-          }}
-        >
-          <Form.Item
-            name="name"
-            label="名称"
-            required
-            rules={[
-              { required: true, message: '请输入名称' },
-              { pattern: /^[a-z0-9-]+$/, message: '只能输入小写英文或数字或-' }
-            ]}
-          >
-            <Input placeholder="请输入小写英文或数字或-" disabled={!!editingContainerTask} />
-          </Form.Item>
-
-          <Form.Item label="镜像" required>
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item noStyle name="imageRepoName" rules={[{ required: true, message: '请选择镜像仓库' }]}>
-                <Select
-                  disabled={!!editingContainerTask}
-                  allowClear={false}
-                  options={imageRepoOptions}
-                  placeholder="请选择镜像仓库"
-                  onChange={() => {
-                    containerForm.setFieldsValue({ tag: undefined })
-                  }}
-                />
-              </Form.Item>
+        {taskKind === 'function' ? (
+          <>
+            <Form
+              form={functionForm}
+              layout="vertical"
+              requiredMark
+              initialValues={{
+                name: 'clear-rank-cache',
+                applicationName: 'xcron-cloud',
+                runtime: 'Node.js 20',
+                expression: DEFAULT_EXPRESSION,
+                code: functionTemplate,
+                input: JSON.stringify({ key: 'rank_cache' }, null, 2),
+                timeoutSeconds: 60,
+                notifyOnFailure: true
+              }}
+            >
               <Form.Item
-                noStyle
-                name="tag"
+                name="name"
+                label="名称"
+                required
                 rules={[
-                  ({ getFieldValue }) => ({
-                    async validator(_, value) {
-                      const repo = getFieldValue('imageRepoName')
-                      if (!repo) return
-                      if (!value) throw new Error('请选择镜像版本')
-                    }
-                  })
+                  { required: true, message: '请输入名称' },
+                  { pattern: /^[a-z0-9-]+$/, message: '只能输入小写英文或数字或-' }
                 ]}
               >
-                <Select options={tagOptions} placeholder="请选择镜像版本" />
+                <Input placeholder="请输入小写英文或数字或-" disabled={!!editingFunctionTask} />
               </Form.Item>
-            </Space.Compact>
-          </Form.Item>
 
-          <Form.Item
-            label="执行计划"
-            name="expression"
-            required
-            extra={containerExpression ? <ExpressionPreview value={containerExpression} /> : null}
-            rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
-          >
-            <CronExpressionSelect
-              disabled={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
-              restrictToManualMode={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
-              restrictToScheduledMode={!!editingContainerTask && editingContainerTask.jobType === 'scheduled'}
-            />
-          </Form.Item>
+              <Form.Item label="目标资源" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input disabled value="应用" style={{ width: 120 }} />
+                  <Form.Item name="applicationName" noStyle rules={[{ required: true, message: '请选择应用' }]}>
+                    <Select options={appOptions} showSearch placeholder="请选择应用" />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
 
-          <Form.Item
-            name="command"
-            label={<QuestionLabel title="该命令会覆盖Dockerfile内定义的ENTRYPOINT。若Dockfile内已定义ENTRYPOINT，此处可为空">启动命令ENTRYPOINT</QuestionLabel>}
-            rules={[{ pattern: entrypointReg, message: '启动命令不能包含中文字符及[]、"等特殊字符' }]}
-          >
-            <Input placeholder="使用空格分隔，例：executable param1 param2" />
-          </Form.Item>
+              <Form.Item label="运行时" name="runtime" rules={[{ required: true }]}>
+                <Select options={runtimeOptions} />
+              </Form.Item>
 
-          {containerExpression !== '' && (
-            <Form.Item name="concurrencyPolicy" label="并发逻辑">
-              <Select options={concurrentPolicyOptions} />
-            </Form.Item>
-          )}
-        </Form>
+              <Form.Item
+                label="执行计划"
+                name="expression"
+                required
+                extra={functionExpression ? <ExpressionPreview value={functionExpression} /> : null}
+                rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
+              >
+                <CronExpressionSelect
+                  disabled={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
+                  restrictToManualMode={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
+                  restrictToScheduledMode={!!editingFunctionTask && editingFunctionTask.jobType === 'scheduled'}
+                />
+              </Form.Item>
 
-        {containerTestResult && (
-          <ContainerTestResultPanel result={containerTestResult} />
+              <Form.Item
+                label="函数代码"
+                name="code"
+                rules={[
+                  { required: true, message: '请输入函数代码' },
+                  {
+                    validator: (_, value: string) => {
+                      if (!value || value.includes('handler')) return Promise.resolve()
+                      return Promise.reject(new Error('代码中需要包含 handler 函数'))
+                    }
+                  }
+                ]}
+                extra="函数任务不会暴露接口；它在平台 Runner 中执行，并通过 ctx.app 调用所选应用。"
+              >
+                <TextArea rows={12} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
+              </Form.Item>
+
+              <Form.Item label="测试入参 JSON" name="input" rules={[{ validator: (_, value) => validateJson(value) }]}>
+                <TextArea rows={5} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
+              </Form.Item>
+
+              <Space size={16} style={{ width: '100%' }} align="start">
+                <Form.Item label="超时时间" required>
+                  <Space.Compact>
+                    <Form.Item name="timeoutSeconds" noStyle rules={[{ required: true, message: '请输入超时时间' }]}>
+                      <InputNumber min={10} max={600} />
+                    </Form.Item>
+                    <DisabledLabel>秒</DisabledLabel>
+                  </Space.Compact>
+                </Form.Item>
+                <Form.Item label="失败通知" name="notifyOnFailure" valuePropName="checked">
+                  <Switch checkedChildren="ON" unCheckedChildren="OFF" />
+                </Form.Item>
+              </Space>
+            </Form>
+
+            {functionTestResult && (
+              <FunctionTestResultPanel result={functionTestResult} />
+            )}
+          </>
+        ) : (
+          <>
+            <Form
+              form={containerForm}
+              layout="vertical"
+              requiredMark
+              initialValues={{
+                name: 'demo',
+                imageRepoName: 'proxyman',
+                tag: 'v1.0.5',
+                expression: DEFAULT_EXPRESSION,
+                command: 'echo demo',
+                concurrencyPolicy: 'Forbid'
+              }}
+            >
+              <Form.Item
+                name="name"
+                label="名称"
+                required
+                rules={[
+                  { required: true, message: '请输入名称' },
+                  { pattern: /^[a-z0-9-]+$/, message: '只能输入小写英文或数字或-' }
+                ]}
+              >
+                <Input placeholder="请输入小写英文或数字或-" disabled={!!editingContainerTask} />
+              </Form.Item>
+
+              <Form.Item label="镜像" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Form.Item noStyle name="imageRepoName" rules={[{ required: true, message: '请选择镜像仓库' }]}>
+                    <Select
+                      disabled={!!editingContainerTask}
+                      allowClear={false}
+                      options={imageRepoOptions}
+                      placeholder="请选择镜像仓库"
+                      onChange={() => {
+                        containerForm.setFieldsValue({ tag: undefined })
+                      }}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    name="tag"
+                    rules={[
+                      ({ getFieldValue }) => ({
+                        async validator(_, value) {
+                          const repo = getFieldValue('imageRepoName')
+                          if (!repo) return
+                          if (!value) throw new Error('请选择镜像版本')
+                        }
+                      })
+                    ]}
+                  >
+                    <Select options={tagOptions} placeholder="请选择镜像版本" />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
+
+              <Form.Item
+                label="执行计划"
+                name="expression"
+                required
+                extra={containerExpression ? <ExpressionPreview value={containerExpression} /> : null}
+                rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
+              >
+                <CronExpressionSelect
+                  disabled={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
+                  restrictToManualMode={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
+                  restrictToScheduledMode={!!editingContainerTask && editingContainerTask.jobType === 'scheduled'}
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="command"
+                label={<QuestionLabel title="该命令会覆盖Dockerfile内定义的ENTRYPOINT。若Dockfile内已定义ENTRYPOINT，此处可为空">启动命令ENTRYPOINT</QuestionLabel>}
+                rules={[{ pattern: entrypointReg, message: '启动命令不能包含中文字符及[]、"等特殊字符' }]}
+              >
+                <Input placeholder="使用空格分隔，例：executable param1 param2" />
+              </Form.Item>
+
+              {containerExpression !== '' && (
+                <Form.Item name="concurrencyPolicy" label="并发逻辑">
+                  <Select options={concurrentPolicyOptions} />
+                </Form.Item>
+              )}
+            </Form>
+
+            {containerTestResult && (
+              <ContainerTestResultPanel result={containerTestResult} />
+            )}
+          </>
         )}
       </Drawer>
 
@@ -982,6 +945,13 @@ export default function Task(): React.ReactElement {
       </Modal>
     </div>
   )
+}
+
+function TaskKindTag({ kind }: { kind: TaskKind }) {
+  if (kind === 'function') {
+    return <Tag color="blue" icon={<CodeOutlined />}>函数任务</Tag>
+  }
+  return <Tag color="cyan" icon={<ApiOutlined />}>容器任务</Tag>
 }
 
 function TaskActionDropdown({ onEdit, onView, onDelete }: { onEdit: () => void; onView: () => void; onDelete: () => void }) {
@@ -1277,22 +1247,23 @@ function ExpressionPreview({ value }: { value?: string }) {
 }
 
 function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
-  const task = detail.task
   const isFunction = detail.kind === 'function'
 
   const descriptionItems = isFunction
     ? [
-        { key: 'name', label: '名称', children: (task as FunctionTask).name },
-        { key: 'applicationName', label: '目标应用', children: (task as FunctionTask).applicationName },
-        { key: 'runtime', label: '运行时', children: (task as FunctionTask).runtime },
-        { key: 'expression', label: '执行计划', children: task.jobType === 'manual' ? '手动执行' : formatExpression(task.expression) }
+        { key: 'kind', label: '类型', children: <TaskKindTag kind={detail.kind} /> },
+        { key: 'name', label: '名称', children: detail.name },
+        { key: 'applicationName', label: '目标应用', children: detail.applicationName },
+        { key: 'runtime', label: '运行时', children: detail.runtime },
+        { key: 'expression', label: '执行计划', children: detail.jobType === 'manual' ? '手动执行' : formatExpression(detail.expression) }
       ]
     : [
-        { key: 'name', label: '名称', children: (task as ContainerTask).name },
-        { key: 'tag', label: '镜像版本', children: `${(task as ContainerTask).imageRepoName}:${(task as ContainerTask).tag}` },
-        { key: 'expression', label: '执行计划', children: task.jobType === 'manual' ? '手动执行' : formatExpression(task.expression) },
-        ...((task as ContainerTask).jobType !== 'manual'
-          ? [{ key: 'concurrencyPolicy', label: '并发逻辑', children: viewConcurrentPolicy((task as ContainerTask).concurrencyPolicy) }]
+        { key: 'kind', label: '类型', children: <TaskKindTag kind={detail.kind} /> },
+        { key: 'name', label: '名称', children: detail.name },
+        { key: 'tag', label: '镜像版本', children: `${detail.imageRepoName}:${detail.tag}` },
+        { key: 'expression', label: '执行计划', children: detail.jobType === 'manual' ? '手动执行' : formatExpression(detail.expression) },
+        ...(detail.jobType !== 'manual'
+          ? [{ key: 'concurrencyPolicy', label: '并发逻辑', children: viewConcurrentPolicy(detail.concurrencyPolicy) }]
           : [])
       ]
 
@@ -1304,11 +1275,11 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
         <>
           <Flex vertical gap={12}>
             <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>函数代码</Typography.Title>
-            <CodeBlock>{(task as FunctionTask).code}</CodeBlock>
+            <CodeBlock>{detail.code}</CodeBlock>
           </Flex>
           <Flex vertical gap={12}>
             <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>测试入参</Typography.Title>
-            <CodeBlock>{(task as FunctionTask).input}</CodeBlock>
+            <CodeBlock>{detail.input}</CodeBlock>
           </Flex>
         </>
       ) : (
@@ -1316,7 +1287,7 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
           <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>
             <QuestionLabel title="该命令会覆盖Dockerfile内定义的ENTRYPOINT。若Dockfile内已定义ENTRYPOINT，此处可为空">启动命令ENTRYPOINT</QuestionLabel>
           </Typography.Title>
-          <CommandLineViewer>{(task as ContainerTask).command}</CommandLineViewer>
+          <CommandLineViewer>{detail.command}</CommandLineViewer>
         </Flex>
       )}
 
@@ -1345,7 +1316,7 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
               )
             }
           ]}
-          dataSource={task.histories}
+          dataSource={detail.histories}
           pagination={false}
           scroll={{ x: 'max-content' }}
         />

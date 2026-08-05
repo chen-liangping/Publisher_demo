@@ -26,7 +26,7 @@ import {
   Alert
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { MinusCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { MinusCircleOutlined, PlusOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons'
 import { useRouter } from 'next/navigation'
 
 const { Title, Paragraph, Text } = Typography
@@ -135,6 +135,7 @@ const originData: OriginRow[] = [
 
 const cacheData: CacheRule[] = [
   { pattern: '/errors/*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' },
+  { pattern: '/errors/images/*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 2592000, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' },
   { pattern: '*.html', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' },
   { pattern: '/*/g123/i18n/*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 2592000, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' },
   { pattern: '*', sourceId: 'Default', accessProto: '仅限HTTPS', httpMethods: 'GET, HEAD, OPTIONS', smartCompress: 'ON', ttlSeconds: 600, passHeadersMode: 'whitelist', passHeadersWhitelist: ['Origin'], passQueryStringsMode: 'none', passCookiesMode: 'none' }
@@ -212,6 +213,18 @@ const formatDateTime = (date: Date): string => {
   return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
 }
 
+const isPathCachePattern = (pattern: string): boolean => pattern.startsWith('/')
+
+const isCoveredByHigherPriorityPattern = (higherPriorityPattern: string, currentPattern: string): boolean => {
+  if (!isPathCachePattern(currentPattern)) return false
+  if (higherPriorityPattern === '*' || higherPriorityPattern === '/*') return true
+  if (higherPriorityPattern === currentPattern) return true
+  if (!higherPriorityPattern.endsWith('/*')) return false
+
+  const coveredPathPrefix = higherPriorityPattern.slice(0, -1)
+  return currentPattern.startsWith(coveredPathPrefix)
+}
+
 export default function ClientPage({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
   // S3 加速状态：控制是否为客户端静态资源开启 S3 上传与回源加速
@@ -250,7 +263,6 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     () => normalizeInvalidationPaths(cacheRefreshPathsText),
     [cacheRefreshPathsText]
   )
-  const selectedEstimatedFiles = manualInvalidationPaths.length
   // 表格列定义：只显示缓存类型，无操作列
   const detectedColumns: TableColumnsType<DetectedFileTypeRow> = [
     { title: '缓存类型', dataIndex: 'ext', key: 'ext' }
@@ -605,9 +617,35 @@ export default function ClientPage({ embedded = false }: { embedded?: boolean })
     }
   ]
 
+  const getHigherPriorityCoveringRule = (record: CacheRule): CacheRule | undefined => {
+    const currentIndex = cacheList.findIndex((item) => item.pattern === record.pattern)
+    if (currentIndex <= 0) return undefined
+
+    return cacheList
+      .slice(0, currentIndex)
+      .find((item) => isCoveredByHigherPriorityPattern(item.pattern, record.pattern))
+  }
+
   // 缓存表头
   const cacheColumns: TableColumnsType<CacheRule> = [
-    { title: '访问路径', dataIndex: 'pattern', key: 'pattern' },
+    {
+      title: '访问路径',
+      dataIndex: 'pattern',
+      key: 'pattern',
+      render: (pattern: string, record: CacheRule) => {
+        const coveringRule = getHigherPriorityCoveringRule(record)
+        return (
+          <Space size={6}>
+            <span>{pattern}</span>
+            {coveringRule && (
+              <Tooltip title={`该规则可能被更高优先级规则 ${coveringRule.pattern} 覆盖，实际请求会优先命中前面的规则。`}>
+                <WarningOutlined style={{ color: '#faad14' }} />
+              </Tooltip>
+            )}
+          </Space>
+        )
+      }
+    },
     { title: '源站ID', dataIndex: 'sourceId', key: 'sourceId', width: 120 },
     { title: '访问协议', dataIndex: 'accessProto', key: 'accessProto', width: 140 },
     { title: 'HTTP方法', dataIndex: 'httpMethods', key: 'httpMethods', width: 180 },

@@ -26,7 +26,7 @@ import {
 import type { TableColumnsType } from 'antd'
 import CreateVirtualMachine from './CreateVirtualMachine'
 import VirtualMachineDetails from './VirtualMachineDetails'
-import AutoServerModule from '../../Common/AutoServerModule'
+import AutoLaunchCard from '../../ContainerServices/Application/AutoLaunchCard'
 
 const { Title, Link } = Typography
 
@@ -501,8 +501,8 @@ export default function VirtualMachineList({ onViewDetails, vmList: propVmList, 
         </div>
       </Card>
 
-      {/* 自动开服模块 */}
-      <AutoServerModule />
+      {/* 自动开服模块：对照真实控制台 DisplayInfoCard 实现，支持普通/AI 两种形态 */}
+      <AutoLaunchCard />
 
       <Card>
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
