@@ -10,7 +10,8 @@ import {
   BellOutlined,
   KeyOutlined,
   HistoryOutlined,
-  SettingOutlined
+  SettingOutlined,
+  SafetyOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
@@ -23,6 +24,7 @@ import GlobalNoticeConfig from '../../components/Admin/GlobalNoticeConfig'
 import { SAPermissions } from '../../components/Admin/sa-permissions'
 import OperationLog from '../../components/Admin/OperationLog'
 import GameFaroConfig from '../../components/Admin/GameFaroConfig'
+import SSLManagement from '../../components/Admin/SSLManagement'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -38,6 +40,7 @@ type AdminMenuKey =
   | 'sa-permissions'
   | 'operation-log'
   | 'game-faro-config'
+  | 'ssl-management'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -80,6 +83,8 @@ export default function AdminPage() {
         return <OperationLog />
       case 'game-faro-config':
         return <GameFaroConfig />
+      case 'ssl-management':
+        return <SSLManagement />
       default:
         return <GameManagement />
     }
@@ -144,6 +149,12 @@ export default function AdminPage() {
                     onClick: () => handleMenuClick('test-initialization')
                   },*/
                 ]
+              },
+              {
+                key: 'ssl-management',
+                icon: <SafetyOutlined />,
+                label: 'SSL证书管理',
+                onClick: () => handleMenuClick('ssl-management')
               },
               {
                 key: 'permission-config',
