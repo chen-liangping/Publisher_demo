@@ -126,7 +126,10 @@ const installStatusConfig: Record<
 }
 
 // 在线状态映射
-const onlineStatusThemeMap: { [key: boolean]: StatusTheme } = {
+const onlineStatusThemeMap: {
+  true: StatusTheme
+  false: StatusTheme
+} = {
   true: STATUS_PALETTE.success,
   false: STATUS_PALETTE.neutral,
 }
