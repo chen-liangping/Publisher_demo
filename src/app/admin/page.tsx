@@ -11,7 +11,8 @@ import {
   KeyOutlined,
   HistoryOutlined,
   SettingOutlined,
-  SafetyOutlined
+  SafetyOutlined,
+  MonitorOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
 import GameManagement from '../../components/Admin/GameManagement'
@@ -25,6 +26,7 @@ import { SAPermissions } from '../../components/Admin/sa-permissions'
 import OperationLog from '../../components/Admin/OperationLog'
 import GameFaroConfig from '../../components/Admin/GameFaroConfig'
 import SSLManagement from '../../components/Admin/SSLManagement'
+import ProcessManagerMonitor from '../../components/Admin/ProcessManagerMonitor'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -41,6 +43,7 @@ type AdminMenuKey =
   | 'operation-log'
   | 'game-faro-config'
   | 'ssl-management'
+  | 'process-manager-monitor'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -85,6 +88,8 @@ export default function AdminPage() {
         return <GameFaroConfig />
       case 'ssl-management':
         return <SSLManagement />
+      case 'process-manager-monitor':
+        return <ProcessManagerMonitor />
       default:
         return <GameManagement />
     }
@@ -198,6 +203,19 @@ export default function AdminPage() {
                     label: '通知总开关',
                     onClick: () => handleMenuClick('notification-control')
                   },*/
+                ]
+              },
+              {
+                key: 'monitor',
+                icon: <MonitorOutlined />,
+                label: '监控',
+                children: [
+                  {
+                    key: 'process-manager-monitor',
+                    icon: <MonitorOutlined />,
+                    label: '进程管理器监控',
+                    onClick: () => handleMenuClick('process-manager-monitor')
+                  }
                 ]
               },
               {
