@@ -631,8 +631,7 @@ export default function ProcessManagerMonitor() {
         if (record.installStatus === 'uninstalled') {
           return (
             <Button
-              size="small"
-              type="primary"
+              type="link"
               onClick={() => handleInstall(record)}
               loading={isOperating}
             >
@@ -648,20 +647,20 @@ export default function ProcessManagerMonitor() {
             // 版本不一致，显示"升级"和"卸载"
             return (
               <Space size={8}>
-                <Button
-                  size="small"
-                  disabled={isOperating}
-                  onClick={() => handleUpgrade(record)}
-                >
-                  升级
-                </Button>
-                <Button
-                  size="small"
+                  <Button
+                  type="link"
                   danger
                   disabled={isOperating}
                   onClick={() => handleUninstall(record)}
                 >
                   卸载
+                </Button>
+                <Button
+                  type="link"
+                  disabled={isOperating}
+                  onClick={() => handleUpgrade(record)}
+                >
+                  升级
                 </Button>
               </Space>
             )
@@ -669,7 +668,7 @@ export default function ProcessManagerMonitor() {
             // 版本一致，只显示"卸载"
             return (
               <Button
-                size="small"
+                type="link"
                 danger
                 disabled={isOperating}
                 onClick={() => handleUninstall(record)}
