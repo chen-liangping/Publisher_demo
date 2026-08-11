@@ -336,7 +336,7 @@ interface StatusBadgeProps {
 const StatusBadge = ({ status, type, text }: StatusBadgeProps) => {
   const theme = type === 'install'
     ? installStatusThemeMap[status as InstallStatus]
-    : onlineStatusThemeMap[status as boolean]
+    : (status ? onlineStatusThemeMap.true : onlineStatusThemeMap.false)
 
   const config = type === 'install'
     ? installStatusConfig[status as InstallStatus]
@@ -563,23 +563,7 @@ export default function ProcessManagerMonitor() {
       ),
     },
     {
-      title: '内网 IP',
-      dataIndex: 'privateIp',
-      key: 'privateIp',
-      width: 140,
-      render: (ip: string) => <Text code style={{ fontSize: 12 }}>{ip}</Text>,
-    },
-    {
-      title: '安装状态',
-      dataIndex: 'installStatus',
-      key: 'installStatus',
-      width: 140,
-      render: (status: InstallStatus) => (
-        <StatusBadge status={status} type="install" />
-      ),
-    },
-    {
-      title: '在线状态',
+      title: '虚机状态',
       dataIndex: 'online',
       key: 'online',
       width: 120,
@@ -589,6 +573,22 @@ export default function ProcessManagerMonitor() {
         }
         return <StatusBadge status={online} type="online" />
       },
+    },
+    {
+      title: '内网 IP',
+      dataIndex: 'privateIp',
+      key: 'privateIp',
+      width: 140,
+      render: (ip: string) => <Text code style={{ fontSize: 12 }}>{ip}</Text>,
+    },
+    {
+      title: 'Agent 状态',
+      dataIndex: 'installStatus',
+      key: 'installStatus',
+      width: 140,
+      render: (status: InstallStatus) => (
+        <StatusBadge status={status} type="install" />
+      ),
     },
     {
       title: '最后上报',
