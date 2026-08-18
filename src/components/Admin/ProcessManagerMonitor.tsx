@@ -16,9 +16,10 @@ import {
   Typography,
   Modal,
   message,
-  Tabs,
+  Dropdown,
+  Segmented,
 } from 'antd'
-import type { TableColumnsType, MenuProps, BadgeProps, TabsProps } from 'antd'
+import type { TableColumnsType, MenuProps } from 'antd'
 import {
   ReloadOutlined,
   SearchOutlined,
@@ -27,26 +28,27 @@ import {
   CloseCircleOutlined,
   DownOutlined,
   ExclamationCircleOutlined,
-  LoadingOutlined,
 } from '@ant-design/icons'
 
 const { Text, Title } = Typography
 
 // ==================== 类型定义 ====================
 
+type VmStatus = 'running' | 'stopped' | 'starting' | 'stopping'
 type InstallStatus = 'installed' | 'uninstalled' | 'installing' | 'uninstalling'
-type AgentOnline = boolean
+type OnlineStatus = 'online' | 'offline'
+type AgentVersion = string
 
 interface AgentInstance {
-  instanceId: string
-  appId: string
-  instanceName: string
-  privateIp: string
+  instanceId: string      // 云厂商 instanceId，如 i-bp1234567890abcdef
+  appId: string            // 游戏项目标识
+  instanceName: string     // 实例名称
+  privateIp: string        // 内网 IP
   installStatus: InstallStatus
-  online: boolean
-  lastSeenAt?: string
-  agentVersion?: string
-  targetVersion: string
+  online: boolean          // 最近 30s 内上报过
+  lastSeenAt?: string      // 最后上报时间，相对时间格式 "2分钟前"
+  agentVersion?: string    // 当前运行的 agent 版本
+  targetVersion: string    // 目标版本
   createdAt?: string
 }
 
@@ -57,86 +59,26 @@ interface SummaryData {
   offlineCount: number
 }
 
-// ==================== 状态主题配置 ====================
+// ==================== 常量配置 ====================
 
-type StatusTheme = {
-  dotInner: string
-  dotOuter: string
-  text: string
-  border: string
-}
-
-type StatusPaletteKey = 'success' | 'danger' | 'primary' | 'warning' | 'neutral' | 'error'
-
-const STATUS_PALETTE: Record<StatusPaletteKey, StatusTheme> = {
-  success: {
-    dotInner: '#52C41A',
-    dotOuter: '#D9F7BE',
-    text: '#52C41A',
-    border: '#F0F0F0',
-  },
-  danger: {
-    dotInner: '#F5222D',
-    dotOuter: '#FFF1F0',
-    text: '#F5222D',
-    border: '#F5222D',
-  },
-  primary: {
-    dotInner: '#2F54EB',
-    dotOuter: '#F0F5FF',
-    text: '#2F54EB',
-    border: '#85A5FF',
-  },
-  warning: {
-    dotInner: '#FADB14',
-    dotOuter: '#FFFFB8',
-    text: '#FADB14',
-    border: '#D4B106',
-  },
-  neutral: {
-    dotInner: 'rgba(0, 0, 0, 0.65)',
-    dotOuter: 'rgba(0, 0, 0, 0.15)',
-    text: 'rgba(0, 0, 0, 0.65)',
-    border: 'rgba(0, 0, 0, 0.15)',
-  },
-  error: {
-    dotInner: '#F5222D',
-    dotOuter: '#FFF1F0',
-    text: '#F5222D',
-    border: '#FFA39E',
-  },
-}
-
-// 安装状态映射
-const installStatusThemeMap: Record<InstallStatus, StatusTheme> = {
-  installed: STATUS_PALETTE.success,
-  uninstalled: STATUS_PALETTE.neutral,
-  installing: STATUS_PALETTE.primary,
-  uninstalling: STATUS_PALETTE.danger,
-}
+const HEARTBEAT_TIMEOUT = 30 // 30s 心跳超时判定离线
 
 const installStatusConfig: Record<
   InstallStatus,
-  { label: string; status: BadgeProps['status'] }
+  { text: string; color: string; icon: string }
 > = {
-  installed: { label: '已安装', status: 'success' },
-  uninstalled: { label: '未安装', status: 'default' },
-  installing: { label: '安装中', status: 'processing' },
-  uninstalling: { label: '卸载中', status: 'processing' },
+  installed: { text: '已安装', color: 'success', icon: '✓' },
+  uninstalled: { text: '未安装', color: 'default', icon: '○' },
+  installing: { text: '安装中', color: 'processing', icon: '⟳' },
+  uninstalling: { text: '卸载中', color: 'processing', icon: '⟳' },
 }
 
-// 在线状态映射
-const onlineStatusThemeMap: {
-  true: StatusTheme
-  false: StatusTheme
-} = {
-  true: STATUS_PALETTE.success,
-  false: STATUS_PALETTE.neutral,
-}
-
-// ==================== 常量配置 ====================
-
-const HEARTBEAT_TIMEOUT = 30
+const refreshIntervalOptions = [
+  { value: 0, label: '关闭' },
+  { value: 10, label: '10 秒' },
+  { value: 15, label: '15 秒' },
+  { value: 30, label: '30 秒' },
+]
 
 const installStatusFilterOptions = [
   { value: 'all', label: '全部状态' },
@@ -174,7 +116,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.10',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:30:00',
+    lastSeenAt: '10秒前',
     agentVersion: 'v1.2.3',
     targetVersion: 'v1.2.3',
   },
@@ -185,7 +127,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.11',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:55',
+    lastSeenAt: '15秒前',
     agentVersion: 'v1.2.3',
     targetVersion: 'v1.2.3',
   },
@@ -196,7 +138,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.12',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:30:05',
+    lastSeenAt: '5秒前',
     agentVersion: 'v1.2.0',
     targetVersion: 'v1.2.3',
   },
@@ -207,7 +149,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.13',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:50',
+    lastSeenAt: '20秒前',
     agentVersion: 'v1.2.2',
     targetVersion: 'v1.2.3',
   },
@@ -218,7 +160,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.14',
     installStatus: 'installed',
     online: false,
-    lastSeenAt: '2024-01-15 10:25:00',
+    lastSeenAt: '5分钟前',
     agentVersion: 'v1.2.2',
     targetVersion: 'v1.2.3',
   },
@@ -229,7 +171,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.15',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:52',
+    lastSeenAt: '8秒前',
     agentVersion: 'v1.2.3',
     targetVersion: 'v1.2.3',
   },
@@ -240,7 +182,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.16',
     installStatus: 'installed',
     online: false,
-    lastSeenAt: '2024-01-15 10:28:00',
+    lastSeenAt: '2分钟前',
     agentVersion: 'v1.2.1',
     targetVersion: 'v1.2.3',
   },
@@ -260,7 +202,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.18',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:48',
+    lastSeenAt: '12秒前',
     agentVersion: 'v1.2.0',
     targetVersion: 'v1.2.3',
   },
@@ -271,7 +213,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.19',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:35',
+    lastSeenAt: '25秒前',
     agentVersion: 'v1.2.3',
     targetVersion: 'v1.2.3',
   },
@@ -282,7 +224,7 @@ const mockData: AgentInstance[] = [
     privateIp: '172.16.0.20',
     installStatus: 'installed',
     online: true,
-    lastSeenAt: '2024-01-15 10:29:42',
+    lastSeenAt: '18秒前',
     agentVersion: 'v1.1.0',
     targetVersion: 'v1.2.3',
   },
@@ -297,78 +239,15 @@ const mockData: AgentInstance[] = [
   },
 ]
 
-// ==================== 状态组件 ====================
-
-interface StatusDotProps {
-  theme: StatusTheme
-}
-
-const StatusDot = ({ theme }: StatusDotProps) => (
-  <span
-    style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: 12,
-      height: 12,
-      background: theme.dotOuter,
-      borderRadius: '50%',
-      flexShrink: 0,
-    }}
-  >
-    <span
-      style={{
-        width: 6,
-        height: 6,
-        background: theme.dotInner,
-        borderRadius: '50%',
-      }}
-    />
-  </span>
-)
-
-interface StatusBadgeProps {
-  status: InstallStatus | AgentOnline
-  type: 'install' | 'online'
-  text?: string
-}
-
-const StatusBadge = ({ status, type, text }: StatusBadgeProps) => {
-  const theme = type === 'install'
-    ? installStatusThemeMap[status as InstallStatus]
-    : (status ? onlineStatusThemeMap.true : onlineStatusThemeMap.false)
-
-  const config = type === 'install'
-    ? installStatusConfig[status as InstallStatus]
-    : { label: status ? '在线' : '离线', status: (status ? 'success' : 'default') as BadgeProps['status'] }
-
-  const isProcessing = type === 'install' && (status === 'installing' || status === 'uninstalling')
-
-  if (isProcessing) {
-    return (
-      <Space size={4}>
-        <LoadingOutlined style={{ color: theme.text }} />
-        <Text style={{ color: theme.text }}>{config.label}</Text>
-      </Space>
-    )
-  }
-
-  return (
-    <Space size={6}>
-      <StatusDot theme={theme} />
-      <Text style={{ color: theme.text }}>{text || config.label}</Text>
-    </Space>
-  )
-}
-
 // ==================== 主组件 ====================
 
 type Env = 'stg' | 'prod'
 type InstallStatusFilter = InstallStatus | 'all'
-type OnlineFilter = 'online' | 'offline' | 'all'
+type OnlineFilter = OnlineStatus | 'all'
 
 export default function ProcessManagerMonitor() {
-  const [env, setEnv] = useState<Env>('stg')
+  // 环境选择（强制）
+  const [env, setEnv] = useState<Env | null>(null)
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
   const [data, setData] = useState<AgentInstance[]>(mockData)
   const [loading, setLoading] = useState(false)
@@ -377,32 +256,43 @@ export default function ProcessManagerMonitor() {
   const [installStatusFilter, setInstallStatusFilter] = useState<InstallStatusFilter>('all')
   const [onlineFilter, setOnlineFilter] = useState<OnlineFilter>('all')
   const [versionFilter, setVersionFilter] = useState<string | undefined>()
+  const [refreshInterval, setRefreshInterval] = useState(15) // 默认 15 秒
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
 
+  // 操作状态
   const [operatingInstance, setOperatingInstance] = useState<AgentInstance | null>(null)
+  const [upgradeVersion, setUpgradeVersion] = useState<string>('')
 
+  // 过滤数据
   const filteredData = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase()
     return data.filter((item) => {
+      // 关键词搜索（实例名称、实例ID、内网IP）
       const matchKeyword =
         !keyword ||
         item.instanceName.toLowerCase().includes(keyword) ||
         item.instanceId.toLowerCase().includes(keyword) ||
         item.privateIp.includes(keyword)
 
+      // appId 筛选
       const matchAppId = appIdFilter.length === 0 || appIdFilter.includes(item.appId)
 
+      // 安装状态筛选
       const matchInstallStatus = installStatusFilter === 'all' || item.installStatus === installStatusFilter
 
+      // 在线状态筛选
       const matchOnline = onlineFilter === 'all' ||
         (onlineFilter === 'online' && item.online) ||
         (onlineFilter === 'offline' && !item.online)
 
+      // 版本筛选
       const matchVersion = !versionFilter || item.agentVersion === versionFilter
 
       return matchKeyword && matchAppId && matchInstallStatus && matchOnline && matchVersion
     })
   }, [data, searchKeyword, appIdFilter, installStatusFilter, onlineFilter, versionFilter])
 
+  // 汇总数据
   const summary: SummaryData = useMemo(() => {
     return data.reduce(
       (acc, item) => {
@@ -416,25 +306,40 @@ export default function ProcessManagerMonitor() {
     )
   }, [data])
 
+  // 手动刷新
   const handleRefresh = async () => {
     setLoading(true)
+    // 模拟 API 调用
     await new Promise((resolve) => setTimeout(resolve, 500))
+    setLastRefreshTime(new Date())
     setLoading(false)
     message.success('刷新成功')
   }
 
-  const handleBackToList = () => {
-    setSelectedInstanceId(null)
+  // 自动刷新
+  useEffect(() => {
+    if (refreshInterval === 0 || !env) return
+
+    const interval = setInterval(() => {
+      handleRefresh()
+    }, refreshInterval * 1000)
+
+    return () => clearInterval(interval)
+  }, [refreshInterval, env])
+
+  // 环境切换
+  const handleEnvChange = (newEnv: Env) => {
+    setEnv(newEnv)
+    setData([]) // 切换环境清空数据
+    setLastRefreshTime(null)
+    // 模拟重新拉取数据
+    setTimeout(() => {
+      setData(mockData)
+      setLastRefreshTime(new Date())
+    }, 300)
   }
 
-  const handleViewDetail = (instance: AgentInstance) => {
-    setSelectedInstanceId(instance.instanceId)
-  }
-
-  const handleTabChange = (key: string) => {
-    setEnv(key as Env)
-  }
-
+  // Install 操作
   const handleInstall = (instance: AgentInstance) => {
     Modal.confirm({
       title: `安装 Agent`,
@@ -442,6 +347,7 @@ export default function ProcessManagerMonitor() {
       content: (
         <div>
           <p>确认在以下实例安装 Agent？</p>
+          <p><Text strong>环境：</Text><Tag color={env === 'prod' ? 'red' : 'blue'}>{env?.toUpperCase()}</Tag></p>
           <p><Text strong>实例：</Text>{instance.instanceName}</p>
           <p><Text strong>实例ID：</Text><Text code>{instance.instanceId}</Text></p>
           <p><Text strong>目标版本：</Text>{instance.targetVersion}</p>
@@ -449,8 +355,10 @@ export default function ProcessManagerMonitor() {
       ),
       okText: '确认安装',
       cancelText: '取消',
+      okButtonProps: { danger: env === 'prod' },
       onOk: async () => {
         setOperatingInstance(instance)
+        // 模拟 API 调用
         await new Promise((resolve) => setTimeout(resolve, 1000))
         setData((prev) =>
           prev.map((item) =>
@@ -465,6 +373,7 @@ export default function ProcessManagerMonitor() {
     })
   }
 
+  // Uninstall 操作
   const handleUninstall = (instance: AgentInstance) => {
     Modal.confirm({
       title: `卸载 Agent`,
@@ -472,6 +381,7 @@ export default function ProcessManagerMonitor() {
       content: (
         <div>
           <p>确认在以下实例卸载 Agent？</p>
+          <p><Text strong>环境：</Text><Tag color={env === 'prod' ? 'red' : 'blue'}>{env?.toUpperCase()}</Tag></p>
           <p><Text strong>实例：</Text>{instance.instanceName}</p>
           <p><Text strong>实例ID：</Text><Text code>{instance.instanceId}</Text></p>
           <Text type="danger">警告：卸载后将无法监控该实例的进程状态</Text>
@@ -482,6 +392,7 @@ export default function ProcessManagerMonitor() {
       okButtonProps: { danger: true },
       onOk: async () => {
         setOperatingInstance(instance)
+        // 模拟 API 调用
         await new Promise((resolve) => setTimeout(resolve, 1000))
         setData((prev) =>
           prev.map((item) =>
@@ -496,8 +407,10 @@ export default function ProcessManagerMonitor() {
     })
   }
 
+  // Upgrade 操作
   const handleUpgrade = (instance: AgentInstance, version?: string) => {
     const targetVersion = version || instance.targetVersion
+    setUpgradeVersion(targetVersion)
 
     Modal.confirm({
       title: `升级 Agent`,
@@ -505,6 +418,7 @@ export default function ProcessManagerMonitor() {
       content: (
         <div>
           <p>确认在以下实例升级 Agent？</p>
+          <p><Text strong>环境：</Text><Tag color={env === 'prod' ? 'red' : 'blue'}>{env?.toUpperCase()}</Tag></p>
           <p><Text strong>实例：</Text>{instance.instanceName}</p>
           <p><Text strong>实例ID：</Text><Text code>{instance.instanceId}</Text></p>
           <p><Text strong>当前版本：</Text>{instance.agentVersion || '-'}</p>
@@ -513,8 +427,10 @@ export default function ProcessManagerMonitor() {
       ),
       okText: '确认升级',
       cancelText: '取消',
+      okButtonProps: { danger: env === 'prod' },
       onOk: async () => {
         setOperatingInstance(instance)
+        // 模拟 API 调用
         await new Promise((resolve) => setTimeout(resolve, 1000))
         setData((prev) =>
           prev.map((item) =>
@@ -529,6 +445,17 @@ export default function ProcessManagerMonitor() {
     })
   }
 
+  // 返回列表
+  const handleBackToList = () => {
+    setSelectedInstanceId(null)
+  }
+
+  // 跳转到详情
+  const handleViewDetail = (instance: AgentInstance) => {
+    setSelectedInstanceId(instance.instanceId)
+  }
+
+  // 升级下拉菜单
   const getUpgradeMenu = (instance: AgentInstance): MenuProps => ({
     items: agentVersions.map((v) => ({
       key: v.value,
@@ -537,33 +464,59 @@ export default function ProcessManagerMonitor() {
     })),
   })
 
+  // 表格列定义
   const columns: TableColumnsType<AgentInstance> = [
+    {
+      title: '虚机 ID',
+      dataIndex: 'instanceId',
+      key: 'instanceId',
+      width: 200,
+      render: (instanceId: string, record) => (
+        <Button
+          type="link"
+          onClick={() => handleViewDetail(record)}
+          style={{ padding: 0, fontSize: 12, fontFamily: 'monospace' }}
+        >
+          {instanceId}
+        </Button>
+      ),
+    },
     {
       title: 'App ID',
       dataIndex: 'appId',
       key: 'appId',
-      width: 120,
+      width: 140,
       render: (appId: string) => <Tag>{appId}</Tag>,
     },
     {
-      title: '虚机 ID / 名称',
-      key: 'vm',
-      width: 240,
-      render: (_, record) => (
-        <Space direction="vertical" size={2}>
-          <Button
-            type="link"
-            onClick={() => handleViewDetail(record)}
-            style={{ padding: 0, fontSize: 12, fontFamily: 'monospace', height: 'auto', textAlign: 'left' }}
-          >
-            {record.instanceId}
-          </Button>
-          <Text strong>{record.instanceName}</Text>
+      title: '虚机名称',
+      dataIndex: 'instanceName',
+      key: 'instanceName',
+      width: 160,
+      render: (name: string, record) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{name}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.privateIp}</Text>
         </Space>
       ),
     },
     {
-      title: '虚机状态',
+      title: '安装状态',
+      dataIndex: 'installStatus',
+      key: 'installStatus',
+      width: 120,
+      render: (status: InstallStatus) => {
+        const config = installStatusConfig[status]
+        return (
+          <Space>
+            <span>{config.icon}</span>
+            <Tag color={config.color}>{config.text}</Tag>
+          </Space>
+        )
+      },
+    },
+    {
+      title: '在线状态',
       dataIndex: 'online',
       key: 'online',
       width: 120,
@@ -571,37 +524,32 @@ export default function ProcessManagerMonitor() {
         if (record.installStatus !== 'installed') {
           return <Text type="secondary">-</Text>
         }
-        return <StatusBadge status={online} type="online" />
+        return online ? (
+          <Space>
+            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            <Tag color="success">在线</Tag>
+          </Space>
+        ) : (
+          <Space>
+            <CloseCircleOutlined style={{ color: '#8c8c8c' }} />
+            <Tag color="default">离线</Tag>
+          </Space>
+        )
       },
-    },
-    {
-      title: '内网 IP',
-      dataIndex: 'privateIp',
-      key: 'privateIp',
-      width: 140,
-      render: (ip: string) => <Text code style={{ fontSize: 12 }}>{ip}</Text>,
-    },
-    {
-      title: 'Agent 状态',
-      dataIndex: 'installStatus',
-      key: 'installStatus',
-      width: 140,
-      render: (status: InstallStatus) => (
-        <StatusBadge status={status} type="install" />
-      ),
     },
     {
       title: '最后上报',
       dataIndex: 'lastSeenAt',
       key: 'lastSeenAt',
-      width: 180,
-      render: (lastSeenAt: string | undefined, record: AgentInstance) => {
+      width: 120,
+      render: (lastSeenAt: string, record: any) => {
         if (record.installStatus !== 'installed') return <Text type="secondary">-</Text>
         const isOffline = !record.online
         return (
-          <Text type={isOffline ? 'danger' : 'secondary'} style={{ fontFamily: 'monospace', fontSize: 12 }}>
-            {lastSeenAt || '从未'}
-          </Text>
+          <Space>
+            <ClockCircleOutlined />
+            <Text type={isOffline ? 'danger' : 'secondary'}>{lastSeenAt || '从未'}</Text>
+          </Space>
         )
       },
     },
@@ -623,7 +571,7 @@ export default function ProcessManagerMonitor() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 180,
       fixed: 'right',
       render: (_, record) => {
         const isOperating = operatingInstance?.instanceId === record.instanceId
@@ -631,7 +579,8 @@ export default function ProcessManagerMonitor() {
         if (record.installStatus === 'uninstalled') {
           return (
             <Button
-              type="link"
+              size="small"
+              type="primary"
               onClick={() => handleInstall(record)}
               loading={isOperating}
             >
@@ -642,41 +591,28 @@ export default function ProcessManagerMonitor() {
 
         if (record.installStatus === 'installed') {
           const needsUpgrade = record.agentVersion !== record.targetVersion
-
-          if (needsUpgrade) {
-            // 版本不一致，显示"升级"和"卸载"
-            return (
-              <Space size={8}>
-                  <Button
-                  type="link"
-                  danger
-                  disabled={isOperating}
-                  onClick={() => handleUninstall(record)}
-                >
-                  卸载
-                </Button>
-                <Button
-                  type="link"
-                  disabled={isOperating}
-                  onClick={() => handleUpgrade(record)}
-                >
-                  升级
-                </Button>
-              </Space>
-            )
-          } else {
-            // 版本一致，只显示"卸载"
-            return (
+          return (
+            <Space size={4}>
               <Button
-                type="link"
+                size="small"
+                disabled={isOperating}
+                onClick={() => handleUpgrade(record)}
+              >
+                升级
+              </Button>
+              {needsUpgrade && (
+                <Tag color="warning" style={{ marginLeft: 4 }}>待升级</Tag>
+              )}
+              <Button
+                size="small"
                 danger
                 disabled={isOperating}
                 onClick={() => handleUninstall(record)}
               >
                 卸载
               </Button>
-            )
-          }
+            </Space>
+          )
         }
 
         return null
@@ -685,7 +621,7 @@ export default function ProcessManagerMonitor() {
   ]
 
   // 显示详情页
-  if (selectedInstanceId) {
+  if (selectedInstanceId && env) {
     return (
       <ProcessAgentInstanceDetail
         instanceId={selectedInstanceId}
@@ -695,39 +631,122 @@ export default function ProcessManagerMonitor() {
     )
   }
 
+  // 未选择环境时的占位页面
+  if (!env) {
+    return (
+      <div style={{ padding: '100px 0', textAlign: 'center' }}>
+        <Title level={3}>请先选择环境</Title>
+        <Space size={16} style={{ marginTop: 24 }}>
+          <Button
+            type="primary"
+            size="large"
+            onClick={() => setEnv('stg')}
+          >
+            测试环境 (STG)
+          </Button>
+          <Button
+            size="large"
+            danger
+            onClick={() => setEnv('prod')}
+          >
+            生产环境 (PROD)
+          </Button>
+        </Space>
+      </div>
+    )
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      {/* 页面标题栏 */}
-      <Card size="small">
+      {/* 环境指示器 - 醒目常驻 */}
+      <Card size="small" style={{ background: env === 'prod' ? '#fff1f0' : '#e6f7ff' }}>
         <Row justify="space-between" align="middle">
           <Col>
             <Space>
               <Title level={4} style={{ margin: 0 }}>
                 VM Agent 监控
               </Title>
+              <Tag color={env === 'prod' ? 'red' : 'blue'} style={{ fontSize: 14, padding: '4px 12px' }}>
+                {env.toUpperCase()} 环境
+              </Tag>
+              {lastRefreshTime && (
+                <Text type="secondary">
+                  最后刷新：{lastRefreshTime.toLocaleTimeString()}
+                </Text>
+              )}
             </Space>
           </Col>
           <Col>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              loading={loading}
-            >
-              刷新
-            </Button>
+            <Space>
+              <Button
+                onClick={() => setEnv(null)}
+              >
+                切换环境
+              </Button>
+              <Select
+                value={refreshInterval}
+                options={refreshIntervalOptions}
+                onChange={(value) => setRefreshInterval(value)}
+                style={{ width: 100 }}
+              />
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleRefresh}
+                loading={loading}
+              >
+                刷新
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Card>
 
-      {/* 环境切换 Tab */}
-      <Tabs
-        activeKey={env}
-        onChange={handleTabChange}
-        items={[
-          { key: 'stg', label: '测试环境' },
-          { key: 'prod', label: '正式环境' },
-        ]}
-      />
+      {/* 概览卡片 */}
+      <Row gutter={16}>
+        <Col span={6}>
+          <Card size="small">
+            <Space direction="vertical" size={2}>
+              <Text type="secondary">总实例数</Text>
+              <Title level={3} style={{ margin: 0 }}>
+                {summary.totalInstances}
+              </Title>
+            </Space>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Space direction="vertical" size={2}>
+              <Text type="secondary">已安装</Text>
+              <Title level={3} style={{ margin: 0, color: '#389e0d' }}>
+                {summary.installedCount}
+              </Title>
+            </Space>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Space direction="vertical" size={2}>
+              <Text type="secondary">在线</Text>
+              <Title level={3} style={{ margin: 0, color: '#389e0d' }}>
+                {summary.onlineCount}
+              </Title>
+            </Space>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Space direction="vertical" size={2}>
+              <Text type="secondary">离线</Text>
+              <Title
+                level={3}
+                style={{ margin: 0, color: summary.offlineCount > 0 ? '#cf1322' : '#389e0d' }}
+              >
+                {summary.offlineCount}
+              </Title>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
 
       {/* 实例列表表格 */}
       <Card
@@ -789,7 +808,7 @@ export default function ProcessManagerMonitor() {
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条`,
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1300 }}
           size="middle"
           loading={loading}
         />

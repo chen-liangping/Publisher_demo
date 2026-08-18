@@ -11,7 +11,6 @@ import {
   Space,
   Table,
   Tag,
-  Tabs,
   Typography,
   Modal,
   Input,
@@ -23,10 +22,11 @@ import type { TableColumnsType } from 'antd'
 import {
   ArrowLeftOutlined,
   ReloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
   ClockCircleOutlined,
   PlayCircleOutlined,
   FileTextOutlined,
-  LoadingOutlined,
 } from '@ant-design/icons'
 
 const { Text, Title, Paragraph } = Typography
@@ -69,135 +69,6 @@ interface InstanceDetailProps {
   env: 'stg' | 'prod'
 }
 
-// ==================== 状态主题配置 ====================
-
-type StatusTheme = {
-  dotInner: string
-  dotOuter: string
-  text: string
-  border: string
-}
-
-type StatusPaletteKey = 'success' | 'danger' | 'primary' | 'warning' | 'neutral' | 'error'
-
-const STATUS_PALETTE: Record<StatusPaletteKey, StatusTheme> = {
-  success: {
-    dotInner: '#52C41A',
-    dotOuter: '#D9F7BE',
-    text: '#52C41A',
-    border: '#F0F0F0',
-  },
-  danger: {
-    dotInner: '#F5222D',
-    dotOuter: '#FFF1F0',
-    text: '#F5222D',
-    border: '#F5222D',
-  },
-  primary: {
-    dotInner: '#2F54EB',
-    dotOuter: '#F0F5FF',
-    text: '#2F54EB',
-    border: '#85A5FF',
-  },
-  warning: {
-    dotInner: '#FADB14',
-    dotOuter: '#FFFFB8',
-    text: '#FADB14',
-    border: '#D4B106',
-  },
-  neutral: {
-    dotInner: 'rgba(0, 0, 0, 0.65)',
-    dotOuter: 'rgba(0, 0, 0, 0.15)',
-    text: 'rgba(0, 0, 0, 0.65)',
-    border: 'rgba(0, 0, 0, 0.15)',
-  },
-  error: {
-    dotInner: '#F5222D',
-    dotOuter: '#FFF1F0',
-    text: '#F5222D',
-    border: '#FFA39E',
-  },
-}
-
-// 程序状态映射
-const programStateThemeMap: Record<ProgramState, StatusTheme> = {
-  running: STATUS_PALETTE.success,
-  stopped: STATUS_PALETTE.neutral,
-  starting: STATUS_PALETTE.primary,
-  stopping: STATUS_PALETTE.danger,
-  unknown: STATUS_PALETTE.error,
-}
-
-const programStateConfig: Record<
-  ProgramState,
-  { label: string }
-> = {
-  running: { label: '运行中' },
-  stopped: { label: '已停止' },
-  starting: { label: '启动中' },
-  stopping: { label: '停止中' },
-  unknown: { label: '未知' },
-}
-
-const isProgramProcessing = (state: ProgramState) =>
-  state === 'starting' || state === 'stopping'
-
-// ==================== 状态组件 ====================
-
-interface StatusDotProps {
-  theme: StatusTheme
-}
-
-const StatusDot = ({ theme }: StatusDotProps) => (
-  <span
-    style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: 12,
-      height: 12,
-      background: theme.dotOuter,
-      borderRadius: '50%',
-      flexShrink: 0,
-    }}
-  >
-    <span
-      style={{
-        width: 6,
-        height: 6,
-        background: theme.dotInner,
-        borderRadius: '50%',
-      }}
-    />
-  </span>
-)
-
-interface ProgramStatusBadgeProps {
-  state: ProgramState
-}
-
-const ProgramStatusBadge = ({ state }: ProgramStatusBadgeProps) => {
-  const theme = programStateThemeMap[state]
-  const config = programStateConfig[state]
-  const processing = isProgramProcessing(state)
-
-  if (processing) {
-    return (
-      <Space size={4}>
-        <LoadingOutlined style={{ color: theme.text }} />
-        <Text style={{ color: theme.text }}>{config.label}</Text>
-      </Space>
-    )
-  }
-
-  return (
-    <Space size={6}>
-      <StatusDot theme={theme} />
-      <Text style={{ color: theme.text }}>{config.label}</Text>
-    </Space>
-  )
-}
-
 // ==================== Mock 数据 ====================
 
 const mockPrograms: Program[] = [
@@ -209,7 +80,7 @@ const mockPrograms: Program[] = [
     pid: 12345,
     cpuPercent: 12.5,
     memoryMB: 512,
-    uptimeSeconds: 86400 * 2 + 3600,
+    uptimeSeconds: 86400 * 2 + 3600, // 2天1小时
     restartCount: 0,
     lastEvent: '运行正常',
     command: './gamesrv --config ./config/prod.yaml',
@@ -222,7 +93,7 @@ const mockPrograms: Program[] = [
     pid: 6789,
     cpuPercent: 0.5,
     memoryMB: 64,
-    uptimeSeconds: 86400 * 7,
+    uptimeSeconds: 86400 * 7, // 7天
     restartCount: 0,
     lastEvent: '运行正常',
     command: 'nginx -g "daemon off;"',
@@ -235,7 +106,7 @@ const mockPrograms: Program[] = [
     pid: 7890,
     cpuPercent: 2.3,
     memoryMB: 128,
-    uptimeSeconds: 3600 * 48,
+    uptimeSeconds: 3600 * 48, // 48小时
     restartCount: 1,
     lastEvent: '已重启1次',
     command: 'redis-server /etc/redis.conf',
@@ -312,6 +183,29 @@ const mockLogs: LogEntry[] = [
   { timestamp: '2026-08-11 10:45:32', level: 'info', message: 'Database connection restored' },
 ]
 
+// ==================== 状态配置 ====================
+
+const programStateConfig: Record<
+  ProgramState,
+  { text: string; color: string; icon: string }
+> = {
+  running: { text: '运行中', color: 'success', icon: '🟢' },
+  stopped: { text: '已停止', color: 'default', icon: '⚪' },
+  starting: { text: '启动中', color: 'processing', icon: '🟡' },
+  stopping: { text: '停止中', color: 'processing', icon: '🟡' },
+  unknown: { text: '未知', color: 'error', icon: '❓' },
+}
+
+const logLevelConfig: Record<
+  LogEntry['level'],
+  { color: string; label: string }
+> = {
+  info: { color: 'blue', label: 'INFO' },
+  warn: { color: 'orange', label: 'WARN' },
+  error: { color: 'red', label: 'ERROR' },
+  debug: { color: 'default', label: 'DEBUG' },
+}
+
 // ==================== 工具函数 ====================
 
 function formatUptime(seconds?: number): string {
@@ -348,19 +242,21 @@ export default function ProcessAgentInstanceDetail({
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'stg' | 'prod'>(env || 'stg')
+  const [logsProgramId, setLogsProgramId] = useState<string>('')
 
+  // Mock 实例信息
   const instanceInfo = {
     instanceId,
     appId: 'gamedemo',
     instanceName: 'web-server-01',
     privateIp: '172.16.0.10',
     online: true,
-    lastSeenAt: '2024-01-15 10:30:00',
+    lastSeenAt: '10秒前',
     agentVersion: 'v1.2.3',
     targetVersion: 'v1.2.3',
   }
 
+  // 刷新数据
   const handleRefresh = async () => {
     setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 500))
@@ -368,22 +264,28 @@ export default function ProcessAgentInstanceDetail({
     message.success('刷新成功')
   }
 
+  // 拉取主机进程快照
   const handleFetchSnapshot = async () => {
     setSnapshotLoading(true)
+    // 模拟 API 调用，说明有等待
     await new Promise((resolve) => setTimeout(resolve, 1500))
     setRunningProcesses(mockRunningProcesses)
     setSnapshotLoading(false)
     message.success('进程快照已更新')
   }
 
+  // 查看日志
   const handleViewLogs = async (program: Program) => {
     setSelectedProgram(program)
+    setLogsProgramId(program.id)
     setLogsLoading(true)
+    // 模拟 API 调用
     await new Promise((resolve) => setTimeout(resolve, 500))
     setLogs(mockLogs)
     setLogsLoading(false)
   }
 
+  // Programs 表格列定义
   const programColumns: TableColumnsType<Program> = [
     {
       title: 'Program',
@@ -396,23 +298,30 @@ export default function ProcessAgentInstanceDetail({
       title: '期望状态',
       dataIndex: 'desiredState',
       key: 'desiredState',
-      width: 140,
-      render: (state: ProgramState) => <ProgramStatusBadge state={state} />,
+      width: 120,
+      render: (state: ProgramState) => {
+        const config = programStateConfig[state]
+        return (
+          <Space>
+            <span>{config.icon}</span>
+            <Tag color={config.color}>{config.text}</Tag>
+          </Space>
+        )
+      },
     },
     {
       title: '实际状态',
       dataIndex: 'actualState',
       key: 'actualState',
-      width: 140,
+      width: 120,
       render: (state: ProgramState, record) => {
+        const config = programStateConfig[state]
         const isMatch = state === record.desiredState
-        const mismatchTag = !isMatch ? (
-          <Tag color="warning" style={{ marginLeft: 8 }}>不匹配</Tag>
-        ) : null
         return (
           <Space>
-            <ProgramStatusBadge state={state} />
-            {mismatchTag}
+            <span>{config.icon}</span>
+            <Tag color={isMatch ? config.color : 'warning'}>{config.text}</Tag>
+            {!isMatch && <Text type="warning" style={{ fontSize: 12 }}>不匹配</Text>}
           </Space>
         )
       },
@@ -491,6 +400,7 @@ export default function ProcessAgentInstanceDetail({
     },
   ]
 
+  // 主机进程快照表格列定义
   const processColumns: TableColumnsType<RunningProcess> = [
     {
       title: 'PID',
@@ -530,17 +440,46 @@ export default function ProcessAgentInstanceDetail({
     },
   ]
 
-  const renderInstanceContent = () => (
-    <>
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {/* 头部 */}
+      <Card size="small">
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Space>
+              <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+                返回
+              </Button>
+              <Title level={4} style={{ margin: 0 }}>
+                实例详情
+              </Title>
+              <Tag color={env === 'prod' ? 'red' : 'blue'}>
+                {env.toUpperCase()}
+              </Tag>
+            </Space>
+          </Col>
+          <Col>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              loading={loading}
+            >
+              刷新
+            </Button>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* 实例信息 */}
       <Card size="small" title="实例信息">
         <Descriptions column={3} size="small">
-          <Descriptions.Item label="实例 ID">
+          <Descriptions.Item label="虚机 ID">
             <Text code>{instanceInfo.instanceId}</Text>
           </Descriptions.Item>
           <Descriptions.Item label="App ID">
             <Tag>{instanceInfo.appId}</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="实例名称">
+          <Descriptions.Item label="虚机名称">
             {instanceInfo.instanceName}
           </Descriptions.Item>
           <Descriptions.Item label="内网 IP">
@@ -548,20 +487,20 @@ export default function ProcessAgentInstanceDetail({
           </Descriptions.Item>
           <Descriptions.Item label="在线状态">
             {instanceInfo.online ? (
-              <Space size={4}>
-                <StatusDot theme={STATUS_PALETTE.success} />
-                <Text style={{ color: STATUS_PALETTE.success.text }}>在线</Text>
+              <Space>
+                <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                <Tag color="success">在线</Tag>
               </Space>
             ) : (
-              <Space size={4}>
-                <StatusDot theme={STATUS_PALETTE.neutral} />
-                <Text style={{ color: STATUS_PALETTE.neutral.text }}>离线</Text>
+              <Space>
+                <CloseCircleOutlined style={{ color: '#8c8c8c' }} />
+                <Tag color="default">离线</Tag>
               </Space>
             )}
           </Descriptions.Item>
           <Descriptions.Item label="最后上报">
-            <Space size={4}>
-              <ClockCircleOutlined style={{ fontSize: 12 }} />
+            <Space>
+              <ClockCircleOutlined />
               <Text>{instanceInfo.lastSeenAt}</Text>
             </Space>
           </Descriptions.Item>
@@ -574,6 +513,7 @@ export default function ProcessAgentInstanceDetail({
         </Descriptions>
       </Card>
 
+      {/* Programs 实时态 */}
       <Card
         size="small"
         title={
@@ -594,6 +534,7 @@ export default function ProcessAgentInstanceDetail({
         />
       </Card>
 
+      {/* 主机进程快照 */}
       <Card
         size="small"
         title={
@@ -632,6 +573,7 @@ export default function ProcessAgentInstanceDetail({
         )}
       </Card>
 
+      {/* 日志面板 */}
       {selectedProgram && (
         <Card
           size="small"
@@ -672,10 +614,10 @@ export default function ProcessAgentInstanceDetail({
                 >
                   <span style={{ color: '#858585' }}>[{log.timestamp}]</span>{' '}
                   <Tag
-                    color={log.level === 'error' ? 'red' : log.level === 'warn' ? 'orange' : 'blue'}
+                    color={logLevelConfig[log.level].color}
                     style={{ margin: 0, fontSize: 11 }}
                   >
-                    {log.level.toUpperCase()}
+                    {logLevelConfig[log.level].label}
                   </Tag>{' '}
                   {log.message}
                 </div>
@@ -684,42 +626,6 @@ export default function ProcessAgentInstanceDetail({
           )}
         </Card>
       )}
-    </>
-  )
-
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small">
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Space>
-              <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
-                返回
-              </Button>
-              <Title level={4} style={{ margin: 0 }}>
-                实例详情
-              </Title>
-            </Space>
-          </Col>
-        </Row>
-      </Card>
-
-      <Tabs
-        activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as 'stg' | 'prod')}
-        items={[
-          {
-            key: 'stg',
-            label: '测试环境',
-            children: renderInstanceContent(),
-          },
-          {
-            key: 'prod',
-            label: '正式环境',
-            children: renderInstanceContent(),
-          },
-        ]}
-      />
     </Space>
   )
 }
