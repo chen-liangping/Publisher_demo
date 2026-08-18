@@ -542,7 +542,7 @@ export default function ProcessManagerMonitor() {
       dataIndex: 'lastSeenAt',
       key: 'lastSeenAt',
       width: 120,
-      render: (lastSeenAt?: string, record) => {
+      render: (lastSeenAt: string, record: any) => {
         if (record.installStatus !== 'installed') return <Text type="secondary">-</Text>
         const isOffline = !record.online
         return (
