@@ -27,7 +27,7 @@ import {
   Row,
   Col
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined, FireOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 import {
   REDIS_NOTIFY_KEYSPACE_PRESETS,
@@ -37,6 +37,7 @@ import {
   type RedisNotifyFormShape,
   type RedisNotifyKeyspaceTemplateChoice
 } from './redisNotifyKeyspaceMeta'
+import RedisTopKeyAnalysis from './RedisTopKeyAnalysis'
 
 const { Title, Text } = Typography
 
@@ -842,6 +843,10 @@ export default function ContainerDatabase() {
   const [selectedQueryInstance, setSelectedQueryInstance] = useState<DBInstance | null>(null)
   const [queryCommand, setQueryCommand] = useState<string>('')
   const [queryResult, setQueryResult] = useState<string>('')
+
+  // Redis Top Key 分析相关状态
+  const [topKeyAnalysisOpen, setTopKeyAnalysisOpen] = useState<boolean>(false)
+  const [selectedTopKeyInstance, setSelectedTopKeyInstance] = useState<DBInstance | null>(null)
   const [mockPairings, setMockPairings] = useState<Record<string, string>>({}) // testId -> prodId
   const [mockProgress, setMockProgress] = useState<{
     visible: boolean
@@ -1923,31 +1928,40 @@ export default function ContainerDatabase() {
                                 if (t === 'redis') {
                                   return (
                                     <>
-                                      <Button 
-                                        icon={<CloudUploadOutlined />} 
+                                      <Button
+                                        icon={<CloudUploadOutlined />}
                                         onClick={() => message.info(`备份 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         备份
                                       </Button>
-                                      <Button 
-                                        icon={<SlidersOutlined />} 
+                                      <Button
+                                        icon={<SlidersOutlined />}
                                         onClick={() => inst && openRedisKeyspaceModal(inst)}
                                       >
                                         通知场景
                                       </Button>
-                                      <Button 
-                                        icon={<UserAddOutlined />} 
-                                        onClick={() => { 
-                                          setWhitelistInstance(inst); 
-                                          setWhitelistOpen(true); 
-                                          setWlActiveTab('whiteList') 
+                                      <Button
+                                        icon={<FireOutlined />}
+                                        onClick={() => {
+                                          setSelectedTopKeyInstance(inst)
+                                          setTopKeyAnalysisOpen(true)
+                                        }}
+                                      >
+                                        热点分析
+                                      </Button>
+                                      <Button
+                                        icon={<UserAddOutlined />}
+                                        onClick={() => {
+                                          setWhitelistInstance(inst);
+                                          setWhitelistOpen(true);
+                                          setWlActiveTab('whiteList')
                                         }}
                                       >
                                         IP白名单
                                       </Button>
-                                      <Button 
-                                        type="primary" 
-                                        icon={<SearchOutlined />} 
+                                      <Button
+                                        type="primary"
+                                        icon={<SearchOutlined />}
                                         onClick={() => message.info(`查询 ${inst?.alias || '未知实例'}（模拟）`)}
                                       >
                                         数据库查询
@@ -4587,6 +4601,16 @@ export default function ContainerDatabase() {
           </div>
         )}
       </Drawer>
+
+      {/* Redis Top Key 分析抽屉 */}
+      <RedisTopKeyAnalysis
+        open={topKeyAnalysisOpen}
+        instance={selectedTopKeyInstance}
+        onClose={() => {
+          setTopKeyAnalysisOpen(false)
+          setSelectedTopKeyInstance(null)
+        }}
+      />
     </div>
   )
 }
