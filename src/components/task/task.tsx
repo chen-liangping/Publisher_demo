@@ -7,6 +7,7 @@ import {
   Badge,
   Button,
   Card,
+  Collapse,
   Descriptions,
   Drawer,
   Dropdown,
@@ -55,6 +56,8 @@ interface CronJobHistory {
   status: CronJobStatus
   message: string
   image: Record<string, string>
+  /** 本次执行的 console 输出，截断到 4KB；函数任务用，容器任务日志仍走 Grafana */
+  output?: string
 }
 
 interface FunctionTask {
@@ -64,10 +67,10 @@ interface FunctionTask {
   runtime: 'Node.js 20'
   expression: string
   jobType: JobType
+  /** 只保存函数体；平台负责补齐 handler 外壳 */
   code: string
-  input: string
   timeoutSeconds: number
-  notifyOnFailure: boolean
+  concurrencyPolicy: ConcurrentPolicy
   switchOn: boolean
   histories: CronJobHistory[]
 }
@@ -91,9 +94,8 @@ interface FunctionTaskFormValues {
   runtime: 'Node.js 20'
   expression: string
   code: string
-  input: string
   timeoutSeconds: number
-  notifyOnFailure: boolean
+  concurrencyPolicy: ConcurrentPolicy
 }
 
 interface ContainerTaskFormValues {
@@ -124,39 +126,79 @@ type SwitchState =
 interface TestRunResult {
   status: CronJobStatus
   message: string
+  /** 本次调用耗时，毫秒 */
+  durationMs: number
+  /** handler 的返回值，成功时回显 */
+  returnValue?: string
+  /** 异常摘要，失败时回显 */
+  errorSummary?: string
+  /** 本次运行的 console 输出，截断到 4KB */
+  output?: string
 }
 
 const DEFAULT_EXPRESSION = '0 0 * * *'
 const GRAFANA_LINK = 'https://publisher.grafana.net/'
 const entrypointReg = /^(?!.*[[\]"，。（）“”：；！\u4e00-\u9fa5])[\s\S]*$/
 
-const functionTemplate = `export default async function handler(ctx) {
-  const app = ctx.app("xcron-cloud");
+/**
+ * 平台提供的 handler 外壳，用户不可编辑、也不需要自己写。
+ *
+ * 只有一个形参 ctx：v1 砍掉了「事件入参」——一个任务只干一件固定的事，参数直接写在代码里。
+ * 以后若真需要传参，也应挂在 ctx 上（如 ctx.params），不要改成 handler(event, ctx)：
+ * 调整位置参数会让所有已存在任务的第一个形参含义变掉，属于破坏性变更。
+ */
+const HANDLER_PREFIX = 'export default async function handler(ctx) {'
+const HANDLER_SUFFIX = '}'
+
+/** 容器任务沿用平台既有的 10 分钟下限；函数任务是托管 Runner，放开到 1 分钟 */
+const CONTAINER_MIN_INTERVAL_MINUTES = 10
+const FUNCTION_MIN_INTERVAL_MINUTES = 1
+
+/**
+ * 不允许 import 的前提下，ctx 就是用户能用的全部能力，必须完整列出。
+ *
+ * 只放「必须由平台代理才能保证安全或可审计」的能力，其余一概不进 ctx：
+ * - 没有 ctx.notify：通知归「告警规则」统一管理，函数任务只负责打日志或让本次执行失败。
+ * - 没有 ctx.log / ctx.error：日志不需要平台代理，直接用标准 console 即可。
+ * - 没有 ctx.state：v1 只支持应用资源、任务都是幂等的，需要跨次记状态的场景还不存在。
+ * - 没有 ctx.requestId：平台采集日志时会自动打上执行 ID，用户不必自己打印。
+ * 以上都可以在真出现场景时再加，往 ctx 加能力是向后兼容的。
+ */
+const ctxCapabilities: { signature: string; desc: string }[] = [
+  { signature: 'ctx.app(name)', desc: '调用目标应用（get / post / health）' },
+  { signature: 'ctx.secret(key)', desc: '读取该应用已配置的密钥' }
+]
+
+/**
+ * console 的归属要在表单里点一句，否则用户会疑惑「我打的日志去哪了」。
+ * 函数任务的输出不接 Grafana，而是随执行记录保存（截断 4KB、只留最近 10 次）。
+ */
+const CONSOLE_NOTE = 'console.log / console.error 的输出会记入本次执行记录（最多 4KB）。'
+
+const functionTemplate = `  const app = ctx.app("xcron-cloud");
 
   const res = await app.post("/admin/cache/clear", {
     key: "rank_cache"
   });
 
-  return res;
-}`
+  console.log("缓存已清理", res);
+  return res;`
 
-const healthCheckTemplate = `export default async function handler(ctx) {
-  const app = ctx.app("kumo游服");
+// 检查不通过时直接抛错：本次执行被记为「故障」，由告警规则去通知，函数任务不自己发消息
+const healthCheckTemplate = `  const app = ctx.app("kumo游服");
   const status = await app.health();
 
   if (!status.ok) {
-    await ctx.notify.dingTalk("kumo游服健康检查失败");
+    console.error("kumo游服健康检查失败", status);
+    throw new Error("health check failed: " + status.reason);
   }
 
-  return status;
-}`
+  return status;`
 
 const appOptions = demoApps.map((app) => ({
   value: app.name,
   label: `${app.name}（${app.tags.join('、')}）`
 }))
-
-const runtimeOptions = [{ value: 'Node.js 20', label: 'Node.js 20' }]
 
 const imageRepoOptions = [
   { value: 'proxyman', label: 'proxyman' },
@@ -193,7 +235,12 @@ const expressionKindOptions: { label: string; value: ExpressionKind; defaults: s
 
 let historyCounter = 0
 
-function createHistory(status: CronJobStatus, message: string, image: Record<string, string> = {}): CronJobHistory {
+function createHistory(
+  status: CronJobStatus,
+  message: string,
+  image: Record<string, string> = {},
+  output?: string
+): CronJobHistory {
   historyCounter += 1
   const endAt = dayjs().unix() - historyCounter * 900
 
@@ -203,7 +250,8 @@ function createHistory(status: CronJobStatus, message: string, image: Record<str
     endAt: status === 'progressing' ? 0 : endAt,
     status,
     message,
-    image
+    image,
+    output
   }
 }
 
@@ -212,7 +260,13 @@ function createFunctionTestResult(status: CronJobStatus): TestRunResult {
 
   return {
     status,
-    message: ok ? '测试运行成功' : '测试运行失败'
+    message: ok ? '测试运行成功' : '测试运行失败',
+    durationMs: ok ? 412 : 265,
+    returnValue: ok ? JSON.stringify({ ok: true, cleared: 128 }, null, 2) : undefined,
+    errorSummary: ok ? undefined : 'RequestError: POST /admin/cache/clear 返回 500 (Internal Server Error)',
+    output: ok
+      ? '缓存已清理 { ok: true, cleared: 128 }'
+      : '缓存已清理前置检查通过\nRequestError: POST /admin/cache/clear 返回 500'
   }
 }
 
@@ -221,7 +275,10 @@ function createContainerTestResult(status: CronJobStatus): TestRunResult {
 
   return {
     status,
-    message: ok ? '测试运行成功' : '测试运行失败'
+    message: ok ? '测试运行成功' : '测试运行失败',
+    durationMs: ok ? 8320 : 5140,
+    returnValue: ok ? '容器退出码 0' : undefined,
+    errorSummary: ok ? undefined : '容器退出码 1：ENTRYPOINT 执行失败'
   }
 }
 
@@ -234,13 +291,17 @@ const initialFunctionTasks: FunctionTask[] = [
     expression: '',
     jobType: 'manual',
     code: functionTemplate,
-    input: JSON.stringify({ key: 'rank_cache' }, null, 2),
     timeoutSeconds: 60,
-    notifyOnFailure: true,
+    concurrencyPolicy: 'Forbid',
     switchOn: true,
     histories: [
-      createHistory('complete', '清理应用缓存完成'),
-      createHistory('failed', '应用接口返回 500'),
+      createHistory('complete', '清理应用缓存完成', {}, '缓存已清理 { ok: true, cleared: 128 }'),
+      createHistory(
+        'failed',
+        '应用接口返回 500',
+        {},
+        '开始清理 rank_cache\nRequestError: POST /admin/cache/clear 返回 500\n... 输出已截断，仅保留最后 4KB'
+      ),
       createHistory('complete', '清理应用缓存完成'),
       createHistory('complete', '清理应用缓存完成'),
       createHistory('suspend', '上次任务仍在运行，本次跳过'),
@@ -259,12 +320,11 @@ const initialFunctionTasks: FunctionTask[] = [
     expression: DEFAULT_EXPRESSION,
     jobType: 'scheduled',
     code: healthCheckTemplate,
-    input: JSON.stringify({ notify: true }, null, 2),
     timeoutSeconds: 120,
-    notifyOnFailure: true,
+    concurrencyPolicy: 'Forbid',
     switchOn: true,
     histories: [
-      createHistory('complete', '健康检查完成'),
+      createHistory('complete', '健康检查完成', {}, 'health ok: { ok: true, latencyMs: 42 }'),
       createHistory('complete', '健康检查完成'),
       createHistory('complete', '健康检查完成'),
       createHistory('progressing', '任务执行中'),
@@ -340,6 +400,9 @@ export default function Task(): React.ReactElement {
   const [detailState, setDetailState] = useState<DetailState>(null)
   const [deleteState, setDeleteState] = useState<DeleteState>(null)
   const [switchState, setSwitchState] = useState<SwitchState>(null)
+  // 手动执行 / 保存 均需二次确认：函数代码可以对目标应用做任意操作，风险不低于容器任务部署
+  const [runState, setRunState] = useState<TaskItem | null>(null)
+  const [saveConfirmKind, setSaveConfirmKind] = useState<TaskKind | null>(null)
   const [functionTestRunning, setFunctionTestRunning] = useState(false)
   const [functionTestResult, setFunctionTestResult] = useState<TestRunResult | null>(null)
   const [containerTestRunning, setContainerTestRunning] = useState(false)
@@ -370,9 +433,8 @@ export default function Task(): React.ReactElement {
       runtime: 'Node.js 20',
       expression: DEFAULT_EXPRESSION,
       code: functionTemplate,
-      input: JSON.stringify({ key: 'rank_cache' }, null, 2),
-      timeoutSeconds: 60,
-      notifyOnFailure: true
+        timeoutSeconds: 60,
+      concurrencyPolicy: 'Forbid'
     })
   }
 
@@ -410,9 +472,8 @@ export default function Task(): React.ReactElement {
         runtime: task.runtime,
         expression: task.expression,
         code: task.code,
-        input: task.input,
         timeoutSeconds: task.timeoutSeconds,
-        notifyOnFailure: task.notifyOnFailure
+        concurrencyPolicy: task.concurrencyPolicy
       })
     } else {
       containerForm.setFieldsValue({
@@ -439,6 +500,13 @@ export default function Task(): React.ReactElement {
     clearTaskEditorResult()
   }
 
+  /** 先校验再弹二次确认，避免用户在确认框里才看到校验错误 */
+  const requestSave = async (kind: TaskKind) => {
+    if (kind === 'function') await functionForm.validateFields()
+    else await containerForm.validateFields()
+    setSaveConfirmKind(kind)
+  }
+
   const submitFunctionTask = async () => {
     const values = await functionForm.validateFields()
     const nextTask: FunctionTaskItem = {
@@ -450,9 +518,8 @@ export default function Task(): React.ReactElement {
       expression: values.expression,
       jobType: values.expression === '' ? 'manual' : 'scheduled',
       code: values.code,
-      input: values.input,
       timeoutSeconds: values.timeoutSeconds,
-      notifyOnFailure: values.notifyOnFailure,
+      concurrencyPolicy: values.expression === '' ? 'Forbid' : values.concurrencyPolicy,
       switchOn: editingFunctionTask?.switchOn ?? true,
       histories: editingFunctionTask?.histories ?? [createHistory('complete', '函数任务执行完成')]
     }
@@ -461,6 +528,7 @@ export default function Task(): React.ReactElement {
       if (!editingFunctionTask) return [nextTask, ...prev]
       return prev.map((item) => (item.kind === 'function' && item.id === editingFunctionTask.id ? nextTask : item))
     })
+    setSaveConfirmKind(null)
     closeTaskDrawer()
     functionForm.resetFields()
     message.success(editingFunctionTask ? '函数任务已更新' : '函数任务已创建')
@@ -501,6 +569,7 @@ export default function Task(): React.ReactElement {
       if (!editingContainerTask) return [nextTask, ...prev]
       return prev.map((item) => (item.kind === 'container' && item.id === editingContainerTask.id ? nextTask : item))
     })
+    setSaveConfirmKind(null)
     closeTaskDrawer()
     containerForm.resetFields()
     message.success(editingContainerTask ? '容器任务已更新' : '容器任务已创建')
@@ -539,6 +608,13 @@ export default function Task(): React.ReactElement {
       return { ...item, histories: [record, ...item.histories].slice(0, 10) }
     }))
     message.success('任务已触发执行')
+  }
+
+  const confirmRun = () => {
+    if (!runState) return
+    if (runState.kind === 'function') runFunctionTask(runState)
+    else runContainerTask(runState)
+    setRunState(null)
   }
 
   const updateSwitch = (next: SwitchState) => {
@@ -612,10 +688,7 @@ export default function Task(): React.ReactElement {
             <Button
               type="link"
               size="small"
-              onClick={() => {
-                if (record.kind === 'function') runFunctionTask(record)
-                else runContainerTask(record)
-              }}
+              onClick={() => setRunState(record)}
               style={{ paddingInline: 0 }}
             >
               执行任务
@@ -663,7 +736,7 @@ export default function Task(): React.ReactElement {
           showIcon
           type="info"
           message="任务类型"
-          description="列表统一展示函数任务和容器任务。新增任务时选择类型后，编辑页会展示对应配置项：函数任务运行平台 Runner 代码，容器任务使用镜像版本、ENTRYPOINT 和执行计划。"
+          description="列表统一展示函数任务和容器任务。函数任务只需贴一段函数体，handler 外壳与 ctx 能力由平台提供，最小间隔 1 分钟；容器任务沿用镜像版本、ENTRYPOINT 和执行计划，最小间隔 10 分钟。"
         />
 
         <Card
@@ -692,13 +765,21 @@ export default function Task(): React.ReactElement {
         destroyOnClose
         footer={
           <Space>
-            <Button
-              onClick={taskKind === 'function' ? testRunFunctionTask : testRunContainerTask}
-              loading={taskKind === 'function' ? functionTestRunning : containerTestRunning}
+            <Tooltip
+              title={
+                taskKind === 'function'
+                  ? '测试运行执行的是同一段逻辑，对目标应用产生的副作用（清缓存、改配置等）是真实的，只是不写入正式执行记录。'
+                  : '测试运行会真实拉起一次容器，只是不写入正式执行记录。'
+              }
             >
-              测试运行
-            </Button>
-            <Button type="primary" onClick={taskKind === 'function' ? submitFunctionTask : submitContainerTask}>确 定</Button>
+              <Button
+                onClick={taskKind === 'function' ? testRunFunctionTask : testRunContainerTask}
+                loading={taskKind === 'function' ? functionTestRunning : containerTestRunning}
+              >
+                测试运行
+              </Button>
+            </Tooltip>
+            <Button type="primary" onClick={() => requestSave(taskKind)}>确 定</Button>
             <Button onClick={closeTaskDrawer}>关 闭</Button>
           </Space>
         }
@@ -729,9 +810,8 @@ export default function Task(): React.ReactElement {
                 runtime: 'Node.js 20',
                 expression: DEFAULT_EXPRESSION,
                 code: functionTemplate,
-                input: JSON.stringify({ key: 'rank_cache' }, null, 2),
-                timeoutSeconds: 60,
-                notifyOnFailure: true
+                            timeoutSeconds: 60,
+                concurrencyPolicy: 'Forbid'
               }}
             >
               <Form.Item
@@ -755,58 +835,92 @@ export default function Task(): React.ReactElement {
                 </Space.Compact>
               </Form.Item>
 
-              <Form.Item label="运行时" name="runtime" rules={[{ required: true }]}>
-                <Select options={runtimeOptions} />
-              </Form.Item>
-
               <Form.Item
                 label="执行计划"
                 name="expression"
                 required
                 extra={functionExpression ? <ExpressionPreview value={functionExpression} /> : null}
-                rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
+                rules={[{ validator: (_, value: string | undefined) => validateExpression(value, FUNCTION_MIN_INTERVAL_MINUTES) }]}
               >
                 <CronExpressionSelect
+                  minIntervalMinutes={FUNCTION_MIN_INTERVAL_MINUTES}
                   disabled={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
                   restrictToManualMode={!!editingFunctionTask && editingFunctionTask.jobType === 'manual'}
                   restrictToScheduledMode={!!editingFunctionTask && editingFunctionTask.jobType === 'scheduled'}
                 />
               </Form.Item>
 
+              {functionExpression !== '' && (
+                <Form.Item
+                  name="concurrencyPolicy"
+                  label={<QuestionLabel title="上一次还没跑完时本次怎么处理。选择「阻止并发」时被跳过的执行会在执行状态里记为「跳过」。">并发逻辑</QuestionLabel>}
+                >
+                  <Select options={concurrentPolicyOptions} />
+                </Form.Item>
+              )}
+
               <Form.Item
-                label="函数代码"
-                name="code"
-                rules={[
-                  { required: true, message: '请输入函数代码' },
+                label={<QuestionLabel title={<FunctionCodeHelp />}>函数逻辑</QuestionLabel>}
+                required
+              >
+                <div style={{ border: '1px solid #d9d9d9', borderRadius: 8, overflow: 'hidden' }}>
+                  <ScaffoldLine>{HANDLER_PREFIX}<ScaffoldHint>平台生成，不可编辑</ScaffoldHint></ScaffoldLine>
+                  <Form.Item
+                    name="code"
+                    noStyle
+                    rules={[
+                      { required: true, message: '请输入函数逻辑' },
+                      { validator: (_, value: string) => validateFunctionBody(value) }
+                    ]}
+                  >
+                    <TextArea
+                      rows={11}
+                      variant="borderless"
+                      placeholder="  // 在这里写逻辑，可直接使用 ctx"
+                      style={{
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        borderRadius: 0
+                      }}
+                    />
+                  </Form.Item>
+                  <ScaffoldLine>{HANDLER_SUFFIX}</ScaffoldLine>
+                </div>
+              </Form.Item>
+
+              <Collapse
+                ghost
+                items={[
                   {
-                    validator: (_, value: string) => {
-                      if (!value || value.includes('handler')) return Promise.resolve()
-                      return Promise.reject(new Error('代码中需要包含 handler 函数'))
-                    }
+                    key: 'advanced',
+                    label: '高级设置',
+                    children: (
+                      <Flex vertical>
+                        <Form.Item label="运行时">
+                          <Input disabled value="Node.js 20" style={{ width: 200 }} />
+                        </Form.Item>
+                        <Form.Item label="超时时间" required>
+                          <Space.Compact>
+                            <Form.Item name="timeoutSeconds" noStyle rules={[{ required: true, message: '请输入超时时间' }]}>
+                              <InputNumber min={10} max={600} />
+                            </Form.Item>
+                            <DisabledLabel>秒</DisabledLabel>
+                          </Space.Compact>
+                        </Form.Item>
+
+                        {/*
+                          本期不做任何失败通知：ctx 不含通知方法、表单不设开关、平台也不上报指标。
+                          用户在列表的「执行状态」和「查看记录」里自行查看结果。
+                        */}
+                      </Flex>
+                    )
                   }
                 ]}
-                extra="函数任务不会暴露接口；它在平台 Runner 中执行，并通过 ctx.app 调用所选应用。"
-              >
-                <TextArea rows={12} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
-              </Form.Item>
+              />
 
-              <Form.Item label="测试入参 JSON" name="input" rules={[{ validator: (_, value) => validateJson(value) }]}>
-                <TextArea rows={5} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }} />
+              {/* 运行时字段被隐藏进高级设置，但仍需提交，用隐藏项占位 */}
+              <Form.Item name="runtime" hidden>
+                <Input />
               </Form.Item>
-
-              <Space size={16} style={{ width: '100%' }} align="start">
-                <Form.Item label="超时时间" required>
-                  <Space.Compact>
-                    <Form.Item name="timeoutSeconds" noStyle rules={[{ required: true, message: '请输入超时时间' }]}>
-                      <InputNumber min={10} max={600} />
-                    </Form.Item>
-                    <DisabledLabel>秒</DisabledLabel>
-                  </Space.Compact>
-                </Form.Item>
-                <Form.Item label="失败通知" name="notifyOnFailure" valuePropName="checked">
-                  <Switch checkedChildren="ON" unCheckedChildren="OFF" />
-                </Form.Item>
-              </Space>
             </Form>
 
             {functionTestResult && (
@@ -876,9 +990,10 @@ export default function Task(): React.ReactElement {
                 name="expression"
                 required
                 extra={containerExpression ? <ExpressionPreview value={containerExpression} /> : null}
-                rules={[{ validator: (_, value: string | undefined) => validateExpression(value) }]}
+                rules={[{ validator: (_, value: string | undefined) => validateExpression(value, CONTAINER_MIN_INTERVAL_MINUTES) }]}
               >
                 <CronExpressionSelect
+                  minIntervalMinutes={CONTAINER_MIN_INTERVAL_MINUTES}
                   disabled={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
                   restrictToManualMode={!!editingContainerTask && editingContainerTask.jobType === 'manual'}
                   restrictToScheduledMode={!!editingContainerTask && editingContainerTask.jobType === 'scheduled'}
@@ -943,6 +1058,32 @@ export default function Task(): React.ReactElement {
       >
         确认删除该任务吗？
       </Modal>
+
+      <Modal
+        title={saveConfirmKind === 'function' ? '确认保存函数任务' : '确认保存容器任务'}
+        open={saveConfirmKind !== null}
+        okText="确认保存"
+        cancelText="返回修改"
+        onOk={saveConfirmKind === 'function' ? submitFunctionTask : submitContainerTask}
+        onCancel={() => setSaveConfirmKind(null)}
+      >
+        <SaveConfirmSummary
+          kind={saveConfirmKind}
+          functionValues={functionForm.getFieldsValue()}
+          containerValues={containerForm.getFieldsValue()}
+        />
+      </Modal>
+
+      <Modal
+        title="执行任务"
+        open={runState !== null}
+        okText="立即执行"
+        cancelText="取消"
+        onOk={confirmRun}
+        onCancel={() => setRunState(null)}
+      >
+        {runState && <RunConfirmSummary task={runState} />}
+      </Modal>
     </div>
   )
 }
@@ -1002,21 +1143,174 @@ function TestRunResultPanel({ result }: { result: TestRunResult }) {
             size="small"
             items={[
               { key: 'result', label: '运行结果', children: <Tag color={ok ? 'success' : 'error'}>{resultText}</Tag> },
+              { key: 'duration', label: '耗时', children: `${result.durationMs} ms` },
               { key: 'message', label: '说明', children: result.message }
             ]}
             styles={{ label: { width: 80 } }}
           />
-          <Space>
-            <Typography.Text type="secondary">执行日志请前往</Typography.Text>
-            <Typography.Link target="_blank" href={GRAFANA_LINK}>Grafana</Typography.Link>
-          </Space>
+
+          {/* 回显返回值 / 异常摘要：只显示成功失败的话，测试运行没有调试价值 */}
+          {ok && result.returnValue ? (
+            <Flex vertical gap={6}>
+              <Typography.Text strong style={{ fontSize: 13 }}>返回值</Typography.Text>
+              <CodeBlock>{result.returnValue}</CodeBlock>
+            </Flex>
+          ) : null}
+
+          {!ok && result.errorSummary ? (
+            <Flex vertical gap={6}>
+              <Typography.Text strong style={{ fontSize: 13 }}>异常摘要</Typography.Text>
+              <CodeBlock>{result.errorSummary}</CodeBlock>
+            </Flex>
+          ) : null}
+
+          {result.output ? (
+            <Flex vertical gap={6}>
+              <Typography.Text strong style={{ fontSize: 13 }}>输出</Typography.Text>
+              <CodeBlock>{result.output}</CodeBlock>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                测试运行的输出不写入执行记录，关闭抽屉即丢弃。
+              </Typography.Text>
+            </Flex>
+          ) : null}
         </Flex>
       }
     />
   )
 }
 
-function QuestionLabel({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * 平台生成的 handler 外壳，展示为不可编辑的灰色代码行。
+ * 这只是在线编辑模式的便利：真正的契约是「导出一个 handler(ctx)」，
+ * 以后支持上传代码包时用户自己写 handler，这里不再出现外壳。
+ */
+function ScaffoldLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: '6px 12px',
+        background: 'rgba(0,0,0,0.03)',
+        color: 'rgba(0,0,0,0.45)',
+        fontSize: 13,
+        userSelect: 'none',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function ScaffoldHint({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontFamily: 'inherit' }}>{children}</span>
+  )
+}
+
+/**
+ * 「函数逻辑」的提示。只保留写代码时当场需要知道的三件事：
+ * 只写函数体、能用哪些能力、日志去哪。
+ *
+ * 有意不写进提示的内容（属于文档，不属于表单）：
+ * - 契约是「导出一个 handler(ctx)」、以后换成上传代码包时外壳不再出现 —— 见 HANDLER_PREFIX 注释
+ * - 关键字检查只是提示、真边界在运行时沙箱 —— 见 validateFunctionBody 注释
+ */
+function FunctionCodeHelp() {
+  return (
+    <Flex vertical gap={6} style={{ maxWidth: 340 }}>
+      <div>只写函数体，外层 <code>handler(ctx)</code> 由平台生成。</div>
+      <div>
+        不支持 import，可用能力：
+        <ul style={{ margin: '2px 0 0', paddingLeft: 16 }}>
+          {ctxCapabilities.map((item) => (
+            <li key={item.signature}>
+              <code>{item.signature}</code> — {item.desc}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>{CONSOLE_NOTE}</div>
+    </Flex>
+  )
+}
+
+function SaveConfirmSummary({
+  kind,
+  functionValues,
+  containerValues
+}: {
+  kind: TaskKind | null
+  functionValues: Partial<FunctionTaskFormValues>
+  containerValues: Partial<ContainerTaskFormValues>
+}) {
+  if (kind === 'function') {
+    const manual = functionValues.expression === ''
+    return (
+      <Flex vertical gap={12}>
+        <Text type="secondary">函数逻辑会以平台身份调用目标应用，请确认以下配置：</Text>
+        <Descriptions
+          column={1}
+          size="small"
+          items={[
+            { key: 'name', label: '名称', children: functionValues.name },
+            { key: 'app', label: '目标应用', children: functionValues.applicationName },
+            { key: 'expression', label: '执行计划', children: manual ? '手动执行' : formatExpression(functionValues.expression ?? '') },
+            ...(manual ? [] : [{ key: 'policy', label: '并发逻辑', children: viewConcurrentPolicy(functionValues.concurrencyPolicy) }]),
+            { key: 'timeout', label: '超时时间', children: `${functionValues.timeoutSeconds ?? '-'} 秒` }
+          ]}
+          styles={{ label: { width: 88 } }}
+        />
+      </Flex>
+    )
+  }
+
+  const manual = containerValues.expression === ''
+  return (
+    <Flex vertical gap={12}>
+      <Text type="secondary">请确认以下配置：</Text>
+      <Descriptions
+        column={1}
+        size="small"
+        items={[
+          { key: 'name', label: '名称', children: containerValues.name },
+          { key: 'image', label: '镜像版本', children: `${containerValues.imageRepoName ?? '-'}:${containerValues.tag ?? '-'}` },
+          { key: 'expression', label: '执行计划', children: manual ? '手动执行' : formatExpression(containerValues.expression ?? '') },
+          ...(manual ? [] : [{ key: 'policy', label: '并发逻辑', children: viewConcurrentPolicy(containerValues.concurrencyPolicy) }])
+        ]}
+        styles={{ label: { width: 88 } }}
+      />
+    </Flex>
+  )
+}
+
+function RunConfirmSummary({ task }: { task: TaskItem }) {
+  return (
+    <Flex vertical gap={12}>
+      <Text>
+        {task.kind === 'function'
+          ? '将立即执行该函数任务，对目标应用产生的副作用是真实的。'
+          : '将立即执行该容器任务。'}
+      </Text>
+      <Descriptions
+        column={1}
+        size="small"
+        items={[
+          { key: 'kind', label: '类型', children: <TaskKindTag kind={task.kind} /> },
+          { key: 'name', label: '名称', children: task.name },
+          task.kind === 'function'
+            ? { key: 'app', label: '目标应用', children: task.applicationName }
+            : { key: 'image', label: '镜像版本', children: `${task.imageRepoName}:${task.tag}` }
+        ]}
+        styles={{ label: { width: 88 } }}
+      />
+    </Flex>
+  )
+}
+
+function QuestionLabel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <Space size={4}>
       <span>{children}</span>
@@ -1072,13 +1366,15 @@ function CronExpressionSelect({
   value,
   onChange,
   restrictToManualMode,
-  restrictToScheduledMode
+  restrictToScheduledMode,
+  minIntervalMinutes = CONTAINER_MIN_INTERVAL_MINUTES
 }: {
   disabled?: boolean
   value?: string
   onChange?: (value: string) => void
   restrictToManualMode?: boolean
   restrictToScheduledMode?: boolean
+  minIntervalMinutes?: number
 }) {
   // 原型里手写轻量版执行计划控件，字段值与生产 cronjob 的 expression 保持一致。
   const expression = value ?? DEFAULT_EXPRESSION
@@ -1155,10 +1451,10 @@ function CronExpressionSelect({
               <InputNumber
                 disabled={disabled}
                 value={intervalValue}
-                min={intervalUnit === 0 ? 10 : 1}
+                min={intervalUnit === 0 ? minIntervalMinutes : 1}
                 max={intervalUnit === 0 ? 59 : 23}
                 onChange={(v) => {
-                  const nextValue = String(v ?? (intervalUnit === 0 ? 10 : 1))
+                  const nextValue = String(v ?? (intervalUnit === 0 ? minIntervalMinutes : 1))
                   onChange?.(intervalUnit === 1 ? `0 */${nextValue} * * *` : `*/${nextValue} * * * *`)
                 }}
               />
@@ -1171,7 +1467,7 @@ function CronExpressionSelect({
                   { label: '小时', value: 1 }
                 ]}
                 onChange={(unit) => {
-                  const nextValue = String(intervalValue || 10)
+                  const nextValue = String(unit === 0 ? Math.max(intervalValue || minIntervalMinutes, minIntervalMinutes) : intervalValue || 1)
                   onChange?.(unit === 1 ? `0 */${nextValue} * * *` : `*/${nextValue} * * * *`)
                 }}
               />
@@ -1255,7 +1551,11 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
         { key: 'name', label: '名称', children: detail.name },
         { key: 'applicationName', label: '目标应用', children: detail.applicationName },
         { key: 'runtime', label: '运行时', children: detail.runtime },
-        { key: 'expression', label: '执行计划', children: detail.jobType === 'manual' ? '手动执行' : formatExpression(detail.expression) }
+        { key: 'expression', label: '执行计划', children: detail.jobType === 'manual' ? '手动执行' : formatExpression(detail.expression) },
+        ...(detail.jobType !== 'manual'
+          ? [{ key: 'concurrencyPolicy', label: '并发逻辑', children: viewConcurrentPolicy(detail.concurrencyPolicy) }]
+          : []),
+        { key: 'timeout', label: '超时时间', children: `${detail.timeoutSeconds} 秒` }
       ]
     : [
         { key: 'kind', label: '类型', children: <TaskKindTag kind={detail.kind} /> },
@@ -1274,12 +1574,14 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
       {isFunction ? (
         <>
           <Flex vertical gap={12}>
-            <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>函数代码</Typography.Title>
-            <CodeBlock>{detail.code}</CodeBlock>
-          </Flex>
-          <Flex vertical gap={12}>
-            <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>测试入参</Typography.Title>
-            <CodeBlock>{detail.input}</CodeBlock>
+            <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 0 }}>
+              <QuestionLabel title="灰色部分是平台生成的 handler 外壳，用户只维护函数体。">函数逻辑</QuestionLabel>
+            </Typography.Title>
+            <div>
+              <ScaffoldLine>{HANDLER_PREFIX}</ScaffoldLine>
+              <CodeBlock>{detail.code}</CodeBlock>
+              <ScaffoldLine>{HANDLER_SUFFIX}</ScaffoldLine>
+            </div>
           </Flex>
         </>
       ) : (
@@ -1319,15 +1621,38 @@ function TaskDetail({ detail }: { detail: Exclude<DetailState, null> }) {
           dataSource={detail.histories}
           pagination={false}
           scroll={{ x: 'max-content' }}
+          expandable={
+            isFunction
+              ? {
+                  // 函数任务的输出随执行记录保存，展开即看，不再跳 Grafana
+                  rowExpandable: (record) => !!record.output,
+                  expandedRowRender: (record) => <HistoryOutput output={record.output} />
+                }
+              : undefined
+          }
         />
-        <Space>
-          <Typography.Text>更多信息请前往</Typography.Text>
-          <Typography.Link target="_blank" href={GRAFANA_LINK}>Grafana</Typography.Link>
-        </Space>
+        {isFunction ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            展开某次执行可查看该次的 console 输出（最多 4KB，仅保留最近 10 次）。
+          </Typography.Text>
+        ) : (
+          <Space>
+            <Typography.Text>更多信息请前往</Typography.Text>
+            <Typography.Link target="_blank" href={GRAFANA_LINK}>Grafana</Typography.Link>
+          </Space>
+        )}
       </Flex>
 
     </Flex>
   )
+}
+
+/** 执行记录展开后的输出。截断提示由后端在内容末尾追加，前端原样展示 */
+function HistoryOutput({ output }: { output?: string }) {
+  if (!output) {
+    return <Text type="secondary" style={{ fontSize: 12 }}>本次执行没有输出。</Text>
+  }
+  return <CodeBlock>{output}</CodeBlock>
 }
 
 function TimeDisplay({ timestamp }: { timestamp: number }) {
@@ -1436,7 +1761,7 @@ function toNumber(value: string) {
   return Number.isNaN(n) ? undefined : n
 }
 
-function validateExpression(value?: string) {
+function validateExpression(value?: string, minIntervalMinutes = CONTAINER_MIN_INTERVAL_MINUTES) {
   if (value === null || value === undefined) {
     return Promise.reject(new Error('请选择执行计划'))
   }
@@ -1447,21 +1772,45 @@ function validateExpression(value?: string) {
     return Promise.reject(new Error('无法解析Cron表达式'))
   }
 
-  if (/^\*\/\d+ \* \* \* \*$/.test(value) && readInterval(fields[0]) < 10) {
-    return Promise.reject(new Error('平台设定最小运行间隔为10分钟。小于10 min时、请使用使用其他功能。如：函数计算'))
+  if (/^\*\/\d+ \* \* \* \*$/.test(value) && readInterval(fields[0]) < minIntervalMinutes) {
+    // 容器任务仍是 10 分钟；函数任务跑在托管 Runner 上，下限放开到 1 分钟
+    return Promise.reject(
+      new Error(
+        minIntervalMinutes > 1
+          ? `容器任务的最小运行间隔为 ${minIntervalMinutes} 分钟。需要更短间隔请改用函数任务。`
+          : `最小运行间隔为 ${minIntervalMinutes} 分钟。`
+      )
+    )
   }
 
   return Promise.resolve()
 }
 
-function validateJson(value?: string) {
+/**
+ * 在线编辑模式下的关键字检查。
+ * 注意：这只是提前给用户的提示，字符串拼接、Function() 反射等手法都能绕过；
+ * 真正的隔离边界必须由运行时沙箱保证。
+ */
+function validateFunctionBody(value?: string) {
   if (!value) return Promise.resolve()
-  try {
-    JSON.parse(value)
-    return Promise.resolve()
-  } catch {
-    return Promise.reject(new Error('请输入合法 JSON'))
+
+  const banned: { pattern: RegExp; hint: string }[] = [
+    { pattern: /(^|[^\w.])import\s*\(/, hint: '动态 import()' },
+    { pattern: /(^|[^\w.])import\s+[\w{*]/, hint: 'ESM 静态导入' },
+    { pattern: /(^|[^\w.])require\s*\(/, hint: 'CommonJS require()' },
+    { pattern: /from\s+['"]\.{1,2}\//, hint: '相对路径文件引用' }
+  ]
+
+  const hit = banned.find((item) => item.pattern.test(value))
+  if (hit) {
+    return Promise.reject(new Error(`在线编辑模式暂不支持${hit.hint}，请使用平台提供的 ctx 能力`))
   }
+
+  if (new Blob([value]).size > 64 * 1024) {
+    return Promise.reject(new Error('函数逻辑不能超过 64KB'))
+  }
+
+  return Promise.resolve()
 }
 
 function viewConcurrentPolicy(value?: ConcurrentPolicy) {

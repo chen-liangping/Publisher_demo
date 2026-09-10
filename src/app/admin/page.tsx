@@ -27,6 +27,7 @@ import OperationLog from '../../components/Admin/OperationLog'
 import GameFaroConfig from '../../components/Admin/GameFaroConfig'
 import SSLManagement from '../../components/Admin/SSLManagement'
 import ProcessManagerMonitor from '../../components/Admin/ProcessManagerMonitor'
+import PlatformResourceMonitor from '../../components/Admin/PlatformResourceMonitor'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
@@ -44,6 +45,7 @@ type AdminMenuKey =
   | 'game-faro-config'
   | 'ssl-management'
   | 'process-manager-monitor'
+  | 'platform-resource-monitor'
 
 export default function AdminPage() {
   const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
@@ -90,6 +92,8 @@ export default function AdminPage() {
         return <SSLManagement />
       case 'process-manager-monitor':
         return <ProcessManagerMonitor />
+      case 'platform-resource-monitor':
+        return <PlatformResourceMonitor />
       default:
         return <GameManagement />
     }
@@ -210,6 +214,12 @@ export default function AdminPage() {
                 icon: <MonitorOutlined />,
                 label: '监控',
                 children: [
+                  {
+                    key: 'platform-resource-monitor',
+                    icon: <MonitorOutlined />,
+                    label: '资源使用率监控',
+                    onClick: () => handleMenuClick('platform-resource-monitor')
+                  },
                   {
                     key: 'process-manager-monitor',
                     icon: <MonitorOutlined />,

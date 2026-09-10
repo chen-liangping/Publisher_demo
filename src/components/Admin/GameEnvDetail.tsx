@@ -995,6 +995,18 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
     }
   }, [gameConfig.testInit.clientStatus, gameConfig.testInit.serverStatus])
 
+  React.useEffect(() => {
+    // 产品意图：把“正式环境是否完成初始化”同步到全局，供顶栏环境切换弹窗做前置判断。
+    // 顶栏“仅初始化，不迁移数据”/“初始化并迁移数据”选择也会直接写这个 key（快捷初始化入口），
+    // 二者共用同一个 key，谁先完成谁先置位，互不冲突。
+    const isProdEnvInitialized =
+      gameConfig.prodInit.clientStatus === 'completed' &&
+      gameConfig.prodInit.serverStatus === 'completed'
+    if (typeof window !== 'undefined' && isProdEnvInitialized) {
+      window.localStorage.setItem('publisher_demo_prod_env_initialized', '1')
+    }
+  }, [gameConfig.prodInit.clientStatus, gameConfig.prodInit.serverStatus])
+
   // 顶层 Tab：游戏初始化 | 资源限额配置 | 自动开服配置 | MSE配置 | Lambda模版
   const [activeMainTab, setActiveMainTab] = useState<string>('init')
   // 限额 / 开服失败 / MSE / Lambda 编辑态：null 表示未编辑，'test'|'prod' 表示正在编辑该环境
