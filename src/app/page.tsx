@@ -58,6 +58,8 @@ import PeopleManagement from '../components/nofication/PeopleManagement'
 import MessageNotification from '../components/nofication/MessageNotification'
 import CdnAlert from '../components/alert/CdnAlert'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { hydrateFromStorage, useCredential } from '../components/Admin/credential-ban/mock'
+import { DEMO_APP_IDS } from '../components/Admin/credential-ban/types'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -104,8 +106,18 @@ export default function Home() {
   // 开启公网时生成的系统托管转发策略
   const [systemManagedPolicies, setSystemManagedPolicies] = useState<SystemForwardingPolicy[]>([])
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
-  // 顶栏：项目选择（原型中用于模拟多项目切换）
-  const [selectedProject, setSelectedProject] = useState<'Publisher' | 'Omni' | 'Doraemon' | 'core' | 'Shinchan'>('Publisher')
+  // 顶栏：appId 切换（与管理后台「平台游戏」列表是同一份 appId）
+  const [selectedGameAppId, setSelectedGameAppId] = useState<string>(DEMO_APP_IDS[0])
+
+  // 用户侧封禁态：当前 appId 被管理后台封禁后，本页进入只读锁定。
+  // 轮转后的「旧资源只读」需要按资源创建时间逐条判定，原型的 mock 数据没有这一维度，
+  // 因此这里只覆盖封禁态的整页锁定，旧资源只读的规则见 PRD 七、轮转密钥。
+  const credential = useCredential(selectedGameAppId)
+  const isBanned = credential.status === 'BANNED'
+  useEffect(() => {
+    // 管理后台是独立标签页，这里恢复本地状态并订阅它的变更
+    hydrateFromStorage()
+  }, [])
   // 顶栏：环境开关（默认必须有值，避免空状态；仅区分测试/正式，符合原型常见入口）
   const [isProdEnv, setIsProdEnv] = useState<boolean>(false)
   // 顶栏环境切换前置：仅当测试环境初始化完成后，才允许切换到正式环境。
@@ -350,20 +362,14 @@ export default function Home() {
       >
         {/* 左侧：项目选择 + 模式切换（容器/虚机） + 主导航 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
-          {/* 交互：切换项目（模拟多项目） */}
+          {/* 交互：切换 appId（与管理后台平台游戏列表同一份数据） */}
           <Dropdown
             trigger={['click']}
             menu={{
-              items: ([
-                { key: 'Publisher', label: 'Publisher' },
-                { key: 'Omni', label: 'Omni' },
-                { key: 'Doraemon', label: 'Doraemon' },
-                { key: 'core', label: 'core' },
-                { key: 'Shinchan', label: 'Shinchan' }
-              ] as const).map((p) => ({
-                key: p.key,
-                label: p.label,
-                onClick: () => setSelectedProject(p.key)
+              items: DEMO_APP_IDS.map((appId) => ({
+                key: appId,
+                label: appId,
+                onClick: () => setSelectedGameAppId(appId)
               }))
             }}
           >
@@ -376,7 +382,7 @@ export default function Home() {
                 cursor: 'pointer',
                 border: 'none'
               }}
-              aria-label="选择项目"
+              aria-label="选择 App ID"
               onMouseEnter={(e) => {
                 ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'
               }}
@@ -384,7 +390,7 @@ export default function Home() {
                 ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'
               }}
             >
-              <span style={{ fontWeight: 600, color: '#111827' }}>{selectedProject}</span>
+              <span style={{ fontWeight: 600, color: '#111827' }}>{selectedGameAppId}</span>
               <DownOutlined style={{ fontSize: 12, color: 'rgba(17, 24, 39, 0.45)' }} />
             </button>
           </Dropdown>
@@ -654,7 +660,7 @@ export default function Home() {
                 // 交互：启动游戏（真实业务效果：打开确认弹窗）
                 Modal.confirm({
                   title: '启动游戏（示例）',
-                  content: `项目：${selectedProject}；环境：${envLabel}。确认后将模拟打开新标签页启动游戏。`,
+                  content: `App ID：${selectedGameAppId}；环境：${envLabel}。确认后将模拟打开新标签页启动游戏。`,
                   okText: '确认启动',
                   cancelText: '取消',
                   onOk: () => {
@@ -911,7 +917,18 @@ export default function Home() {
               borderRadius: 0
             }}
           >
-            {renderContent()}
+            {/*
+              只读锁定层：封禁后内容区全部写操作置灰，左侧菜单与顶栏不受影响——
+              菜单不隐藏、查看类功能（列表、详情、日志、监控）全部保留，只是不能改。
+              用户侧不展示封禁横幅，也不暴露封禁原因 / 操作人 / 封禁时间，只表现为操作不可用；
+              title 挂在容器上：子元素 pointer-events 为 none 时 hover 会落到容器，显示中性提示。
+            */}
+            <div
+              className={isBanned ? 'game-readonly' : ''}
+              title={isBanned ? '当前不可操作，请联系平台对接人' : undefined}
+            >
+              {renderContent()}
+            </div>
           </Content>
         </Layout>
       </Layout>

@@ -12,11 +12,13 @@
  * 备注：数据均为前端 mock，用于原型展示。
  */
 
-import React, { useState } from 'react'
-import { Card, Table, Input, Typography, Button, Space, Modal, message, Select, Avatar, Radio, Progress, Alert } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { Card, Table, Input, Typography, Button, Space, Modal, message, Select, Avatar, Radio, Progress, Alert, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import GameEnvDetail from './GameEnvDetail'
 import { PlusOutlined, CheckOutlined, FileSearchOutlined } from '@ant-design/icons'
+import { hydrateFromStorage, seedApps, useCredentialStore } from './credential-ban/mock'
+import { statusLabel, statusTagStyle, type CredentialStatus } from './credential-ban/types'
 
 const { Title, Text } = Typography
 
@@ -477,9 +479,24 @@ export default function GameManagement() {
   // 搜索关键字（按 appId 过滤）
   const [keyword, setKeyword] = useState<string>('')
 
+  // 凭证状态筛选：默认「全部」，对应 PRD 一、平台游戏列表 · 状态展示 规则 3
+  const [statusFilter, setStatusFilter] = useState<CredentialStatus | 'ALL'>('ALL')
+
+  // 订阅凭证状态 store：封禁 / 解封 / 轮转后列表状态实时刷新
+  const credentialStore = useCredentialStore()
+  useEffect(() => {
+    // 先从本地恢复（含用户侧标签页的变更），再为缺失的 appId 预填充正常态数据
+    hydrateFromStorage()
+    seedApps(games.map(game => game.appId))
+  }, [games])
+
+  const getStatus = (appId: string): CredentialStatus => credentialStore[appId]?.status ?? 'ACTIVE'
+
   // 过滤后的游戏数据
-  const filteredGames = games.filter(game =>
-    game.appId.toLowerCase().includes(keyword.toLowerCase())
+  const filteredGames = games.filter(
+    game =>
+      game.appId.toLowerCase().includes(keyword.toLowerCase()) &&
+      (statusFilter === 'ALL' || getStatus(game.appId) === statusFilter)
   )
 
   // 当前选中的游戏（用于切换到 GameEnvDetail）
@@ -541,6 +558,21 @@ export default function GameManagement() {
           </div>
         </Space>
       )
+    },
+    {
+      title: '状态',
+      key: 'credentialStatus',
+      width: 140,
+      render: (_value, record) => {
+        // 列表只展示状态、不提供封禁/解封入口，危险操作统一关进详情页的危险操作区
+        const status = getStatus(record.appId)
+        const tone = statusTagStyle[status]
+        return (
+          <Tag style={{ border: 0, borderRadius: 999, background: tone.bg, color: tone.color }}>
+            {statusLabel[status]}
+          </Tag>
+        )
+      }
     },
     {
       title: '部署方式',
@@ -631,6 +663,18 @@ export default function GameManagement() {
               ...Array.from(new Set(games.map(g => g.appId))).map(appId => ({ label: appId, value: appId }))
             ]}
           />
+          {/* 交互意图：风控同学可一屏筛出所有已封禁 / 轮转中的 appId */}
+          <Select<CredentialStatus | 'ALL'>
+            value={statusFilter}
+            onChange={setStatusFilter}
+            style={{ width: 140 }}
+            options={[
+              { label: '全部状态', value: 'ALL' },
+              { label: '正常', value: 'ACTIVE' },
+              { label: '已封禁', value: 'BANNED' },
+              { label: '旧资源只读', value: 'RESTRICTED' }
+            ]}
+          />
         </div>
         <Button onClick={() => setIsAddModalVisible(true)} type="primary" icon={<PlusOutlined />}>
           添加游戏
@@ -644,7 +688,8 @@ export default function GameManagement() {
         size="middle"
         pagination={{ pageSize: 10 }}
         rowKey="key"
-        scroll={{ x: 920 }}
+        scroll={{ x: 1040 }}
+        rowClassName={record => (getStatus(record.appId) === 'BANNED' ? 'game-row-banned' : '')}
       />
 
       <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>

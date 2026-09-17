@@ -40,6 +40,9 @@ import {
   PoweroffOutlined,
   ArrowLeftOutlined
 } from '@ant-design/icons'
+import BannedBanner from './credential-ban/BannedBanner'
+import CredentialBanPanel from './credential-ban/CredentialBanPanel'
+import { useCredential } from './credential-ban/mock'
 
 const { Title, Text } = Typography
 
@@ -1009,6 +1012,10 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
 
   // 顶层 Tab：游戏初始化 | 资源限额配置 | 自动开服配置 | MSE配置 | Lambda模版
   const [activeMainTab, setActiveMainTab] = useState<string>('init')
+
+  // 封禁态：决定顶部横幅与整页写操作是否锁定（PRD 四、封禁后的控制台表现）
+  const credential = useCredential(gameConfig.appId)
+  const isBanned = credential.status === 'BANNED'
   // 限额 / 开服失败 / MSE / Lambda 编辑态：null 表示未编辑，'test'|'prod' 表示正在编辑该环境
   const [quotaEditingEnv, setQuotaEditingEnv] = useState<EnvKey | null>(null)
   const [failureEditingEnv, setFailureEditingEnv] = useState<EnvKey | null>(null)
@@ -1478,6 +1485,21 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
         </div>
       </div>
 
+      {/* 已封禁时常驻红色横幅，不可关闭；工单号为空时不展示工单段 */}
+      {isBanned && credential.banInfo && (
+        <BannedBanner banInfo={credential.banInfo} onViewLog={() => setActiveMainTab('credential')} />
+      )}
+
+      {/*
+        只读锁定层：封禁后整页写操作置灰。
+        不逐个按钮改 disabled——写操作分散在各 Tab 上百个入口，这里用一个容器类统一锁掉，
+        再用 data-ban-exempt 白名单放行「凭证与封禁」区块（解封入口必须可用）与 Tab 头（查看类保留）。
+        title 挂在容器上：子元素 pointer-events 为 none 时，hover 会落到容器并显示禁用原因。
+      */}
+      <div
+        className={isBanned ? 'game-readonly' : ''}
+        title={isBanned ? '该游戏已封禁，解封后可操作' : undefined}
+      >
       {/* 顶层 Tab：每个 Tab 内区分测试环境和正式环境 */}
       <Tabs
         activeKey={activeMainTab}
@@ -3090,9 +3112,15 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
         </Card>
               </Space>
             )
+          },
+          {
+            key: 'credential',
+            label: '凭证与封禁',
+            children: <CredentialBanPanel appId={gameConfig.appId} />
           }
         ]}
       />
+      </div>
 
       {/* 初始化配置二次确认弹窗 */}
       <Modal
