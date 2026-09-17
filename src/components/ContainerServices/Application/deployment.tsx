@@ -38,6 +38,7 @@ import {
   RobotOutlined
 } from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
+import ResourceUsageCard from './ResourceUsageCard'
 import DeploymentRecords, {
   type DeployGroup as CommonDeployGroup,
   type DeployConfig as CommonDeployConfig,
@@ -1145,6 +1146,8 @@ export default function Deployment({ appId, appName, tags }: { appId?: string; a
               </Col>
             </Row>
           </Card>
+
+          <ResourceUsageCard aggregateNote="已汇总该应用下所有分组（游服）的运行中 Pod" />
 
           {/* 高级配置 Card */}
           <Card 

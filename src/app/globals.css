@@ -335,3 +335,45 @@ body {
   border-color: rgba(129, 140, 248, 0.75);
   box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.18);
 }
+
+
+/* ===== appId 封禁：列表行标记 + 详情页只读锁定 ===== */
+
+/* 已封禁行整行浅红底，一眼扫出异常 */
+.game-row-banned > td {
+  background-color: #fff1f0 !important;
+}
+
+/* 只读锁定：封禁后所有写操作入口置灰且不可点，查看类不受影响 */
+.game-readonly .ant-btn,
+.game-readonly .ant-switch,
+.game-readonly .ant-select,
+.game-readonly .ant-radio-group,
+.game-readonly .ant-checkbox-wrapper,
+.game-readonly .ant-input,
+.game-readonly .ant-input-number,
+.game-readonly .ant-picker,
+.game-readonly .ant-slider,
+.game-readonly .ant-upload {
+  pointer-events: none !important;
+  opacity: 0.45;
+}
+
+/* Tab 头保持可切换：封禁只锁写，不锁查看 */
+.game-readonly .ant-tabs-nav,
+.game-readonly .ant-tabs-nav * {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+/* 白名单：凭证与封禁区块内的解封 / 操作记录必须始终可用 */
+.game-readonly [data-ban-exempt='true'],
+.game-readonly [data-ban-exempt='true'] * {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+/* 白名单内被显式 disabled 的按钮仍要维持禁用观感 */
+.game-readonly [data-ban-exempt='true'] .ant-btn[disabled] {
+  opacity: 0.45 !important;
+}

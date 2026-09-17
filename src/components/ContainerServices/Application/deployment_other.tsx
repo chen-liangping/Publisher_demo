@@ -29,6 +29,7 @@ import {
 } from 'antd'
 import { MoreOutlined, EditOutlined, ReloadOutlined, CopyOutlined, UpOutlined, DownOutlined } from '@ant-design/icons'
 import HPAConfigModal, { type HPAFormValues } from './HPAConfigModal'
+import ResourceUsageCard from './ResourceUsageCard'
 import DeploymentRecords, {
   type DeployGroup as CommonDeployGroup,
   type DeployConfig as CommonDeployConfig,
@@ -582,6 +583,8 @@ export default function DeploymentOther({ appId, appName, tags }: { appId?: stri
               </Col>
             </Row>
           </Card>
+
+          <ResourceUsageCard />
 
           {/* 高级配置 Card */}
           <Card 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer, Dropdown, Modal, Switch } from 'antd'
+import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer, Dropdown, Modal, Switch, Progress, Popover } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
 import {
   CloudServerOutlined,
@@ -17,6 +17,7 @@ import {
   TeamOutlined,
   MessageOutlined,
   MonitorOutlined,
+  HomeOutlined,
   DownOutlined,
   QuestionCircleOutlined,
   PlayCircleOutlined
@@ -29,10 +30,12 @@ import FileManagement from '../components/VirtualMachineServices/FileManagement/
 import CommandManagement from '../components/VirtualMachineServices/CommandManagement/CommandManagement'
 // 命令详情由列表组件内部自管理
 import UserAvatarMenu from '../components/Common/UserAvatarMenu'
+import DataSyncModal from '../components/Common/DataSyncModal'
 import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
 import LoadBalancerManagement from '../components/VirtualMachineServices/LoadBalancer/LoadBalancerManagement'
 import AlertSystem from '../components/alert/AlertSystem'
 // 详情由组件内部自管理
+import WorkbenchDashboard from '../components/Workbench/WorkbenchDashboard'
 import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
 import { apps as demoApps } from '../components/ContainerServices/Application/apps'
 import Deployment from '../components/ContainerServices/Application/deployment'
@@ -55,11 +58,13 @@ import PeopleManagement from '../components/nofication/PeopleManagement'
 import MessageNotification from '../components/nofication/MessageNotification'
 import CdnAlert from '../components/alert/CdnAlert'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { hydrateFromStorage, useCredential } from '../components/Admin/credential-ban/mock'
+import { DEMO_APP_IDS } from '../components/Admin/credential-ban/types'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system'
+type MenuKey = 'workbench' | 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system'
 
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
@@ -90,7 +95,7 @@ export default function Home() {
 
   const initialMenu = ((): MenuKey => {
     const m = searchParams.get('menu') as MenuKey | null
-    return m ?? 'vm-management'
+    return m ?? 'workbench'
   })()
   const [selectedMenu, setSelectedMenu] = useState<MenuKey>(initialMenu)
   const [mode, setMode] = useState<Mode>(initialMode)
@@ -101,13 +106,32 @@ export default function Home() {
   // 开启公网时生成的系统托管转发策略
   const [systemManagedPolicies, setSystemManagedPolicies] = useState<SystemForwardingPolicy[]>([])
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false)
-  // 顶栏：项目选择（原型中用于模拟多项目切换）
-  const [selectedProject, setSelectedProject] = useState<'Publisher' | 'Omni' | 'Doraemon' | 'core' | 'Shinchan'>('Publisher')
+  // 顶栏：appId 切换（与管理后台「平台游戏」列表是同一份 appId）
+  const [selectedGameAppId, setSelectedGameAppId] = useState<string>(DEMO_APP_IDS[0])
+
+  // 用户侧封禁态：当前 appId 被管理后台封禁后，本页进入只读锁定。
+  // 轮转后的「旧资源只读」需要按资源创建时间逐条判定，原型的 mock 数据没有这一维度，
+  // 因此这里只覆盖封禁态的整页锁定，旧资源只读的规则见 PRD 七、轮转密钥。
+  const credential = useCredential(selectedGameAppId)
+  const isBanned = credential.status === 'BANNED'
+  useEffect(() => {
+    // 管理后台是独立标签页，这里恢复本地状态并订阅它的变更
+    hydrateFromStorage()
+  }, [])
   // 顶栏：环境开关（默认必须有值，避免空状态；仅区分测试/正式，符合原型常见入口）
   const [isProdEnv, setIsProdEnv] = useState<boolean>(false)
   // 顶栏环境切换前置：仅当测试环境初始化完成后，才允许切换到正式环境。
   const [isTestEnvInitialized, setIsTestEnvInitialized] = useState<boolean>(false)
   const [envSwitchBlockedModalOpen, setEnvSwitchBlockedModalOpen] = useState<boolean>(false)
+  // 每次切换到正式环境都需要确认初始化方式（不做"已初始化则跳过"的判断，方便反复演示该流程）。
+  const [prodInitConfirmOpen, setProdInitConfirmOpen] = useState<boolean>(false)
+  // 正式环境初始化进度：挂在顶栏切换开关上的 Popover 展示，不用弹窗遮罩。
+  const [prodInitPopoverOpen, setProdInitPopoverOpen] = useState<boolean>(false)
+  const [prodInitProgress, setProdInitProgress] = useState<number>(0)
+  const [prodInitDone, setProdInitDone] = useState<boolean>(false)
+  // 初始化完成后，若选的是"初始化并迁移数据"，需要用户在 Popover 里再点一次才打开迁移弹窗。
+  const [prodInitPurpose, setProdInitPurpose] = useState<'init-only' | 'init-and-sync' | null>(null)
+  const [dataSyncModalOpen, setDataSyncModalOpen] = useState<boolean>(false)
   // 顶栏：主导航的抽屉（用于“打开游戏/帮助文档”等交互，不仅仅弹 message）
   const [topNavPanel, setTopNavPanel] = useState<null | 'open-game' | 'help'>(null)
   
@@ -143,6 +167,36 @@ export default function Home() {
     transition: 'transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease'
   }
 
+  // 正式环境初始化进度模拟：进度显示在顶栏切换开关的 Popover 里；跑完后只标记"已完成"，
+  // 是否打开数据同步弹窗要等用户在 Popover 里再点一次（见 Popover content 里的按钮）。
+  const runProdInitProgress = (thenOpenSync: boolean): void => {
+    setProdInitConfirmOpen(false)
+    setProdInitPurpose(thenOpenSync ? 'init-and-sync' : 'init-only')
+    setProdInitProgress(0)
+    setProdInitDone(false)
+    setProdInitPopoverOpen(true)
+    // 开关立即切到正式环境，进度条挂在开关的 Popover 上展示初始化过程。
+    setIsProdEnv(true)
+
+    const step = (): void => {
+      setProdInitProgress(prev => {
+        const next = Math.min(100, prev + 15 + Math.random() * 20)
+        if (next >= 100) {
+          setTimeout(() => {
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('publisher_demo_prod_env_initialized', '1')
+            }
+            setProdInitDone(true)
+          }, 300)
+        } else {
+          setTimeout(step, 300)
+        }
+        return next
+      })
+    }
+    setTimeout(step, 300)
+  }
+
   // 菜单点击处理：切换页面内容
   const handleMenuClick = (key: MenuKey): void => {
     setSelectedMenu(key)
@@ -176,20 +230,24 @@ export default function Home() {
       const initialized = window.localStorage.getItem('publisher_demo_test_env_initialized') === '1'
       setIsTestEnvInitialized(initialized)
     }
-
     // 进入页面时先同步一次；切回当前标签页时再次同步，避免状态滞后。
     syncTestInitStatus()
-    window.addEventListener('focus', syncTestInitStatus)
-    window.addEventListener('storage', syncTestInitStatus)
+    const syncAll = (): void => {
+      syncTestInitStatus()
+    }
+    window.addEventListener('focus', syncAll)
+    window.addEventListener('storage', syncAll)
     return () => {
-      window.removeEventListener('focus', syncTestInitStatus)
-      window.removeEventListener('storage', syncTestInitStatus)
+      window.removeEventListener('focus', syncAll)
+      window.removeEventListener('storage', syncAll)
     }
   }, [])
 
   // 渲染右侧内容区域
   const renderContent = (): React.ReactElement => {
     switch (selectedMenu) {
+      case 'workbench':
+        return <WorkbenchDashboard />
       case 'vm-management':
         return (
           <VirtualMachineList
@@ -304,20 +362,14 @@ export default function Home() {
       >
         {/* 左侧：项目选择 + 模式切换（容器/虚机） + 主导航 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
-          {/* 交互：切换项目（模拟多项目） */}
+          {/* 交互：切换 appId（与管理后台平台游戏列表同一份数据） */}
           <Dropdown
             trigger={['click']}
             menu={{
-              items: ([
-                { key: 'Publisher', label: 'Publisher' },
-                { key: 'Omni', label: 'Omni' },
-                { key: 'Doraemon', label: 'Doraemon' },
-                { key: 'core', label: 'core' },
-                { key: 'Shinchan', label: 'Shinchan' }
-              ] as const).map((p) => ({
-                key: p.key,
-                label: p.label,
-                onClick: () => setSelectedProject(p.key)
+              items: DEMO_APP_IDS.map((appId) => ({
+                key: appId,
+                label: appId,
+                onClick: () => setSelectedGameAppId(appId)
               }))
             }}
           >
@@ -330,7 +382,7 @@ export default function Home() {
                 cursor: 'pointer',
                 border: 'none'
               }}
-              aria-label="选择项目"
+              aria-label="选择 App ID"
               onMouseEnter={(e) => {
                 ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'
               }}
@@ -338,7 +390,7 @@ export default function Home() {
                 ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'
               }}
             >
-              <span style={{ fontWeight: 600, color: '#111827' }}>{selectedProject}</span>
+              <span style={{ fontWeight: 600, color: '#111827' }}>{selectedGameAppId}</span>
               <DownOutlined style={{ fontSize: 12, color: 'rgba(17, 24, 39, 0.45)' }} />
             </button>
           </Dropdown>
@@ -403,32 +455,82 @@ export default function Home() {
         
         {/* 右侧功能区域：环境胶囊 + icon 组 + 用户 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* 交互：切换环境（Switch：测试/正式） */}
-          <div
-            style={{
-              ...headerPillStyle,
-              padding: '0 10px',
-              background: 'rgba(15, 23, 42, 0.035)',
-              gap: 10
+          {/* 交互：切换环境（Switch：测试/正式），正式环境初始化进度挂在这个开关的 Popover 上 */}
+          <Popover
+            open={prodInitPopoverOpen}
+            trigger={[]}
+            placement="bottomRight"
+            onOpenChange={(open) => {
+              // 初始化完成后允许点外部关闭；进行中不允许手动关掉，保证进度能被看到。
+              if (!open && prodInitDone) setProdInitPopoverOpen(false)
             }}
+            content={
+              <div style={{ width: 220 }}>
+                {!prodInitDone ? (
+                  <>
+                    <div style={{ marginBottom: 8, fontSize: 12, color: 'rgba(0, 0, 0, 0.65)' }}>
+                      正式环境初始化中…
+                    </div>
+                    <Progress percent={Math.round(prodInitProgress)} size="small" status="active" />
+                  </>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 8, fontSize: 12, color: 'rgba(0, 0, 0, 0.65)' }}>
+                      正式环境初始化完成
+                    </div>
+                    {prodInitPurpose === 'init-and-sync' ? (
+                      <Button
+                        type="primary"
+                        size="small"
+                        block
+                        onClick={() => {
+                          setProdInitPopoverOpen(false)
+                          setDataSyncModalOpen(true)
+                        }}
+                      >
+                        去迁移数据
+                      </Button>
+                    ) : (
+                      <Button size="small" block onClick={() => setProdInitPopoverOpen(false)}>
+                        知道了
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            }
           >
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(17, 24, 39, 0.65)' }}>
-              {envLabel}
-            </span>
-            <Switch
-              checked={isProdEnv}
-              onChange={(checked) => {
-                // 产品意图：正式环境入口必须建立在测试环境已初始化的前提下，避免用户误入双初始化流程。
-                if (checked && !isTestEnvInitialized) {
-                  // 使用受控弹窗，确保拦截提示在当前页面稳定可见。
-                  setEnvSwitchBlockedModalOpen(true)
-                  return
-                }
-                setIsProdEnv(checked)
+            <div
+              style={{
+                ...headerPillStyle,
+                padding: '0 10px',
+                background: 'rgba(15, 23, 42, 0.035)',
+                gap: 10
               }}
-              aria-label="切换测试/正式环境"
-            />
-          </div>
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(17, 24, 39, 0.65)' }}>
+                {envLabel}
+              </span>
+              <Switch
+                checked={isProdEnv}
+                onChange={(checked) => {
+                  // 产品意图：正式环境入口必须建立在测试环境已初始化的前提下，避免用户误入双初始化流程。
+                  if (checked && !isTestEnvInitialized) {
+                    // 使用受控弹窗，确保拦截提示在当前页面稳定可见。
+                    setEnvSwitchBlockedModalOpen(true)
+                    return
+                  }
+                  // 每次切换到正式环境都先弹窗确认初始化方式，不做"已初始化则跳过"的判断。
+                  if (checked) {
+                    setProdInitConfirmOpen(true)
+                    return
+                  }
+                  setIsProdEnv(checked)
+                }}
+                aria-label="切换测试/正式环境"
+              />
+            </div>
+          </Popover>
 
           {/* icon 组（≥4 个时使用 icon-only + tooltip；点击区域 ≥ 32px） */}
           <div
@@ -558,7 +660,7 @@ export default function Home() {
                 // 交互：启动游戏（真实业务效果：打开确认弹窗）
                 Modal.confirm({
                   title: '启动游戏（示例）',
-                  content: `项目：${selectedProject}；环境：${envLabel}。确认后将模拟打开新标签页启动游戏。`,
+                  content: `App ID：${selectedGameAppId}；环境：${envLabel}。确认后将模拟打开新标签页启动游戏。`,
                   okText: '确认启动',
                   cancelText: '取消',
                   onOk: () => {
@@ -606,6 +708,32 @@ export default function Home() {
         当前不允许直接切换到正式环境。请先在测试环境完成客户端与服务端初始化，再切换到正式环境继续初始化流程。
       </Modal>
 
+      {/* 正式环境未初始化：切换到正式环境前先确认初始化方式 */}
+      <Modal
+        title="正式环境未初始化，是否初始化并迁移数据？"
+        open={prodInitConfirmOpen}
+        onCancel={() => setProdInitConfirmOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setProdInitConfirmOpen(false)}>
+            取消
+          </Button>,
+          <Button key="init-only" onClick={() => runProdInitProgress(false)}>
+            仅初始化，不迁移数据
+          </Button>,
+          <Button key="init-and-sync" type="primary" onClick={() => runProdInitProgress(true)}>
+            初始化并迁移数据
+          </Button>
+        ]}
+      >
+        正式环境尚未初始化。您可以仅初始化正式环境（不迁移任何数据），或初始化后立即从测试环境迁移数据。
+      </Modal>
+
+      {/* 顶栏"初始化并迁移数据"入口 */}
+      <DataSyncModal
+        open={dataSyncModalOpen}
+        onCancel={() => setDataSyncModalOpen(false)}
+      />
+
       {/* “管理中心”已改为全页路由：/management-center */}
 
 
@@ -618,6 +746,12 @@ export default function Home() {
             defaultOpenKeys={['service', 'command']}
             style={{ height: '100%', borderRight: 0 }}
             items={[
+              {
+                key: 'workbench',
+                icon: <HomeOutlined />,
+                label: '我的工作台',
+                onClick: () => handleMenuClick('workbench')
+              },
               {
                 key: 'client',
                 icon: <MobileOutlined />,
@@ -783,7 +917,18 @@ export default function Home() {
               borderRadius: 0
             }}
           >
-            {renderContent()}
+            {/*
+              只读锁定层：封禁后内容区全部写操作置灰，左侧菜单与顶栏不受影响——
+              菜单不隐藏、查看类功能（列表、详情、日志、监控）全部保留，只是不能改。
+              用户侧不展示封禁横幅，也不暴露封禁原因 / 操作人 / 封禁时间，只表现为操作不可用；
+              title 挂在容器上：子元素 pointer-events 为 none 时 hover 会落到容器，显示中性提示。
+            */}
+            <div
+              className={isBanned ? 'game-readonly' : ''}
+              title={isBanned ? '当前不可操作，请联系平台对接人' : undefined}
+            >
+              {renderContent()}
+            </div>
           </Content>
         </Layout>
       </Layout>
