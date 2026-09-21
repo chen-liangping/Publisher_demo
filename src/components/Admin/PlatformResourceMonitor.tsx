@@ -3,7 +3,6 @@
 import React from 'react'
 import { Alert, Card, Progress, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import ResourceUsageCard from '../ContainerServices/Application/ResourceUsageCard'
 
 const { Text } = Typography
 
@@ -214,14 +213,8 @@ export default function PlatformResourceMonitor() {
         资源使用率监控
       </Typography.Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        跨全平台的 CPU、内存使用率视角：先看整体水位，再定位哪些 appId 使用率偏高、需要重点关注。
+        按 appId 查看 CPU、内存使用率，定位哪些 appId 使用率偏高、需要重点关注。
       </Text>
-
-      {/* 全平台整体：直接复用应用详情页那套「资源使用率」卡片，只是统计口径从单应用换成全平台 */}
-      <ResourceUsageCard
-        aggregateNote="覆盖全平台所有 appId 下生产环境应用的运行中 Pod，而非单个应用"
-        scopeLabel="全平台"
-      />
 
       <Card title="各 appId 资源使用率" styles={{ body: { padding: 20 } }}>
         {criticalCount > 0 && (
