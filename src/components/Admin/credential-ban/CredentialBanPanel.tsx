@@ -101,8 +101,7 @@ export default function CredentialBanPanel({ appId }: CredentialBanPanelProps): 
   const banBypassCount = countBypassable(scanResult)
 
   return (
-    // data-ban-exempt：封禁后整页写操作被锁，但本区块的解封 / 轮转入口必须保持可用
-    <div data-ban-exempt="true" style={{ marginTop: 12 }}>
+    <div style={{ marginTop: 12 }}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {/* 状态本身在平台游戏列表的【状态】列展示，这里不重复；只在轮转后补一条后果说明 */}
         {restricted && (

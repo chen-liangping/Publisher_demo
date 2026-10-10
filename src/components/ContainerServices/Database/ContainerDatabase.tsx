@@ -25,9 +25,11 @@ import {
   DatePicker,
   Divider,
   Row,
-  Col
+  Col,
+  Popover,
+  Badge
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined, FireOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, UserAddOutlined, RollbackOutlined, CloudUploadOutlined, CopyOutlined, ClockCircleOutlined, FieldTimeOutlined, ExclamationCircleFilled, SlidersOutlined, QuestionCircleOutlined, FireOutlined, DoubleRightOutlined } from '@ant-design/icons'
 import DatabaseDetails from './DatabaseDetails'
 import {
   REDIS_NOTIFY_KEYSPACE_PRESETS,
@@ -38,6 +40,19 @@ import {
   type RedisNotifyKeyspaceTemplateChoice
 } from './redisNotifyKeyspaceMeta'
 import RedisTopKeyAnalysis from './RedisTopKeyAnalysis'
+import StorageResizeModal, { ResizeConfirmModal, type StorageResizeSubmit } from './StorageResizeModal'
+import {
+  type InstanceSpecConfig,
+  type ResizeDirection,
+  type ResizeTicket,
+  type ResizeEffectiveTime,
+  buildDefaultSpecConfig,
+  buildComponentConfig,
+  mergeComponentConfig,
+  detectConfigConflict,
+  simulateCloudChange,
+  formatNodesPerShard
+} from './storageResizeMeta'
 
 const { Title, Text } = Typography
 
@@ -640,7 +655,13 @@ function buildMockMongoBalancer(databasesByInstance: Record<string, MongoDatabas
   return result
 }
 
-export default function ContainerDatabase() {
+interface ContainerDatabaseProps {
+  /** 账号视角（原型顶栏切换）：内部账号调整配额无需申请，直接执行 */
+  accountType?: 'cp' | 'internal'
+}
+
+export default function ContainerDatabase({ accountType = 'cp' }: ContainerDatabaseProps = {}) {
+  const isInternalAccount = accountType === 'internal'
   const [selectedInstance, setSelectedInstance] = useState<DBInstance | null>(null)
   const [data, setData] = useState<DBInstance[]>(mockData)
   const [showCreate, setShowCreate] = useState(false)
@@ -695,6 +716,347 @@ export default function ContainerDatabase() {
   // 规格详情 Modal
   const [specDetailOpen, setSpecDetailOpen] = useState<boolean>(false)
   const [selectedSpecInstance, setSelectedSpecInstance] = useState<DBInstance | null>(null)
+  // 调整配额：点击「调整配额」进入规格详情，按组件单独升配 / 降配（如 Mongo 分片的 Mongos / Shard / ConfigServer 各自独立申请）
+  // specConfigMap 存已生效的规格；resizeTicketMap 存未完成的变配单，key = `${实例ID}::${组件key}`
+  const [specConfigMap, setSpecConfigMap] = useState<Record<string, InstanceSpecConfig>>({})
+  const [resizeTicketMap, setResizeTicketMap] = useState<Record<string, ResizeTicket>>({})
+  const [adjustInst, setAdjustInst] = useState<DBInstance | null>(null)
+  const [resizeModal, setResizeModal] = useState<{
+    open: boolean
+    direction: ResizeDirection
+    inst: DBInstance | null
+    compKey: string
+    current: InstanceSpecConfig | null
+  }>({ open: false, direction: 'upgrade', inst: null, compKey: '', current: null })
+  const [resizeConfirm, setResizeConfirm] = useState<{ inst: DBInstance; ticketKey: string } | null>(null)
+  // 原型演示：模拟管理员审批结果、变配执行结果（真实环境由审批与变配结果回传）
+  const [mockApproveResult, setMockApproveResult] = useState<'approve' | 'reject'>('approve')
+  const [mockExecResult, setMockExecResult] = useState<'success' | 'fail'>('success')
+  const [mockCloudChange, setMockCloudChange] = useState<'none' | 'changed'>('none')
+  // 审批通过提示气泡：默认展开，用户点收起后只保留红点（按气泡 key 记录）
+  const [resizeTipCollapsed, setResizeTipCollapsed] = useState<Record<string, boolean>>({})
+  const setTipCollapsed = (key: string, collapsed: boolean): void => {
+    setResizeTipCollapsed((prev) => ({ ...prev, [key]: collapsed }))
+  }
+
+  const ticketKeyOf = (instId: string, compKey: string): string => `${instId}::${compKey}`
+  const cardTipKeyOf = (instId: string): string => `card::${instId}`
+
+  const getSpecConfig = (inst: DBInstance): InstanceSpecConfig | null =>
+    specConfigMap[inst.id] ?? buildDefaultSpecConfig(inst)
+
+  const resizeActionText = (d: ResizeDirection): string => (d === 'upgrade' ? '升配' : '降配')
+
+  /** 可运维时间段：读取实例在云厂商设置的运维窗口 */
+  const windowOf = (inst: DBInstance): string => getSpecConfig(inst)?.maintainWindow ?? ''
+
+  /** 多组件实例（Mongo 分片）在文案里带上组件名，单组件实例不带 */
+  const compPrefixOf = (inst: DBInstance, compKey: string): string => {
+    const cfg = getSpecConfig(inst)
+    if (!cfg || cfg.components.length <= 1) return ''
+    return `${cfg.components.find((c) => c.key === compKey)?.label ?? ''} `
+  }
+
+  const getInstTickets = (inst: DBInstance): Array<[string, ResizeTicket]> =>
+    Object.entries(resizeTicketMap).filter(([, t]) => t.instId === inst.id)
+
+  const patchTicket = (key: string, patch: Partial<ResizeTicket>): void => {
+    setResizeTicketMap((prev) => (prev[key] ? { ...prev, [key]: { ...prev[key], ...patch } } : prev))
+  }
+
+  const removeTicket = (key: string): void => {
+    setResizeTicketMap((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const openResizeModal = (inst: DBInstance, compKey: string, direction: ResizeDirection): void => {
+    const full = getSpecConfig(inst)
+    if (!full) return
+    // 打开时快照该组件当前配置，避免父组件重渲染时重置弹窗内的编辑
+    setResizeModal({ open: true, direction, inst, compKey, current: buildComponentConfig(full, compKey) })
+  }
+
+  const closeResizeModal = (): void => {
+    setResizeModal((prev) => ({ ...prev, open: false }))
+  }
+
+  /** 第 1 步：用户针对某个组件提交申请 → 发起审批 */
+  const handleResizeSubmit = ({ target, effectiveTime }: StorageResizeSubmit): void => {
+    const { inst, compKey, direction, current } = resizeModal
+    if (!inst || !current) return
+    const key = ticketKeyOf(inst.id, compKey)
+    const ticket: ResizeTicket = {
+      instId: inst.id, compKey, direction, stage: 'approving', base: current, target, submittedAt: dayjs().format('YYYY/MM/DD HH:mm:ss')
+    }
+    closeResizeModal()
+    // 内部账号：无需申请审批，按表单中选择的生效时间直接执行
+    if (isInternalAccount) {
+      setResizeTicketMap((prev) => ({ ...prev, [key]: ticket }))
+      startResize(inst, key, ticket, effectiveTime ?? 'Immediately')
+      return
+    }
+    setResizeTicketMap((prev) => ({ ...prev, [key]: ticket }))
+    message.success(`${inst.alias} ${compPrefixOf(inst, compKey)}${resizeActionText(direction)}已发起审批`)
+    // 原型模拟第 2 步：4 秒后返回管理员审批结果——同意进入「已审批」，拒绝进入「已拒绝」；审批不会自动失效
+    const approveResult = mockApproveResult
+    setTimeout(() => {
+      setResizeTicketMap((prev) => {
+        const t = prev[key]
+        if (!t || t.stage !== 'approving') return prev
+        return { ...prev, [key]: { ...t, stage: approveResult === 'approve' ? 'approved' : 'rejected' } }
+      })
+      setTipCollapsed(key, false)
+      setTipCollapsed(cardTipKeyOf(inst.id), false)
+    }, 4000)
+  }
+
+  /** 第 3 步：审批通过后，用户核对规格比对并确认生效时间，变配才真正执行 */
+  const handleResizeConfirm = (effectiveTime: ResizeEffectiveTime): void => {
+    const rc = resizeConfirm
+    setResizeConfirm(null)
+    if (!rc) return
+    const ticket = resizeTicketMap[rc.ticketKey]
+    if (!ticket) return
+    startResize(rc.inst, rc.ticketKey, ticket, effectiveTime)
+  }
+
+  /** 执行变配（审批确认后 / 内部账号直接操作）：立即生效进入「变配中」，可运维时间段进入「待生效」 */
+  const startResize = (inst: DBInstance, ticketKey: string, ticket: ResizeTicket, effectiveTime: ResizeEffectiveTime): void => {
+    const label = `${compPrefixOf(inst, ticket.compKey)}${resizeActionText(ticket.direction)}`
+    if (effectiveTime === 'Immediately') {
+      patchTicket(ticketKey, { stage: 'resizing', effectiveTime })
+      message.success(`${inst.alias} 开始${label}`)
+      // 原型模拟：3 秒后返回执行结果——成功则只把该组件的新规格合并回 specConfigMap；失败则提示「操作失败」，申请清除，用户可重新申请
+      const execResult = mockExecResult
+      setTimeout(() => {
+        if (execResult === 'fail') {
+          removeTicket(ticketKey)
+          message.error('操作失败')
+          return
+        }
+        setSpecConfigMap((prev) => {
+          const base = prev[inst.id] ?? buildDefaultSpecConfig(inst)
+          return base ? { ...prev, [inst.id]: mergeComponentConfig(base, ticket.target) } : prev
+        })
+        removeTicket(ticketKey)
+        message.success(`${inst.alias} ${label}完成`)
+      }, 3000)
+    } else {
+      patchTicket(ticketKey, { stage: 'scheduled', effectiveTime })
+      message.success(`${inst.alias} 将在可运维时间段 ${windowOf(inst)} 执行${label}`)
+    }
+  }
+
+  /** 打开确认弹窗；原型演示「云厂商侧已被修改」时，先模拟云厂商侧对该组件做一次变配，制造冲突 */
+  const openResizeConfirm = (inst: DBInstance, ticketKey: string): void => {
+    const t = resizeTicketMap[ticketKey]
+    if (t && mockCloudChange === 'changed') {
+      setSpecConfigMap((prev) => {
+        const full = prev[inst.id] ?? buildDefaultSpecConfig(inst)
+        return full ? { ...prev, [inst.id]: simulateCloudChange(full, t.compKey) } : prev
+      })
+      setMockCloudChange('none')
+    }
+    setResizeConfirm({ inst, ticketKey })
+  }
+
+  /** 冲突后重新申请：清除旧申请，按云厂商当前配置重新打开申请表单 */
+  const reapplyResize = (): void => {
+    const rc = resizeConfirm
+    if (!rc) return
+    const t = resizeTicketMap[rc.ticketKey]
+    setResizeConfirm(null)
+    if (!t) return
+    removeTicket(rc.ticketKey)
+    openResizeModal(rc.inst, t.compKey, t.direction)
+  }
+
+  const withdrawResize = (key: string, tip: string): void => {
+    removeTicket(key)
+    message.success(tip)
+  }
+
+  /**
+   * 审批结果提示：触发元素带红点，气泡默认展开
+   * - 审批通过：标题「xx申请已通过，请确认」+ 按钮【去确认】
+   * - 审批拒绝：标题「xx申请被拒绝」+ 按钮【确定】（点击后清除申请）
+   */
+  const renderApprovedTip = (
+    tipKey: string,
+    title: string,
+    desc: string,
+    onGo: () => void,
+    open: boolean,
+    trigger: React.ReactNode,
+    placement: 'bottom' | 'right' = 'bottom',
+    buttonText = '去确认'
+  ): React.ReactNode => {
+    const content = (
+      <div style={{ width: 300 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <ExclamationCircleFilled style={{ color: '#faad14', fontSize: 18, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 15, color: 'rgba(0,0,0,0.88)', marginBottom: 6 }}>{title}</div>
+            {desc && <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.75)', lineHeight: '22px' }}>{desc}</div>}
+          </div>
+          <Tooltip title="收起">
+            <DoubleRightOutlined
+              style={{ transform: 'rotate(-90deg)', color: 'rgba(0,0,0,0.45)', cursor: 'pointer' }}
+              onClick={() => setTipCollapsed(tipKey, true)}
+            />
+          </Tooltip>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              setTipCollapsed(tipKey, true)
+              onGo()
+            }}
+          >
+            {buttonText}
+          </Button>
+        </div>
+      </div>
+    )
+    return (
+      <Popover open={open && !resizeTipCollapsed[tipKey]} content={content} placement={placement} arrow={{ pointAtCenter: true }}>
+        <Badge dot offset={[2, 0]}>{trigger}</Badge>
+      </Popover>
+    )
+  }
+
+  const stageTagText = (inst: DBInstance, t: ResizeTicket): string => {
+    if (t.stage === 'approving') return '审批中'
+    if (t.stage === 'resizing') return '中'
+    if (t.stage === 'scheduled') return `待生效 · ${windowOf(inst)}`
+    return t.stage === 'rejected' ? '已拒绝' : '已审批'
+  }
+
+  /** 审批被拒绝：用户点【确定】后清除申请，入口恢复可用 */
+  const ackRejected = (key: string): void => {
+    removeTicket(key)
+  }
+  const tagStyle: React.CSSProperties = { borderRadius: 999, marginInlineEnd: 0 }
+
+  /** 卡片 / 列表里「查看规格」旁的入口：调整配额；有审批通过的申请时带红点和「去确认」气泡 */
+  const renderResizeEntries = (inst: DBInstance): React.ReactNode => {
+    if (!getSpecConfig(inst)) return null
+    const tickets = getInstTickets(inst)
+    // 审批结果（通过 / 拒绝）都需要用户处理，卡片上只提示最早一张
+    const approved = tickets.find(([, t]) => t.stage === 'approved' || t.stage === 'rejected')
+    const link = (
+      <Typography.Link style={{ fontSize: 12 }} onClick={() => setAdjustInst(inst)}>
+        调整配额
+      </Typography.Link>
+    )
+    const otherTags = tickets
+      .filter(([, t]) => t.stage !== 'approved' && t.stage !== 'rejected')
+      .map(([key, t]) => (
+        <Tag key={key} bordered={false} color={t.stage === 'scheduled' ? 'gold' : 'processing'} style={tagStyle}>
+          {compPrefixOf(inst, t.compKey)}{resizeActionText(t.direction)}{stageTagText(inst, t)}
+        </Tag>
+      ))
+    if (!approved) return (<>{link}{otherTags}</>)
+    const [ticketKey, t] = approved
+    const label = `${compPrefixOf(inst, t.compKey)}${resizeActionText(t.direction)}`
+    const cardTipOpen = !adjustInst && !resizeConfirm && !resizeModal.open
+    if (t.stage === 'rejected') {
+      return (
+        <>
+          {renderApprovedTip(cardTipKeyOf(inst.id), `${label}申请被拒绝`, '', () => ackRejected(ticketKey), cardTipOpen, link, 'bottom', '确定')}
+          {otherTags}
+        </>
+      )
+    }
+    return (
+      <>
+        {renderApprovedTip(
+          cardTipKeyOf(inst.id),
+          `${label}申请已通过，请确认`,
+          `管理员已同意本次${label}，请核对变更后的规格并确认，确认后才会执行。`,
+          () => openResizeConfirm(inst, ticketKey),
+          cardTipOpen,
+          link
+        )}
+        {otherTags}
+      </>
+    )
+  }
+
+  /** 规格详情（调整配额）里每个组件行的操作：升配 / 降配，各组件独立 */
+  const renderComponentActions = (inst: DBInstance, compKey: string): React.ReactNode => {
+    const key = ticketKeyOf(inst.id, compKey)
+    const ticket = resizeTicketMap[key]
+    if (ticket && ticket.stage === 'resizing') {
+      return <Tag bordered={false} color="processing" style={tagStyle}>{resizeActionText(ticket.direction)}中</Tag>
+    }
+    if (ticket && ticket.stage === 'scheduled') {
+      const actionText = resizeActionText(ticket.direction)
+      return (
+        <Space size={8}>
+          <Tag bordered={false} color="gold" style={tagStyle}>{actionText}待生效 · {windowOf(inst)}</Tag>
+          <Typography.Link onClick={() => withdrawResize(key, `已取消待生效的${actionText}`)}>取消</Typography.Link>
+        </Space>
+      )
+    }
+    const grayStyle: React.CSSProperties = { color: 'rgba(0,0,0,0.25)' }
+    const renderEntry = (direction: ResizeDirection): React.ReactNode => {
+      const text = resizeActionText(direction)
+      if (!ticket) {
+        return <Typography.Link onClick={() => openResizeModal(inst, compKey, direction)}>{text}</Typography.Link>
+      }
+      if (ticket.direction !== direction) {
+        return (
+          <Tooltip title={`已有${resizeActionText(ticket.direction)}申请在处理中`}>
+            <span style={{ ...grayStyle, cursor: 'not-allowed' }}>{text}</span>
+          </Tooltip>
+        )
+      }
+      if (ticket.stage === 'approving') {
+        return (
+          <Tooltip title={`${text}申请审批中，请等待管理员审批`}>
+            <span style={{ ...grayStyle, cursor: 'not-allowed' }}>{text}</span>
+          </Tooltip>
+        )
+      }
+      const label = `${compPrefixOf(inst, compKey)}${text}`
+      // 已拒绝：置灰 + 红点 + 气泡「xx申请被拒绝」【确定】
+      if (ticket.stage === 'rejected') {
+        return renderApprovedTip(
+          key,
+          `${label}申请被拒绝`,
+          '',
+          () => ackRejected(key),
+          !resizeConfirm && !resizeModal.open,
+          <span style={{ ...grayStyle, cursor: 'pointer' }} onClick={() => setTipCollapsed(key, false)}>{text}</span>,
+          'right',
+          '确定'
+        )
+      }
+      // 已审批：置灰 + 红点 + 气泡「去确认」；收起后点击入口可再展开
+      return renderApprovedTip(
+        key,
+        `${label}申请已通过，请确认`,
+        `管理员已同意本次${label}，请核对变更后的规格并确认，确认后才会执行。`,
+        () => openResizeConfirm(inst, key),
+        !resizeConfirm && !resizeModal.open,
+        <span style={{ ...grayStyle, cursor: 'pointer' }} onClick={() => setTipCollapsed(key, false)}>{text}</span>,
+        // 弹窗内气泡放在右侧，避免挡住下方组件行和底部按钮
+        'right'
+      )
+    }
+    return (
+      <Space size={12}>
+        {renderEntry('upgrade')}
+        {renderEntry('downgrade')}
+      </Space>
+    )
+  }
   // 备份策略：仅展示，数据来自 buildDefaultBackupPolicy(inst.type)
   const [backupPolicyOpen, setBackupPolicyOpen] = useState<boolean>(false)
   const [backupPolicyInstance, setBackupPolicyInstance] = useState<DBInstance | null>(null)
@@ -1412,6 +1774,7 @@ export default function ContainerDatabase() {
           >
             查看规格
           </Typography.Link>
+          {renderResizeEntries(record)}
         </div>
       )
     }},
@@ -2077,6 +2440,7 @@ export default function ContainerDatabase() {
                                 >
                                   查看规格
                                 </Typography.Link>
+                                {renderResizeEntries(inst)}
                               </div>
                             </Descriptions.Item>
                             <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
@@ -2112,6 +2476,7 @@ export default function ContainerDatabase() {
                                 >
                                   查看规格
                                 </Typography.Link>
+                                {renderResizeEntries(inst)}
                               </div>
                             </Descriptions.Item>
                             <Descriptions.Item label="最大连接数" labelStyle={{ color: 'rgba(0,0,0,0.88)', width: 112 }}>{inst.connectionCount ?? '-'}</Descriptions.Item>
@@ -3051,6 +3416,143 @@ export default function ContainerDatabase() {
           })()}
       </Modal>
 
+      {/* 调整配额：规格详情 + 每个组件单独升配 / 降配 */}
+      <Modal
+        title={adjustInst ? `调整配额 · ${adjustInst.type} ${adjustInst.alias}` : '调整配额'}
+        open={!!adjustInst}
+        onCancel={() => setAdjustInst(null)}
+        footer={[<Button key="close" onClick={() => setAdjustInst(null)}>关闭</Button>]}
+        width={760}
+      >
+        {adjustInst && (() => {
+          const cfg = getSpecConfig(adjustInst)
+          if (!cfg) return null
+          const extras: string[] = []
+          if (cfg.shardCount) extras.push(`分片数量 ${cfg.shardCount.value}${cfg.shardCount.unit}`)
+          if (cfg.nodesPerShard) extras.push(formatNodesPerShard(cfg.nodesPerShard.value))
+          if (cfg.bandwidth) extras.push(`${cfg.kind === 'zookeeper' ? '公网带宽' : '带宽'} ${cfg.bandwidth.value}${cfg.bandwidth.unit}`)
+          return (
+            <>
+              <div style={{ color: 'rgba(0,0,0,0.65)', marginBottom: 12 }}>
+                架构类型：{adjustInst.arch || '-'}
+                {cfg.components.length > 1 ? '。各组件单独调整，分别提交申请。' : ''}
+              </div>
+              <Table
+                size="small"
+                bordered
+                pagination={false}
+                rowKey="key"
+                dataSource={cfg.components}
+                columns={[
+                  { title: '组件', dataIndex: 'label', key: 'label', render: (v: string) => <strong>{v}</strong> },
+                  {
+                    title: '节点数',
+                    key: 'nodesText',
+                    // Redis 分片集群的节点数随「每分片节点数」变化，其余组件取固定描述
+                    render: (_: unknown, c: InstanceSpecConfig['components'][number]) =>
+                      cfg.nodesPerShard ? formatNodesPerShard(cfg.nodesPerShard.value) : c.nodesText
+                  },
+                  { title: '规格', dataIndex: 'spec', key: 'spec' },
+                  {
+                    title: '存储',
+                    key: 'storage',
+                    render: (_: unknown, c: InstanceSpecConfig['components'][number]) =>
+                      c.storageGB != null ? `${c.storageGB}GB` : c.storageNote ? <Text type="secondary" style={{ fontSize: 12 }}>{c.storageNote}</Text> : '-'
+                  },
+                  {
+                    title: '操作',
+                    key: 'actions',
+                    width: 200,
+                    render: (_: unknown, c: InstanceSpecConfig['components'][number]) => renderComponentActions(adjustInst, c.key)
+                  }
+                ]}
+              />
+              {extras.length > 0 && (
+                <div style={{ marginTop: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', gap: 24 }}>
+                  {extras.map((x) => <span key={x}>{x}</span>)}
+                  <Text type="secondary" style={{ fontSize: 12 }}>（随该实例升配 / 降配一起调整）</Text>
+                </div>
+              )}
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
+                {isInternalAccount
+                  ? '内部账号可直接升配 / 降配，无需申请审批。'
+                  : '提交后发起审批；管理员审批通过后，需回到此页面确认生效时间，变配才会执行。'}
+              </Text>
+              {/* 原型演示专用：切换模拟的审批结果、执行结果，真实产品中不展示 */}
+              <div style={{ marginTop: 12, padding: '8px 12px', border: '1px dashed #d9d9d9', borderRadius: 4, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, fontSize: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>原型演示</Text>
+                <Space size={6}>
+                  <span>审批结果</span>
+                  <Select
+                    size="small"
+                    value={mockApproveResult}
+                    onChange={(v: 'approve' | 'reject') => setMockApproveResult(v)}
+                    options={[{ value: 'approve', label: '同意' }, { value: 'reject', label: '拒绝' }]}
+                    style={{ width: 80 }}
+                  />
+                </Space>
+                <Space size={6}>
+                  <span>确认时云厂商侧</span>
+                  <Select
+                    size="small"
+                    value={mockCloudChange}
+                    onChange={(v: 'none' | 'changed') => setMockCloudChange(v)}
+                    options={[{ value: 'none', label: '未变更' }, { value: 'changed', label: '已被变配' }]}
+                    style={{ width: 96 }}
+                  />
+                </Space>
+                <Space size={6}>
+                  <span>执行结果</span>
+                  <Select
+                    size="small"
+                    value={mockExecResult}
+                    onChange={(v: 'success' | 'fail') => setMockExecResult(v)}
+                    options={[{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }]}
+                    style={{ width: 80 }}
+                  />
+                </Space>
+              </div>
+            </>
+          )
+        })()}
+      </Modal>
+      {/* 单个组件的升配 / 降配申请表单 */}
+      <StorageResizeModal
+        open={resizeModal.open}
+        direction={resizeModal.direction}
+        instanceTitle={resizeModal.inst ? `${resizeModal.inst.alias} ${compPrefixOf(resizeModal.inst, resizeModal.compKey)}`.trim() : ''}
+        current={resizeModal.current}
+        direct={isInternalAccount}
+        onCancel={closeResizeModal}
+        onSubmit={handleResizeSubmit}
+      />
+      {/* 审批通过后：规格比对 + 确认生效时间 */}
+      {(() => {
+        const t = resizeConfirm ? resizeTicketMap[resizeConfirm.ticketKey] : undefined
+        const full = resizeConfirm ? getSpecConfig(resizeConfirm.inst) : null
+        const actual = full && t ? buildComponentConfig(full, t.compKey) : null
+        // 冲突检测：申请时快照 vs 云厂商当前配置
+        const conflictRows = t && actual ? detectConfigConflict(t.base, actual) : null
+        return (
+          <ResizeConfirmModal
+            open={!!resizeConfirm && !!t}
+            direction={t?.direction ?? 'upgrade'}
+            instanceTitle={resizeConfirm && t ? `${resizeConfirm.inst.alias} ${compPrefixOf(resizeConfirm.inst, t.compKey)}`.trim() : ''}
+            current={full && t ? buildComponentConfig(full, t.compKey) : null}
+            target={t?.target ?? null}
+            maintainWindow={resizeConfirm ? windowOf(resizeConfirm.inst) : ''}
+            conflictRows={conflictRows}
+            onReapply={reapplyResize}
+            onCancel={() => setResizeConfirm(null)}
+            onAbandon={() => {
+              if (resizeConfirm && t) withdrawResize(resizeConfirm.ticketKey, conflictRows ? `已取消${resizeActionText(t.direction)}` : `已放弃${resizeActionText(t.direction)}申请`)
+              setResizeConfirm(null)
+            }}
+            onConfirm={handleResizeConfirm}
+          />
+        )
+      })()}
+
       {/* 规格详情 Modal */}
       <Modal
         title="查看规格详情"
@@ -3200,29 +3702,13 @@ export default function ContainerDatabase() {
                     width: 80
                   }
                 ]}
-                dataSource={[
-                  {
-                    key: 1,
-                    component: 'Mongos',
-                    nodes: 2,
-                    spec: '2核8G',
-                    storage: '-'
-                  },
-                  {
-                    key: 2,
-                    component: 'Shard',
-                    nodes: 3,
-                    spec: '4核16G',
-                    storage: '20GB'
-                  },
-                  {
-                    key: 3,
-                    component: 'ConfigServer',
-                    nodes: 3,
-                    spec: '2核8G',
-                    storage: '20GB'
-                  }
-                ]}
+                dataSource={(getSpecConfig(inst)?.components || []).map((c) => ({
+                  key: c.key,
+                  component: c.label,
+                  nodes: c.nodesText,
+                  spec: c.spec,
+                  storage: c.storageGB != null ? `${c.storageGB}GB` : '-'
+                }))}
                 pagination={false}
                 size="small"
                 bordered
@@ -3263,20 +3749,15 @@ export default function ContainerDatabase() {
                     key: 'storage'
                   }
                 ]}
-                dataSource={[
-                  {
-                    key: 1,
-                    type: '主节点（1主）',
-                    spec: '4核8G',
-                    storage: '20GB'
-                  },
-                  {
-                    key: 2,
-                    type: '从节点（2从）',
-                    spec: '2核8G',
-                    storage: '20GB'
-                  }
-                ]}
+                dataSource={(() => {
+                  const c = getSpecConfig(inst)?.components[0]
+                  const spec = c?.spec || '-'
+                  const storage = c?.storageGB != null ? `${c.storageGB}GB` : '-'
+                  return [
+                    { key: 1, type: '主节点（1主）', spec, storage },
+                    { key: 2, type: '从节点（2从）', spec, storage }
+                  ]
+                })()}
                 pagination={false}
                 size="small"
                 bordered
@@ -3312,18 +3793,13 @@ export default function ContainerDatabase() {
                     key: 'spec'
                   }
                 ]}
-                dataSource={[
-                  {
-                    key: 1,
-                    type: '主节点（1主）',
-                    spec: '4核8G'
-                  },
-                  {
-                    key: 2,
-                    type: '备节点（1备）',
-                    spec: '4核8G'
-                  }
-                ]}
+                dataSource={(() => {
+                  const spec = getSpecConfig(inst)?.components[0]?.spec || '-'
+                  return [
+                    { key: 1, type: '主节点（1主）', spec },
+                    { key: 2, type: '备节点（1备）', spec }
+                  ]
+                })()}
                 pagination={false}
                 size="small"
                 bordered
@@ -3377,26 +3853,25 @@ export default function ContainerDatabase() {
                       render: (text: string) => <span style={{ color: '#999' }}>{text}</span>
                     }
                   ]}
-                  dataSource={[
-                    {
-                      key: 1,
-                      shard: '分片1',
-                      primaryNodes: '1 主（1GB ）',
-                      backupNodes: '1 备（1GB）'
-                    },
-                    {
-                      key: 2,
-                      shard: '分片2',
-                      primaryNodes: '1 主（1GB）',
-                      backupNodes: '1 备（1GB）'
-                    }
-                  ]}
+                  dataSource={(() => {
+                    const cfg = getSpecConfig(inst)
+                    const spec = cfg?.components[0]?.spec || '-'
+                    const n = cfg?.shardCount?.value ?? 2
+                    const perShard = cfg?.nodesPerShard?.value ?? 2
+                    return Array.from({ length: n }, (_, i) => ({
+                      key: i + 1,
+                      shard: `分片${i + 1}`,
+                      primaryNodes: `1 主（${spec}）`,
+                      backupNodes: `${perShard - 1} 备（${spec}）`
+                    }))
+                  })()}
                   pagination={false}
                   size="small"
                   bordered
                 />
                 <div style={{ marginTop: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, display: 'flex', gap: 24 }}>
-                  <span><strong>节点总数：</strong>4</span>
+                  <span><strong>节点总数：</strong>{(getSpecConfig(inst)?.shardCount?.value ?? 2) * (getSpecConfig(inst)?.nodesPerShard?.value ?? 2)}</span>
+                  <span><strong>带宽：</strong>{getSpecConfig(inst)?.bandwidth?.value ?? '-'}{getSpecConfig(inst)?.bandwidth?.unit ?? ''}</span>
                 </div>
               </>
             )
@@ -3434,20 +3909,13 @@ export default function ContainerDatabase() {
                     key: 'storage'
                   }
                 ]}
-                dataSource={[
-                  {
-                    key: 1,
-                    type: '主节点（1主）',
-                    spec: '2核8G',
-                    storage: '100GB'
-                  },
-                  {
-                    key: 2,
-                    type: '只读节点（2只读）',
-                    spec: '2核8G',
-                    storage: '100GB'
-                  }
-                ]}
+                dataSource={(() => {
+                  const spec = getSpecConfig(inst)?.components[0]?.spec || '-'
+                  return [
+                    { key: 1, type: '主节点（1主）', spec, storage: '100GB' },
+                    { key: 2, type: '只读节点（2只读）', spec, storage: '100GB' }
+                  ]
+                })()}
                 pagination={false}
                 size="small"
                 bordered
@@ -3470,8 +3938,9 @@ export default function ContainerDatabase() {
                   </div>
                 </div>
                 <Descriptions column={1} bordered>
-                  <Descriptions.Item label="实例规格">{inst.spec || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="实例规格">{getSpecConfig(inst)?.components[0]?.spec || inst.spec || '-'}</Descriptions.Item>
                   <Descriptions.Item label="架构类型">{inst.arch || '标准版'}</Descriptions.Item>
+                  <Descriptions.Item label="公网带宽">{getSpecConfig(inst)?.bandwidth?.value ?? 0}Mbps</Descriptions.Item>
                 </Descriptions>
               </>
             )

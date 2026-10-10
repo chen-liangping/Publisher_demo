@@ -1490,16 +1490,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
         <BannedBanner banInfo={credential.banInfo} onViewLog={() => setActiveMainTab('credential')} />
       )}
 
-      {/*
-        只读锁定层：封禁后整页写操作置灰。
-        不逐个按钮改 disabled——写操作分散在各 Tab 上百个入口，这里用一个容器类统一锁掉，
-        再用 data-ban-exempt 白名单放行「凭证与封禁」区块（解封入口必须可用）与 Tab 头（查看类保留）。
-        title 挂在容器上：子元素 pointer-events 为 none 时，hover 会落到容器并显示禁用原因。
-      */}
-      <div
-        className={isBanned ? 'game-readonly' : ''}
-        title={isBanned ? '该游戏已封禁，解封后可操作' : undefined}
-      >
+      {/* 管理后台是公司内部账号：封禁只撤销 CP 账号的权限，这里不加遮罩也不置灰，便于排查与处置 */}
       {/* 顶层 Tab：每个 Tab 内区分测试环境和正式环境 */}
       <Tabs
         activeKey={activeMainTab}
@@ -3120,7 +3111,6 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
           }
         ]}
       />
-      </div>
 
       {/* 初始化配置二次确认弹窗 */}
       <Modal

@@ -5,24 +5,17 @@
 // - Tab2 多语言翻译：聊天翻译（Secret 复制）、多语言字体（搜索+下载）、API & Token 信息
 
 import React, { useMemo, useState } from 'react'
-import { Tabs, Card, Typography, Space, Button, Input, Table, Descriptions, message, Tooltip } from 'antd'
+import { Tabs, Card, Typography, Space, Button, Input, Table, Descriptions, message, Tooltip, Tag } from 'antd'
 import type { TabsProps } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SwapOutlined, DownloadOutlined, PlusOutlined, CopyOutlined, FireOutlined } from '@ant-design/icons'
+import { useGamePriceTiers } from './priceTierStore'
+import AddPriceTierModal from './AddPriceTierModal'
+import type { PriceTier } from './priceTierStore'
 
 const { Title, Text, Link } = Typography
 
-interface PriceRow {
-  key: string
-  cnyTier: number
-  jpy: number
-  usd: number
-  aud: number
-  gbp: number
-  cad: number
-  twd: number
-  eur: number
-}
+type PriceRow = PriceTier
 
 interface FontRow {
   key: string
@@ -33,6 +26,8 @@ export default function I18nPage(): React.ReactElement {
   // ========== 多币种定价 ==========
   const [priceVersion] = useState<string>('V3')
   const [lastUpdated] = useState<string>('2025-02-13 17:06:46')
+  // 「新增档位」弹窗：默认留空，按 CNY / JPY 输入或导入文件，预览后添加
+  const [addTierOpen, setAddTierOpen] = useState(false)
 
   const priceColumns: ColumnsType<PriceRow> = useMemo(() => ([
     { 
@@ -45,7 +40,13 @@ export default function I18nPage(): React.ReactElement {
           </Tooltip>
         </Space>
       ),
-      dataIndex: 'cnyTier', key: 'cnyTier', width: 180, fixed: 'left' 
+      dataIndex: 'cnyTier', key: 'cnyTier', width: 180, fixed: 'left',
+      render: (v: number, row: PriceRow) => (
+        <Space size={6}>
+          <span>{v}</span>
+          {row.addedBySync && <Tag color="blue" style={{ borderRadius: 999, border: 'none' }}>礼包同步新增</Tag>}
+        </Space>
+      )
     },
     { 
       title: (
@@ -76,19 +77,8 @@ export default function I18nPage(): React.ReactElement {
     { title: 'EUR(€)', dataIndex: 'eur', key: 'eur', width: 120 }
   ]), [])
 
-  const priceData: PriceRow[] = [
-    { key: '0.5', cnyTier: 0.5, jpy: 10, usd: 0.09, aud: 0.19, gbp: 0.09, cad: 0.19, twd: 3, eur: 0.09 },
-    { key: '1', cnyTier: 1, jpy: 20, usd: 0.19, aud: 0.29, gbp: 0.19, cad: 0.29, twd: 5, eur: 0.19 },
-    { key: '2', cnyTier: 2, jpy: 30, usd: 0.29, aud: 0.39, gbp: 0.19, cad: 0.39, twd: 7, eur: 0.29 },
-    { key: '3', cnyTier: 3, jpy: 50, usd: 0.39, aud: 0.59, gbp: 0.29, cad: 0.49, twd: 11, eur: 0.39 },
-    { key: '4', cnyTier: 4, jpy: 80, usd: 0.59, aud: 0.89, gbp: 0.49, cad: 0.79, twd: 18, eur: 0.59 },
-    { key: '5', cnyTier: 5, jpy: 90, usd: 0.69, aud: 0.99, gbp: 0.59, cad: 0.89, twd: 20, eur: 0.69 },
-    { key: '6', cnyTier: 6, jpy: 100, usd: 0.79, aud: 1.09, gbp: 0.69, cad: 0.99, twd: 22, eur: 0.79 },
-    { key: '7', cnyTier: 7, jpy: 120, usd: 0.99, aud: 1.29, gbp: 0.89, cad: 1.19, twd: 25, eur: 0.99 },
-    { key: '8', cnyTier: 8, jpy: 150, usd: 1.29, aud: 1.59, gbp: 1.19, cad: 1.49, twd: 30, eur: 1.29 },
-    { key: '9', cnyTier: 9, jpy: 180, usd: 1.59, aud: 1.89, gbp: 1.49, cad: 1.79, twd: 35, eur: 1.59 },
-    { key: '10', cnyTier: 10, jpy: 200, usd: 1.79, aud: 2.09, gbp: 1.69, cad: 1.99, twd: 40, eur: 1.79 }
-  ]
+  // 游戏档位来自共享 store：礼包道具「立即同步」补入的档位会实时出现在这里
+  const priceData: PriceRow[] = useGamePriceTiers()
 
   const PriceTab = (
     <Space direction="vertical" size={16} style={{ display: 'flex' }}>
@@ -98,7 +88,7 @@ export default function I18nPage(): React.ReactElement {
           <Space>
             <Button icon={<SwapOutlined />} onClick={() => message.info('原型：切换版本')}>切换版本</Button>
             <Button icon={<DownloadOutlined />} onClick={() => message.success('原型：导出档位')}>导出档位</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => message.success('原型：新增档位')}>新增档位</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddTierOpen(true)}>新增档位</Button>
           </Space>
         )}
         styles={{ body: { paddingTop: 8 } }}
@@ -117,6 +107,7 @@ export default function I18nPage(): React.ReactElement {
           scroll={{ x: 1120 }}
         />
       </Card>
+      <AddPriceTierModal open={addTierOpen} versionName={priceVersion} onClose={() => setAddTierOpen(false)} />
     </Space>
   )
 

@@ -2,9 +2,11 @@
 
 import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image, Drawer, Tag, Divider } from 'antd'
+import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image, Drawer, Tag, Divider, Modal, message } from 'antd'
 import type { TabsProps } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { addGamePriceTiers, checkMissingJpyTiers } from './priceTierStore'
+import type { MissingJpyCheck, PriceTier } from './priceTierStore'
 
 const { Title, Text, Link } = Typography
 
@@ -39,7 +41,36 @@ interface GiftRow {
   payload: string
 }
 
+/** 礼包同步弹窗表格行：一个缺失 JPY 价格展开为其在主表中对应的每个 CNY 档位（每行一个） */
+interface MissingTierRow {
+  key: string
+  jpy: number
+  tier?: PriceTier
+}
+
+/** 礼包同步状态：lastSuccessAt 上次成功同步时间；error 最近一次失败/取消原因 */
+interface GiftSyncState {
+  loading: boolean
+  lastSuccessAt?: string
+  error?: string
+}
+
+/** mock：CP 礼包接口（GET /webhook/gifts）返回的数据 */
+const REMOTE_GIFTS: GiftRow[] = [
+  { key: '100006喵喵礼包测试', display_id: '100006', gift_name: '喵喵礼包测试', ai_supported: true, description: '周末限时特惠', items: '高级引擎: 1\nLOCK碎片: 100', price_jpy: 890, price_value_ratio: 500, purchase_limit_type: '每周限购', purchase_limit_amount: 1, amount_to_diamond: 15000, vip_points: 15000, payload: '12' },
+  { key: '1000051234', display_id: '100005', gift_name: '1234', ai_supported: true, description: '周末限时特惠', items: 'LOCK碎片: 100\n高级引擎: 1', price_jpy: 500, price_value_ratio: 500, purchase_limit_type: '每月限购', purchase_limit_amount: 2, amount_to_diamond: 15000, vip_points: 15000, payload: '21' },
+  { key: '100007新手礼包', display_id: '100007', gift_name: '新手礼包', ai_supported: false, description: '新手首充', items: '金币: 1000', price_jpy: 120, price_value_ratio: 300, purchase_limit_type: '永久限购', purchase_limit_amount: 1, amount_to_diamond: 1200, vip_points: 1200, payload: '31' },
+  { key: '100008月卡礼包', display_id: '100008', gift_name: '月卡礼包', ai_supported: true, description: '30天每日领取', items: '钻石: 100\n体力: 50', price_jpy: 610, price_value_ratio: 800, purchase_limit_type: '每月限购', purchase_limit_amount: 1, amount_to_diamond: 6100, vip_points: 6100, payload: '41' }
+]
+
+const formatNow = (): string => {
+  const d = new Date()
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 export default function GiftDataPage(): React.ReactElement {
+  const [messageApi, contextHolder] = message.useMessage()
   const [search, setSearch] = useState('')
   const [giftSearch, setGiftSearch] = useState('')
   // 控制「API 配置」Drawer 的显示与关闭
@@ -76,10 +107,86 @@ export default function GiftDataPage(): React.ReactElement {
     { title: '操作', key: 'actions', width: 100, fixed: 'right', render: () => <Button type="link" onClick={() => window.alert('原型：删除')}>删除</Button> }
   ]), [])
 
-  const [gifts] = useState<GiftRow[]>([
+  const [gifts, setGifts] = useState<GiftRow[]>([
     { key: '100006喵喵礼包测试', display_id: '100006', gift_name: '喵喵礼包测试', ai_supported: true, description: '周末限时特惠', items: '高级引擎: 1\nLOCK碎片: 100', price_jpy: 890, price_value_ratio: 500, purchase_limit_type: '每周限购', purchase_limit_amount: 1, amount_to_diamond: 15000, vip_points: 15000, payload: '12' },
     { key: '1000051234', display_id: '100005', gift_name: '1234', ai_supported: true, description: '周末限时特惠', items: 'LOCK碎片: 100\n高级引擎: 1', price_jpy: 500, price_value_ratio: 500, purchase_limit_type: '每月限购', purchase_limit_amount: 2, amount_to_diamond: 15000, vip_points: 15000, payload: '21' }
   ])
+
+  // ========== 礼包「立即同步」：价格档位校验 ==========
+  const [giftSync, setGiftSync] = useState<GiftSyncState>({
+    loading: false,
+    error: 'fetch game [gametest] items from api error: get game [gametest] items from api failed with status code: ...'
+  })
+  const [giftLastPulledAt, setGiftLastPulledAt] = useState('2025-08-25 08:00:03')
+  const [missingChecks, setMissingChecks] = useState<MissingJpyCheck[]>([])
+  const [tierModalOpen, setTierModalOpen] = useState(false)
+  const [tierAdding, setTierAdding] = useState(false)
+  const [pendingGifts, setPendingGifts] = useState<GiftRow[]>([])
+
+  /** 写入礼包数据并记录成功时间 */
+  const commitGifts = (remote: GiftRow[], addedCount: number): void => {
+    const now = formatNow()
+    setGifts(remote)
+    setGiftLastPulledAt(now)
+    setGiftSync({ loading: false, lastSuccessAt: now })
+    messageApi.success(addedCount > 0 ? `已添加 ${addedCount} 个价格档位，礼包同步成功（${remote.length} 条）` : `礼包同步成功（${remote.length} 条）`)
+  }
+
+  /** 点击礼包「立即同步」：拉取 → 比对 price_jpy 与国际化档位 → 缺失则弹窗，否则直接写入 */
+  const handleGiftSync = (): void => {
+    setGiftSync(prev => ({ ...prev, loading: true }))
+    window.setTimeout(() => {
+      const remote = REMOTE_GIFTS
+      const missing = checkMissingJpyTiers(remote.map(g => g.price_jpy))
+      if (missing.length === 0) {
+        commitGifts(remote, 0)
+        return
+      }
+      setPendingGifts(remote)
+      setMissingChecks(missing)
+      setTierModalOpen(true)
+    }, 600)
+  }
+
+  /** 取消：关闭弹窗，整次同步中止；礼包数据、档位表与同步状态均保持不变，不额外提示 */
+  const handleTierCancel = (): void => {
+    setTierModalOpen(false)
+    setGiftSync(prev => ({ ...prev, loading: false }))
+  }
+
+  /** 确认：把缺失 JPY 对应的全部 CNY 档位加入国际化价位表，再写入礼包数据 */
+  const handleTierConfirm = (): void => {
+    setTierAdding(true)
+    window.setTimeout(() => {
+      // 确认时重新比对一次，期间已被添加的档位跳过
+      const latest = checkMissingJpyTiers(pendingGifts.map(g => g.price_jpy))
+      const added = addGamePriceTiers(latest.flatMap(m => m.masterTiers))
+      setTierAdding(false)
+      setTierModalOpen(false)
+      commitGifts(pendingGifts, added.length)
+    }, 600)
+  }
+
+  const hasUnmatched = missingChecks.some(m => m.masterTiers.length === 0)
+
+  const missingTierRows: MissingTierRow[] = missingChecks.flatMap(m => (
+    m.masterTiers.length === 0
+      ? [{ key: `${m.jpy}-none`, jpy: m.jpy }]
+      : m.masterTiers.map(t => ({ key: `${m.jpy}-${t.cnyTier}`, jpy: m.jpy, tier: t }))
+  ))
+
+  // 弹窗只展示 JPY 与对应的 CNY 档位（一个 JPY 可能对应多个 CNY 档位，逐行列出）
+  const missingTierColumns: ColumnsType<MissingTierRow> = [
+    { title: 'JPY(¥)', dataIndex: 'jpy', key: 'jpy', width: 160, render: (v: number) => <Text strong>{v}</Text> },
+    {
+      title: 'CNY档位', key: 'cny',
+      render: (_: unknown, row: MissingTierRow) => row.tier
+        ? row.tier.cnyTier
+        : <Text type="danger">主表中无可用档位，请联系运营</Text>
+    }
+  ]
+
+  const tierAddCount = missingChecks.reduce((n, m) => n + m.masterTiers.length, 0)
 
   const filteredGifts = gifts.filter(g => `${g.display_id}${g.gift_name}`.includes(giftSearch))
 
@@ -122,7 +229,7 @@ export default function GiftDataPage(): React.ReactElement {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           <Input.Search allowClear placeholder="搜索display_id、gift_name" style={{ width: 260 }} onSearch={setGiftSearch} />
           <Space size={12}>
-            <Text style={{ fontSize: 12 }}>上次拉取时间 <Text style={{ fontSize: 12 }}>2025-08-25 08:00:03</Text></Text>
+            <Text style={{ fontSize: 12 }}>上次拉取时间 <Text style={{ fontSize: 12 }}>{giftLastPulledAt}</Text></Text>
             <Button type="link" onClick={() => window.alert('原型：重新拉取')}>重新拉取</Button>
             <Button>回 退</Button>
             <Button type="primary">发 布</Button>
@@ -140,6 +247,7 @@ export default function GiftDataPage(): React.ReactElement {
 
   return (
     <div style={{ padding: 24 }}>
+      {contextHolder}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 16 }}>
         <div style={{ padding: '16px 24px' }}>
           <Title level={3} style={{ marginBottom: 4 }}>礼包道具</Title>
@@ -248,10 +356,15 @@ export default function GiftDataPage(): React.ReactElement {
                       </Text>
                     </Space>
                     <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>上次成功同步时间 暂无数据</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>上次成功同步时间 {giftSync.lastSuccessAt ?? '暂无数据'}</Text>
                       <Space size={12}>
-                      <Text type="danger" style={{ fontSize: 12 }}>同步失败：fetch game [gametest] items from api error: get game [gametest] items from api failed with status code: ...</Text>
-                      <Button type="link">立即同步</Button>
+                        {giftSync.error && (
+                          <Text type="danger" style={{ fontSize: 12 }}>
+                            同步失败：{giftSync.error}
+                          </Text>
+                        )}
+                        {/* 礼包同步会校验 price_jpy 是否已在「国际化-多币种定价」中配置，缺失则弹窗确认补齐档位 */}
+                        <Button type="link" loading={giftSync.loading} onClick={handleGiftSync}>立即同步</Button>
                       </Space>
                     </Space>
                   </Space>
@@ -287,6 +400,40 @@ export default function GiftDataPage(): React.ReactElement {
           </Card>
         </Space>
       </Drawer>
+
+      <Modal
+        title="以下价格档位未在「国际化-多币种定价」中配置"
+        open={tierModalOpen}
+        width={520}
+        onCancel={handleTierCancel}
+        maskClosable={false}
+        footer={[
+          <Button key="cancel" onClick={handleTierCancel} disabled={tierAdding}>取消</Button>,
+          <Button key="ok" type="primary" loading={tierAdding} disabled={hasUnmatched} onClick={handleTierConfirm}>
+            确认添加并同步
+          </Button>
+        ]}
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {hasUnmatched ? (
+            <Alert type="error" showIcon message="部分礼包价格在平台主表中无可用档位，无法继续同步，请联系运营补充主表后重试。" />
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message={`本次礼包共 ${missingChecks.length} 个 JPY 价格未配置，确认后将从平台主表添加对应的全部 ${tierAddCount} 个 CNY 档位，并继续同步礼包数据。`}
+            />
+          )}
+          <Table
+            rowKey="key"
+            size="small"
+            columns={missingTierColumns}
+            dataSource={missingTierRows}
+            pagination={false}
+            scroll={{ y: 400 }}
+          />
+        </Space>
+      </Modal>
     </div>
   )
 }
