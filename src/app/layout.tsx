@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import './globals.css'
+import AntdProvider from './AntdProvider'
 
 export const metadata: Metadata = {
   title: 'publisher_demo',
@@ -15,9 +16,11 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        <Suspense fallback={null}>
-          {children}
-        </Suspense>
+        <AntdProvider>
+          <Suspense fallback={null}>
+            {children}
+          </Suspense>
+        </AntdProvider>
       </body>
     </html>
   )

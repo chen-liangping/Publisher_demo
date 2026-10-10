@@ -58,6 +58,7 @@ import PeopleManagement from '../components/nofication/PeopleManagement'
 import MessageNotification from '../components/nofication/MessageNotification'
 import CdnAlert from '../components/alert/CdnAlert'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import BlockedOverlay from '../components/Admin/credential-ban/BlockedOverlay'
 import { hydrateFromStorage, useCredential } from '../components/Admin/credential-ban/mock'
 import { DEMO_APP_IDS } from '../components/Admin/credential-ban/types'
 
@@ -109,11 +110,15 @@ export default function Home() {
   // 顶栏：appId 切换（与管理后台「平台游戏」列表是同一份 appId）
   const [selectedGameAppId, setSelectedGameAppId] = useState<string>(DEMO_APP_IDS[0])
 
-  // 用户侧封禁态：当前 appId 被管理后台封禁后，本页进入只读锁定。
+  // 账号类型：原型内用顶栏切换演示两种视角。
+  // 封禁撤销的是 CP 账号在该 appId 下的权限，公司内部账号不受影响，仍可查看与处置资源。
+  const [accountType, setAccountType] = useState<'cp' | 'internal'>('cp')
+
+  // 当前 appId 被管理后台封禁后，CP 账号整页不可访问（内容不渲染，只留遮罩）。
   // 轮转后的「旧资源只读」需要按资源创建时间逐条判定，原型的 mock 数据没有这一维度，
-  // 因此这里只覆盖封禁态的整页锁定，旧资源只读的规则见 PRD 七、轮转密钥。
+  // 因此这里只覆盖封禁态，旧资源只读的规则见 PRD 七、轮转密钥。
   const credential = useCredential(selectedGameAppId)
-  const isBanned = credential.status === 'BANNED'
+  const isBlockedForCp = credential.status === 'BANNED' && accountType === 'cp'
   useEffect(() => {
     // 管理后台是独立标签页，这里恢复本地状态并订阅它的变更
     hydrateFromStorage()
@@ -294,7 +299,7 @@ export default function Home() {
         // 恢复原有行为：当 selectedAppId 存在时展示 Deployment，否则展示应用卡片列表
         return <ContainerApplication onOpenDeployment={(id: string) => { setSelectedAppId(id); setSelectedMenu('container-app') }} />
       case 'container-database':
-        return <ContainerDatabase />
+        return <ContainerDatabase accountType={accountType} />
       case 'client-page':
         return <ClientPage />
       case 'client-version':
@@ -394,6 +399,18 @@ export default function Home() {
               <DownOutlined style={{ fontSize: 12, color: 'rgba(17, 24, 39, 0.45)' }} />
             </button>
           </Dropdown>
+
+          {/* 交互：切换账号视角（原型演示用）——封禁只撤销 CP 账号的权限，内部账号不受影响 */}
+          <div style={{ ...headerPillStyle, padding: '0 6px' }}>
+            <Segmented
+              value={accountType}
+              options={[
+                { label: 'CP 账号', value: 'cp' },
+                { label: '内部账号', value: 'internal' }
+              ]}
+              onChange={(val) => setAccountType(val as 'cp' | 'internal')}
+            />
+          </div>
 
           {/* 交互：切换资源模式（影响左侧菜单与内容） */}
           <div style={{ ...headerPillStyle, padding: '0 6px' }}>
@@ -918,17 +935,11 @@ export default function Home() {
             }}
           >
             {/*
-              只读锁定层：封禁后内容区全部写操作置灰，左侧菜单与顶栏不受影响——
-              菜单不隐藏、查看类功能（列表、详情、日志、监控）全部保留，只是不能改。
-              用户侧不展示封禁横幅，也不暴露封禁原因 / 操作人 / 封禁时间，只表现为操作不可用；
-              title 挂在容器上：子元素 pointer-events 为 none 时 hover 会落到容器，显示中性提示。
+              封禁后 CP 账号在该 appId 下的权限被整体撤销：内容区不渲染任何资源内容，
+              只留一层遮罩；左侧菜单与顶栏保持可见可点，切到其他 appId 立即恢复正常。
+              遮罩不暴露封禁时间、操作人等任何封禁信息。
             */}
-            <div
-              className={isBanned ? 'game-readonly' : ''}
-              title={isBanned ? '当前不可操作，请联系平台对接人' : undefined}
-            >
-              {renderContent()}
-            </div>
+            {isBlockedForCp ? <BlockedOverlay /> : renderContent()}
           </Content>
         </Layout>
       </Layout>
