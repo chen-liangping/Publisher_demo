@@ -1,0 +1,206 @@
+[
+  {
+    "name": "USER API",
+    "tags": [
+      {
+        "name": "背包",
+        "endpoints": [
+          {
+            "id": "get-api-bag-list",
+            "method": "GET",
+            "path": "/api/bag/list",
+            "name": "查询背包物品",
+            "summary": "list bag items",
+            "description": "按分类分页返回玩家背包中的道具，含数量与过期时间。",
+            "auth": [
+              "Auth0 JWT"
+            ],
+            "isAsync": false,
+            "queryParams": [
+              {
+                "name": "uid",
+                "type": "string",
+                "required": true,
+                "description": "玩家 ID"
+              },
+              {
+                "name": "category",
+                "type": "string",
+                "required": false,
+                "description": "道具分类，不传返回全部"
+              }
+            ]
+          },
+          {
+            "id": "post-api-bag-use",
+            "method": "POST",
+            "path": "/api/bag/use",
+            "name": "使用道具",
+            "summary": "use item",
+            "description": "消耗背包内指定道具并发放对应效果。",
+            "auth": [
+              "Auth0 JWT"
+            ],
+            "isAsync": false,
+            "requestBodyType": "object",
+            "requestBody": [
+              {
+                "name": "uid",
+                "type": "string",
+                "required": true,
+                "description": "玩家 ID"
+              },
+              {
+                "name": "item",
+                "type": "object",
+                "required": true,
+                "description": "道具",
+                "children": [
+                  {
+                    "name": "id",
+                    "type": "int",
+                    "required": true,
+                    "description": "道具 ID"
+                  },
+                  {
+                    "name": "count",
+                    "type": "int",
+                    "required": true,
+                    "description": "使用数量"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ADMIN API",
+    "tags": [
+      {
+        "name": "GM 工具",
+        "endpoints": [
+          {
+            "id": "get-gm-player-info",
+            "method": "GET",
+            "path": "/gm/api/player/info",
+            "name": "查询玩家详情",
+            "summary": "get player info",
+            "description": "按玩家 ID 查询账号、角色、充值等详细信息，仅运营后台使用。",
+            "auth": [
+              "Basic Token",
+              "Admin Whitelist"
+            ],
+            "isAsync": false,
+            "queryParams": [
+              {
+                "name": "player_id",
+                "type": "string",
+                "required": true,
+                "description": "玩家 ID"
+              }
+            ]
+          },
+          {
+            "id": "post-gm-notice",
+            "method": "POST",
+            "path": "/gm/api/notice/publish",
+            "name": "发布跑马灯公告",
+            "summary": "publish notice",
+            "description": "向全服或指定区服推送跑马灯公告。",
+            "auth": [
+              "Basic Token",
+              "Admin Whitelist"
+            ],
+            "isAsync": false,
+            "requestBody": [
+              {
+                "name": "content",
+                "type": "string",
+                "required": true,
+                "description": "公告内容"
+              },
+              {
+                "name": "server_ids",
+                "type": "array",
+                "required": false,
+                "description": "区服列表，不传为全服"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "运营工具",
+        "endpoints": [
+          {
+            "id": "post-api-admin-reload",
+            "method": "POST",
+            "path": "/api/admin/config/reload",
+            "name": "热更新配置",
+            "summary": "reload config",
+            "description": "运营后台触发，重新加载配置表。",
+            "auth": [
+              "Basic Token",
+              "Admin Whitelist"
+            ],
+            "isAsync": false
+          }
+        ]
+      },
+      {
+        "name": "配表",
+        "endpoints": [
+          {
+            "id": "get-cfg-diff",
+            "method": "GET",
+            "path": "/cfg/diff",
+            "name": "对比配置表版本差异",
+            "summary": "diff config",
+            "description": "对比两个配置表版本的差异。",
+            "auth": [
+              "Basic Token"
+            ],
+            "isAsync": false,
+            "queryParams": [
+              {
+                "name": "from",
+                "type": "string",
+                "required": true,
+                "description": "起始版本"
+              },
+              {
+                "name": "to",
+                "type": "string",
+                "required": true,
+                "description": "目标版本"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "INTERNAL API",
+    "tags": [
+      {
+        "name": "运维",
+        "endpoints": [
+          {
+            "id": "get-healthz",
+            "method": "GET",
+            "path": "/healthz",
+            "name": "健康检查",
+            "summary": "health check",
+            "description": "",
+            "auth": [],
+            "isAsync": false
+          }
+        ]
+      }
+    ]
+  }
+]

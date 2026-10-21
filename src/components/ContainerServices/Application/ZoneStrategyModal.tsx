@@ -49,6 +49,8 @@ export default function ZoneStrategyModal({
   partitionDimension,
   onResetZone,
   onDeleteZone,
+  paused = false,
+  showZoneAndAi = true,
 }: {
   open: boolean
   zones: ZoneLaunch[]
@@ -61,6 +63,10 @@ export default function ZoneStrategyModal({
   onResetZone: (zoneId: ZoneId) => void
   // 删除某个分区（global 不可删除）
   onDeleteZone: (zoneId: ZoneId) => void
+  // 自动开服已暂停：修改的策略在恢复后才生效
+  paused?: boolean
+  // 是否展示分区 / AI 开服相关内容（关闭时只编辑默认服策略）
+  showZoneAndAi?: boolean
 }) {
   const [selected, setSelected] = useState<ZoneId>(defaultZoneId)
   const [form] = Form.useForm<StrategyFormValues>()
@@ -97,7 +103,17 @@ export default function ZoneStrategyModal({
       styles={{ body: { maxHeight: '72vh', overflow: 'auto' } }}
     >
       <Flex vertical gap={16}>
+        {paused ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="自动开服已暂停，修改后的策略需恢复自动开服后才会生效"
+            style={{ padding: '8px 16px' }}
+          />
+        ) : null}
         {/* AI 开服：纯提示，策略由运营人员配置脚本维护；实际启停由运营脚本，不影响导流服触发，本页不提供开关 */}
+        {showZoneAndAi ? (
+        <>
         <Alert
           type="info"
           showIcon
@@ -120,9 +136,12 @@ export default function ZoneStrategyModal({
             已锁定（启用自动开服时确定）；如需更换维度，请关闭自动开服后重新配置
           </Text>
         </Flex>
+        </>
+        ) : null}
 
         <Flex gap={16}>
         {/* 左：分区列表，展示所有区域策略摘要 */}
+        {showZoneAndAi ? (
         <div style={{ width: 280, flexShrink: 0 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
             分区
@@ -183,12 +202,20 @@ export default function ZoneStrategyModal({
           </div>
         </div>
 
+        ) : null}
+
         {/* 右：选中分区的策略表单 */}
-        <div style={{ flex: 1, minWidth: 0, paddingLeft: 16, borderLeft: '1px solid rgba(0,0,0,0.06)' }}>
+        <div
+          style={
+            showZoneAndAi
+              ? { flex: 1, minWidth: 0, paddingLeft: 16, borderLeft: '1px solid rgba(0,0,0,0.06)' }
+              : { flex: 1, minWidth: 0 }
+          }
+        >
           {/* 右栏顶栏：分区标题 + 独立态可恢复继承 */}
           <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
             <Text strong>
-              {selected === 'global' ? '全局默认策略' : `${selectedZone?.zoneName ?? selected}策略`}
+              {!showZoneAndAi ? '开服策略' : selected === 'global' ? '全局默认策略' : `${selectedZone?.zoneName ?? selected}策略`}
             </Text>
             {selected !== 'global' && selectedZone?.override ? (
               <Popconfirm

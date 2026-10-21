@@ -23,10 +23,13 @@ export default function LaunchHistoryModal({
   open,
   zones,
   onClose,
+  showZoneAndAi = true,
 }: {
   open: boolean
   zones: ZoneLaunch[]
   onClose: () => void
+  // 是否展示分区 / AI 开服相关内容（关闭时只保留策略开服记录，隐藏来源/分区/语种列与筛选）
+  showZoneAndAi?: boolean
 }) {
   const [zoneFilter, setZoneFilter] = useState<ZoneId | 'all'>('all')
   const [sourceFilter, setSourceFilter] = useState<'all' | 'strategy' | 'ai'>('all')
@@ -35,9 +38,12 @@ export default function LaunchHistoryModal({
   // 汇总所有分区的开服记录
   const allHistory = useMemo<LaunchHistoryItem[]>(() => {
     const items: LaunchHistoryItem[] = []
-    zones.forEach(z => z.launchHistory.forEach(it => items.push(it)))
+    zones.forEach(z => z.launchHistory.forEach(it => {
+      if (!showZoneAndAi && it.source === 'ai') return
+      items.push(it)
+    }))
     return items.sort((a, b) => dayjs(b.triggeredAt).valueOf() - dayjs(a.triggeredAt).valueOf())
-  }, [zones])
+  }, [zones, showZoneAndAi])
 
   const filtered = useMemo(() => {
     return allHistory.filter(it => {
@@ -51,7 +57,7 @@ export default function LaunchHistoryModal({
     })
   }, [allHistory, zoneFilter, sourceFilter, range])
 
-  const columns = [
+  const allColumns = [
     {
       title: '来源',
       dataIndex: 'source',
@@ -107,6 +113,9 @@ export default function LaunchHistoryModal({
     },
   ]
 
+  // 关闭分区/AI 时隐藏 来源 / 分区 / 语种 列
+  const columns = showZoneAndAi ? allColumns : allColumns.filter(c => !['source', 'zone', 'lang'].includes(c.key))
+
   const zoneOptions = [
     { value: 'all', label: '全部分区' },
     ...zones.map(z => ({
@@ -134,18 +143,22 @@ export default function LaunchHistoryModal({
     >
       <Flex justify="space-between" align="center" gap={12} wrap="wrap" style={{ marginBottom: 16 }}>
         <Space wrap>
-          <Select
-            style={{ width: 160 }}
-            value={zoneFilter}
-            onChange={v => setZoneFilter(v as ZoneId | 'all')}
-            options={zoneOptions}
-          />
-          <Select
-            style={{ width: 140 }}
-            value={sourceFilter}
-            onChange={v => setSourceFilter(v as 'all' | 'strategy' | 'ai')}
-            options={sourceOptions}
-          />
+          {showZoneAndAi ? (
+            <>
+              <Select
+                style={{ width: 160 }}
+                value={zoneFilter}
+                onChange={v => setZoneFilter(v as ZoneId | 'all')}
+                options={zoneOptions}
+              />
+              <Select
+                style={{ width: 140 }}
+                value={sourceFilter}
+                onChange={v => setSourceFilter(v as 'all' | 'strategy' | 'ai')}
+                options={sourceOptions}
+              />
+            </>
+          ) : null}
           <DatePicker.RangePicker
             value={range as never}
             onChange={r => setRange(r as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null)}

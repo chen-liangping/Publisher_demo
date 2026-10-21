@@ -57,6 +57,7 @@ import LogPage from '../components/log'
 import PeopleManagement from '../components/nofication/PeopleManagement'
 import MessageNotification from '../components/nofication/MessageNotification'
 import CdnAlert from '../components/alert/CdnAlert'
+import SecurityScanPage from '../components/SecurityScan/SecurityScanPage'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import BlockedOverlay from '../components/Admin/credential-ban/BlockedOverlay'
 import { hydrateFromStorage, useCredential } from '../components/Admin/credential-ban/mock'
@@ -65,7 +66,7 @@ import { DEMO_APP_IDS } from '../components/Admin/credential-ban/types'
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'workbench' | 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system'
+type MenuKey = 'workbench' | 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system' | 'security-scan'
 
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
@@ -338,6 +339,9 @@ export default function Home() {
         return <CdnAlert />
       case 'alert-system':
         return <AlertSystem />
+      case 'security-scan':
+        // 监控 → 安全扫描：按当前顶栏选中的 appId 展示
+        return <SecurityScanPage appId={selectedGameAppId} />
       default:
         return (
           <VirtualMachineList
@@ -872,6 +876,12 @@ export default function Home() {
                     icon: <BellOutlined />,
                     label: '服务端监控',
                     onClick: () => handleMenuClick('alert-system')
+                  },
+                  {
+                    key: 'security-scan',
+                    icon: <SecurityScanOutlined />,
+                    label: '安全扫描',
+                    onClick: () => handleMenuClick('security-scan')
                   }
                 ],
               },

@@ -5,8 +5,9 @@
 // 开服策略类型：cron = 定时开服，strategy = 条件开服
 export type StrategyType = 'cron' | 'strategy'
 
-// 开服流程状态：idle = 待机，processing = 开服进行中，suspended = 未开启（回退至启用自动开服前）
-export type AutoLaunchStatus = 'idle' | 'processing' | 'suspended'
+// 开服流程状态：idle = 待机，processing = 开服进行中，suspended = 未开启（回退至启用自动开服前），
+// paused = 已暂停（配置保留，停止监控与自动开服，可恢复）
+export type AutoLaunchStatus = 'idle' | 'processing' | 'suspended' | 'paused'
 
 // 开服步骤状态：等待执行 / 执行中 / 等待回调 / 成功 / 失败
 export type ActionStepStatus = 'need_execute' | 'executing' | 'wait_callback' | 'ok' | 'failed'
@@ -122,6 +123,8 @@ export type ZoneLaunch = {
   // 策略开服
   strategyType: StrategyType
   autoLaunchStatus: AutoLaunchStatus
+  // 暂停时间（仅 paused 态有值）
+  pausedAt?: string
   curMaxServiceId: number
   rollbackProdOpen: boolean
   // 定时开服

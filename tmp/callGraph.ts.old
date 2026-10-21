@@ -1,0 +1,217 @@
+/**
+ * 应用调用关系（mock）。
+ *
+ * 节点 = 应用 / 外部调用方 / 平台服务 / 数据存储；边 = 一条调用关系，并落到具体 API。
+ * 每条边说明「谁调了谁的哪些接口、走公网还是内网、用什么凭证、依据是什么」，
+ * 这样既能看到应用间的关联，也能回答「每个 API 是被谁调用的」。
+ *
+ * 真实实现的数据来源：
+ * - 入向：Ingress / SLB 访问日志的来源（玩家、支付平台、办公网 IP 段）
+ * - 出向：解析代码里的 HTTP 客户端调用 + 配置中的目标地址（如 http://kumo-game:8080）
+ * - 数据：代码里的数据库 / 缓存连接与 SQL 表名
+ * - 凭证：调用时携带的 key 与凭证扫描结果交叉比对
+ */
+
+import type { HttpMethod, RiskLevel } from './types'
+
+export type GraphNodeKind = 'external' | 'app' | 'platform' | 'data'
+
+export interface GraphNode {
+  id: string
+  name: string
+  desc: string
+  kind: GraphNodeKind
+  /** 画布坐标（节点中心） */
+  x: number
+  y: number
+}
+
+/** 边上调用的接口：registered 表示该接口在 API 清单中，可点开详情 */
+export interface EdgeApi {
+  method: HttpMethod | 'SQL' | 'CMD'
+  path: string
+  /** API 清单中的 id（被调方是本游戏应用时） */
+  apiId: string | null
+  desc: string
+}
+
+export interface GraphEdge {
+  id: string
+  from: string
+  to: string
+  label: string
+  via: '公网' | '内网'
+  apis: EdgeApi[]
+  /** 调用时携带的凭证 */
+  credential: string | null
+  /** 这条调用本身的风险（与接口风险分开：如共用凭证、绕过游戏服直接写库） */
+  risk: RiskLevel
+  riskReason: string
+  /** 判断依据 */
+  evidence: string
+}
+
+export const NODE_W = 168
+export const NODE_H = 60
+
+export const graphNodes: GraphNode[] = [
+  { id: 'office', name: '运营人员', desc: '办公网 / 外网', kind: 'external', x: 140, y: 70 },
+  { id: 'player', name: '玩家', desc: '客户端', kind: 'external', x: 480, y: 70 },
+  { id: 'payment', name: '支付平台', desc: '到账回调', kind: 'external', x: 780, y: 70 },
+  { id: 'admin-data', name: 'admin-data', desc: 'GM 平台', kind: 'app', x: 140, y: 260 },
+  { id: 'kumo', name: 'kumo游服', desc: '游戏服', kind: 'app', x: 560, y: 260 },
+  { id: 'cfgplt', name: 'cfgplt', desc: '配表平台', kind: 'app', x: 950, y: 260 },
+  { id: 'center', name: 'center', desc: '平台：帐号 / 支付', kind: 'platform', x: 140, y: 450 },
+  { id: 'mysql', name: 'MySQL', desc: '玩家 / 订单 / 邮件', kind: 'data', x: 560, y: 450 },
+  { id: 'redis', name: 'Redis', desc: '在线 / 缓存', kind: 'data', x: 860, y: 450 }
+]
+
+export const graphEdges: GraphEdge[] = [
+  {
+    id: 'office-admin',
+    from: 'office',
+    to: 'admin-data',
+    label: 'GM 操作',
+    via: '公网',
+    apis: [
+      { method: 'POST', path: '/gm/api/item/send', apiId: 'gm-item-send', desc: '' },
+      { method: 'POST', path: '/gm/api/mail/send', apiId: 'gm-mail-send', desc: '' },
+      { method: 'POST', path: '/gm/api/player/ban', apiId: 'gm-player-ban', desc: '' },
+      { method: 'GET', path: '/gm/api/player/info', apiId: 'gm-player-info', desc: '' }
+    ],
+    credential: 'gm-token',
+    risk: 'high',
+    riskReason: '管理接口经公网入口 gm.demo-game.example.com 访问，来源 IP 不限于办公网',
+    evidence: 'Ingress gm.demo-game.example.com/gm；访问日志来源 IP 含非办公网段'
+  },
+  {
+    id: 'player-kumo',
+    from: 'player',
+    to: 'kumo',
+    label: '进游戏',
+    via: '公网',
+    apis: [
+      { method: 'POST', path: '/api/login', apiId: 'api-login', desc: '' },
+      { method: 'PUT', path: '/api/user/rename', apiId: 'api-user-rename', desc: '' },
+      { method: 'GET', path: '/api/bag/list', apiId: 'api-bag-list', desc: '' },
+      { method: 'POST', path: '/api/activity/claim', apiId: 'api-activity-claim', desc: '' }
+    ],
+    credential: null,
+    risk: 'low',
+    riskReason: '玩家正常访问路径',
+    evidence: 'Ingress api.demo-game.example.com/api'
+  },
+  {
+    id: 'payment-kumo',
+    from: 'payment',
+    to: 'kumo',
+    label: '到账通知',
+    via: '公网',
+    apis: [{ method: 'POST', path: '/api/pay/notify', apiId: 'api-pay-notify', desc: '' }],
+    credential: null,
+    risk: 'low',
+    riskReason: '来源 IP 限定支付平台网段',
+    evidence: '路由挂载 IPAllow(payCIDR)'
+  },
+  {
+    id: 'admin-kumo',
+    from: 'admin-data',
+    to: 'kumo',
+    label: 'GM 指令',
+    via: '内网',
+    apis: [
+      { method: 'POST', path: '/internal/gm/exec', apiId: null, desc: '执行 GM 指令（发道具、踢人）' }
+    ],
+    credential: null,
+    risk: 'mid',
+    riskReason: '被调接口不在 API 清单中（游服内部 GM 入口未登记），且未识别到鉴权',
+    evidence: 'admin-data internal/gm/item.go:42 调用 http://kumo-game:8080/internal/gm/exec'
+  },
+  {
+    id: 'admin-center',
+    from: 'admin-data',
+    to: 'center',
+    label: '查玩家',
+    via: '内网',
+    apis: [{ method: 'POST', path: '/v1/player/info', apiId: null, desc: '查询平台帐号信息' }],
+    credential: 'center-key',
+    risk: 'high',
+    riskReason: '使用与游服共用的 center-key，GM 平台可直接调用平台接口；封网无法阻断，需要轮换 key',
+    evidence: 'admin-data config.yaml center.key；指纹命中平台凭证'
+  },
+  {
+    id: 'kumo-center',
+    from: 'kumo',
+    to: 'center',
+    label: '登录校验、下单',
+    via: '内网',
+    apis: [
+      { method: 'POST', path: '/v1/token/verify', apiId: null, desc: '校验玩家登录 token' },
+      { method: 'POST', path: '/v1/order/create', apiId: null, desc: '创建支付订单' }
+    ],
+    credential: 'center-key',
+    risk: 'mid',
+    riskReason: 'center-key 与 admin-data 共用，建议按应用拆分',
+    evidence: 'kumo游服 internal/platform/center.go 调用 center；携带 center-key'
+  },
+  {
+    id: 'cfgplt-kumo',
+    from: 'cfgplt',
+    to: 'kumo',
+    label: '热更通知',
+    via: '内网',
+    apis: [{ method: 'POST', path: '/internal/config/reload', apiId: null, desc: '通知游服重新加载配置' }],
+    credential: null,
+    risk: 'mid',
+    riskReason: '被调接口不在 API 清单中，未识别到鉴权',
+    evidence: 'cfgplt notify/reload.go 调用 http://kumo-game:8080/internal/config/reload'
+  },
+  {
+    id: 'kumo-cfgplt',
+    from: 'kumo',
+    to: 'cfgplt',
+    label: '拉配置',
+    via: '内网',
+    apis: [{ method: 'GET', path: '/cfg/latest', apiId: 'cfg-latest', desc: '' }],
+    credential: null,
+    risk: 'low',
+    riskReason: '内网读取',
+    evidence: 'kumo游服 config/loader.go 调用 http://cfgplt:8000/cfg/latest'
+  },
+  {
+    id: 'admin-mysql',
+    from: 'admin-data',
+    to: 'mysql',
+    label: '直接写邮件表',
+    via: '内网',
+    apis: [{ method: 'SQL', path: 'INSERT INTO mail', apiId: null, desc: '绕过游服直接写玩家邮件' }],
+    credential: null,
+    risk: 'mid',
+    riskReason: '绕过游服业务校验直接写库，游服侧的限制与日志不生效',
+    evidence: 'admin-data internal/gm/mail.go:88 执行 INSERT INTO mail'
+  },
+  {
+    id: 'kumo-mysql',
+    from: 'kumo',
+    to: 'mysql',
+    label: '读写玩家数据',
+    via: '内网',
+    apis: [{ method: 'SQL', path: 'player / order / mail', apiId: null, desc: '游服业务读写' }],
+    credential: null,
+    risk: 'low',
+    riskReason: '正常业务读写',
+    evidence: 'kumo游服 DSN 配置 mysql:3306'
+  },
+  {
+    id: 'kumo-redis',
+    from: 'kumo',
+    to: 'redis',
+    label: '在线、缓存',
+    via: '内网',
+    apis: [{ method: 'CMD', path: 'online:* / pay:lock:*', apiId: null, desc: '在线状态、支付锁' }],
+    credential: null,
+    risk: 'low',
+    riskReason: '正常业务读写',
+    evidence: 'kumo游服 redis 地址 redis:6379'
+  }
+]

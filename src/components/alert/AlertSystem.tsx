@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Dropdown, Checkbox, message, Switch, Tabs } from 'antd'
-import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, DownOutlined, ExportOutlined, CopyOutlined } from '@ant-design/icons'
+import { Alert, Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Popconfirm, message, Switch, Tabs } from 'antd'
+import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, ExportOutlined, CopyOutlined, DeleteOutlined, PlusOutlined, HddOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
 const { Title, Text } = Typography
@@ -11,29 +11,61 @@ const { Title, Text } = Typography
 // 导入自定义告警规则组件
 import CustomAlertRule from './CustomAlertRule'
 
-// 应用告警配置接口
+// 故障报警配置：一条配置可覆盖多个应用；Pod 故障 / Pod 重启 两类告警在列表中分别开关
 interface AlertConfig {
   id: string
-  appName: string
+  appNames: string[]
+  // Pod 故障：异常持续期间按 frequency 重复报警
+  podFailureEnabled: boolean
   frequency: string
+  // Pod 重启：restartWindow 内重启次数 ≥ restartThreshold 即报警
+  podRestartEnabled: boolean
+  restartWindow: string
+  restartThreshold: number
 }
 
-// 通知参与者：人员 + 机器人
-interface AlertActor {
-  id: string
-  name: string
-  kind: 'person' | 'webhook'
-}
+const DEFAULT_FREQUENCY = '5 分钟'
+const DEFAULT_RESTART_WINDOW = '15 分钟'
+const DEFAULT_RESTART_THRESHOLD = 3
+
+const FREQUENCY_OPTIONS = ['5 分钟', '10 分钟', '30 分钟', '1 小时', '2 小时', '4 小时']
+const RESTART_WINDOW_OPTIONS = ['5 分钟', '10 分钟', '15 分钟', '30 分钟', '1 小时']
+const RESTART_THRESHOLD_OPTIONS = [1, 2, 3, 5, 10]
+
+// 可选应用（模拟数据）
+const ALL_APP_NAMES = [
+  'single-container-server',
+  'multi-container-server',
+  'open-platform',
+  'sts-service',
+  'game',
+  'master',
+  'testplat'
+]
 
 // 模拟告警配置数据
 const mockAlertConfigs: AlertConfig[] = [
-  { id: '60066', appName: 'open-platform', frequency: '5 分钟' },
-  { id: '60081', appName: 'game',          frequency: '5 分钟' },
-  { id: '60086', appName: 'testplat',      frequency: '5 分钟' },
-  { id: '60087', appName: 'test',          frequency: '5 分钟' },
-  { id: '90051', appName: 'master',        frequency: '5 分钟' },
-  { id: '90057', appName: 'test-delete-pods', frequency: '5 分钟' }
+  { id: '60066', appNames: ['single-container-server', 'multi-container-server'], podFailureEnabled: false, frequency: '1 小时', podRestartEnabled: true, restartWindow: DEFAULT_RESTART_WINDOW, restartThreshold: DEFAULT_RESTART_THRESHOLD },
+  { id: '60081', appNames: ['open-platform'], podFailureEnabled: false, frequency: '5 分钟', podRestartEnabled: true, restartWindow: DEFAULT_RESTART_WINDOW, restartThreshold: DEFAULT_RESTART_THRESHOLD },
+  { id: '60086', appNames: ['multi-container-server'], podFailureEnabled: true, frequency: '5 分钟', podRestartEnabled: false, restartWindow: DEFAULT_RESTART_WINDOW, restartThreshold: DEFAULT_RESTART_THRESHOLD },
+  { id: '60087', appNames: ['sts-service'], podFailureEnabled: true, frequency: '5 分钟', podRestartEnabled: true, restartWindow: DEFAULT_RESTART_WINDOW, restartThreshold: DEFAULT_RESTART_THRESHOLD }
 ]
+
+// 规则标签样式：Pod 故障（红）/ Pod 重启（橙）/ 已关闭（灰）
+const ruleTagBase: React.CSSProperties = {
+  display: 'inline-block',
+  width: 64,
+  flexShrink: 0,
+  textAlign: 'center',
+  fontSize: 12,
+  lineHeight: '22px',
+  borderRadius: 4
+}
+const RULE_TAG_STYLE: Record<'failure' | 'restart' | 'off', React.CSSProperties> = {
+  failure: { ...ruleTagBase, background: '#FFF1F0', color: '#A8071A' },
+  restart: { ...ruleTagBase, background: '#FFF7E6', color: '#873800' },
+  off: { ...ruleTagBase, background: '#F5F5F5', color: '#8C8C8C' }
+}
 
 
 export default function AlertSystem(): React.ReactElement {
@@ -43,75 +75,27 @@ export default function AlertSystem(): React.ReactElement {
   const [messageApi, contextHolder] = message.useMessage()
   const [alertConfigs, setAlertConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [configDrawerOpen, setConfigDrawerOpen] = useState<boolean>(false)
-  // Pod 故障监控全局开关：关闭时下方应用列表置灰锁定
-  const [podMonitorEnabled, setPodMonitorEnabled] = useState<boolean>(true)
   const [editingConfigs, setEditingConfigs] = useState<AlertConfig[]>(mockAlertConfigs)
   const [faroConfigOpen, setFaroConfigOpen] = useState<boolean>(false)
-  // 模拟的告警参与者：人员 + 机器人（参考“消息配置”中的配置）
-  const [actors] = useState<AlertActor[]>([
-    { id: 'person_yu.b',  name: 'yu.b', kind: 'person' },
-    { id: 'person_xuyin',  name: '刘悦',  kind: 'person' },
-    { id: 'webhook_kumo',  name: '小包',  kind: 'webhook' }
-  ])
-  // 每个应用 x 参与者的开关矩阵。Pod 开关打开时：接收渠道默认仅选“小包”，联系人默认全勾
-  const XIAOBAO_WEBHOOK_ID = 'webhook_kumo'
-  const [actorMatrix, setActorMatrix] = useState<Record<string, Record<string, boolean>>>(() => {
-    const initial: Record<string, Record<string, boolean>> = {}
-    const defaultActors = [
-      { id: 'person_yu.b', kind: 'person' as const },
-      { id: 'person_xuyin', kind: 'person' as const },
-      { id: 'webhook_kumo', kind: 'webhook' as const }
-    ]
-    mockAlertConfigs.forEach(cfg => {
-      const row: Record<string, boolean> = {}
-      defaultActors.forEach(a => {
-        row[a.id] = a.kind === 'webhook' ? a.id === XIAOBAO_WEBHOOK_ID : true
-      })
-      initial[cfg.id] = row
-    })
-    return initial
-  })
 
-  // Pod 故障开关切换：开启时，接收渠道默认仅选“小包”，联系人默认全勾
-  const handlePodMonitorSwitch = useCallback((nextEnabled: boolean) => {
-    setPodMonitorEnabled(nextEnabled)
-    if (nextEnabled) {
-      setActorMatrix(prev => {
-        const next: Record<string, Record<string, boolean>> = { ...prev }
-        alertConfigs.forEach(cfg => {
-          const row: Record<string, boolean> = {}
-          actors.forEach(a => {
-            if (a.kind === 'webhook') {
-              row[a.id] = a.id === XIAOBAO_WEBHOOK_ID
-            } else {
-              row[a.id] = true // 联系人默认全勾
-            }
-          })
-          next[cfg.id] = row
-        })
-        return next
-      })
-    }
-  }, [actors, alertConfigs])
-
-  // 切换告警开关
-  const handleToggleAlert = useCallback((id: string, enabled: boolean) => {
-    setAlertConfigs(prev => 
-      prev.map(config => 
-        config.id === id ? { ...config, enabled } : config
-      )
-    )
-  }, [])
+  // 列表内直接切换某类告警的开关
+  const handleToggleRule = useCallback(
+    (id: string, key: 'podFailureEnabled' | 'podRestartEnabled', checked: boolean) => {
+      setAlertConfigs(prev => prev.map(config => (config.id === id ? { ...config, [key]: checked } : config)))
+      const label = key === 'podFailureEnabled' ? 'Pod 故障' : 'Pod 重启'
+      messageApi.success(`${label}告警已${checked ? '开启' : '关闭'}`)
+    },
+    [messageApi]
+  )
 
   // 删除告警配置
-  const handleDeleteAlert = useCallback((id: string) => {
-    setAlertConfigs(prev => prev.filter(config => config.id !== id))
-    setActorMatrix(prev => {
-      const next = { ...prev }
-      delete next[id]
-      return next
-    })
-  }, [])
+  const handleDeleteAlert = useCallback(
+    (id: string) => {
+      setAlertConfigs(prev => prev.filter(config => config.id !== id))
+      messageApi.success('配置已删除')
+    },
+    [messageApi]
+  )
 
   // 打开“故障报警配置”抽屉
   const handleOpenConfigDrawer = useCallback(() => {
@@ -119,54 +103,15 @@ export default function AlertSystem(): React.ReactElement {
     setConfigDrawerOpen(true)
   }, [alertConfigs])
 
-  // 在抽屉中修改应用名称
-  const handleChangeAppName = useCallback((id: string, appName: string) => {
-    setEditingConfigs(prev =>
-      prev.map(config => (config.id === id ? { ...config, appName } : config))
-    )
+  // 抽屉中修改某条配置的字段
+  const handlePatchEditing = useCallback((id: string, patch: Partial<AlertConfig>) => {
+    setEditingConfigs(prev => prev.map(config => (config.id === id ? { ...config, ...patch } : config)))
   }, [])
 
-  // 在抽屉中修改报警频率
-  const handleChangeFrequency = useCallback((id: string, frequency: string) => {
-    setEditingConfigs(prev =>
-      prev.map(config => (config.id === id ? { ...config, frequency } : config))
-    )
+  // 抽屉中删除某条配置
+  const handleRemoveEditingRow = useCallback((id: string) => {
+    setEditingConfigs(prev => prev.filter(config => config.id !== id))
   }, [])
-
-  // 在列表页直接修改报警频率（同时同步到抽屉配置）
-  const handleChangeFrequencyInline = useCallback((id: string, frequency: string) => {
-    setAlertConfigs(prev =>
-      prev.map(config => (config.id === id ? { ...config, frequency } : config))
-    )
-    setEditingConfigs(prev =>
-      prev.map(config => (config.id === id ? { ...config, frequency } : config))
-    )
-  }, [])
-
-  // 获取某个应用在某个参与者上的开关状态（默认视为勾选）
-  const getActorCheckedForApp = useCallback(
-    (appId: string, actorId: string): boolean => {
-      const value = actorMatrix[appId]?.[actorId]
-      // 如果尚未配置该参与者的状态，则默认认为是勾选（true）
-      if (value === undefined) return true
-      return value
-    },
-    [actorMatrix]
-  )
-
-  // 修改某个应用在某个参与者上的开关
-  const handleToggleActorForApp = useCallback(
-    (appId: string, actorId: string, checked: boolean) => {
-      setActorMatrix(prev => {
-        const next: Record<string, Record<string, boolean>> = { ...prev }
-        const row = { ...(next[appId] ?? {}) }
-        row[actorId] = checked
-        next[appId] = row
-        return next
-      })
-    },
-    []
-  )
 
   // 跳转到“消息中心”的“消息配置”Tab（即 alert.tsx 消息配置页面）
   const handleGoToAlertPage = useCallback(() => {
@@ -177,38 +122,35 @@ export default function AlertSystem(): React.ReactElement {
     router.push(url)
   }, [pathname, router, searchParams])
 
-  // 在抽屉中新增一条配置
+  // 抽屉中新增一条配置：Pod 故障 / Pod 重启 默认开启，重启阈值默认 15 分钟内 ≥ 3 次
   const handleAddConfigRow = useCallback(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     setEditingConfigs(prev => [
       ...prev,
-      { id, appName: '', frequency: '5 分钟' }
+      {
+        id,
+        appNames: [],
+        podFailureEnabled: true,
+        frequency: DEFAULT_FREQUENCY,
+        podRestartEnabled: true,
+        restartWindow: DEFAULT_RESTART_WINDOW,
+        restartThreshold: DEFAULT_RESTART_THRESHOLD
+      }
     ])
-    // 交互逻辑：新增配置行时初始化矩阵行（默认未配置视为勾选）
-    setActorMatrix(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}) } }))
   }, [])
 
   // 抽屉中保存配置
   const handleSaveConfigs = useCallback(() => {
+    if (editingConfigs.some(config => config.appNames.length === 0)) {
+      messageApi.error('请为每条配置至少选择一个应用')
+      return
+    }
     setAlertConfigs(editingConfigs)
     setConfigDrawerOpen(false)
-  }, [editingConfigs])
+    messageApi.success('故障报警配置已保存')
+  }, [editingConfigs, messageApi])
 
-  // 抽屉中可选的报警频率
-  const frequencyOptions = useMemo(
-    () => ['5 分钟', '10 分钟', '30 分钟', '1 小时', '2 小时', '4 小时'],
-    []
-  )
-
-  // 抽屉中可选的应用名称（基于当前配置去重）
-  const appNameOptions = useMemo(
-    () =>
-      Array.from(new Set(editingConfigs.map(c => c.appName).filter(Boolean))).map(name => ({
-        label: name,
-        value: name
-      })),
-    [editingConfigs]
-  )
+  const appNameOptions = useMemo(() => ALL_APP_NAMES.map(name => ({ label: name, value: name })), [])
 
   // Faro 初始化代码示例字符串（仅用于展示与复制）
   const faroInitCode = `import { getWebInstrumentations, initializeFaro } from '@grafana/faro-web-sdk';
@@ -229,125 +171,94 @@ initializeFaro({
   ],
 });`
 
+  // 报警规则单元格中的一行：标签 + 开关 + 规则描述
+  const renderRuleLine = (record: AlertConfig, kind: 'failure' | 'restart'): React.ReactElement => {
+    const enabled = kind === 'failure' ? record.podFailureEnabled : record.podRestartEnabled
+    const label = kind === 'failure' ? 'Pod 故障' : 'Pod 重启'
+    const desc =
+      kind === 'failure'
+        ? `每 ${record.frequency}报警`
+        : `${record.restartWindow}内重启 ≥ ${record.restartThreshold} 次报警`
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={enabled ? RULE_TAG_STYLE[kind] : RULE_TAG_STYLE.off}>{label}</span>
+        <Switch
+          size="small"
+          checked={enabled}
+          aria-label={`${enabled ? '关闭' : '开启'} ${label}告警`}
+          onChange={checked =>
+            handleToggleRule(record.id, kind === 'failure' ? 'podFailureEnabled' : 'podRestartEnabled', checked)
+          }
+        />
+        {enabled ? <Text>{desc}</Text> : <Text type="secondary">已关闭 · 开启后{desc}</Text>}
+      </div>
+    )
+  }
+
   // 故障报警表格列配置
-  const alertColumns: ColumnsType<AlertConfig> = useMemo(() => {
-    const base: ColumnsType<AlertConfig> = [
+  const alertColumns: ColumnsType<AlertConfig> = [
     {
       title: '应用名称',
-      dataIndex: 'appName',
-      key: 'appName',
-        width: 260,
-      render: (appName: string) => (
-        <Space size="small">
-          <Button 
-            size="small" 
-            disabled 
-            style={{ 
-              background: 'transparent', 
-              color: 'rgba(0, 0, 0, 0.88)', 
-              cursor: 'default',
-              border: '1px solid #d9d9d9'
-            }}
-          >
-            {appName}
-          </Button>
+      dataIndex: 'appNames',
+      key: 'appNames',
+      render: (appNames: string[]) => (
+        <Space size={8} wrap>
+          {appNames.map(name => (
+            <span
+              key={name}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '1px 8px',
+                border: '1px solid #d9d9d9',
+                borderRadius: 4,
+                color: 'rgba(0, 0, 0, 0.88)'
+              }}
+            >
+              <HddOutlined />
+              {name}
+            </span>
+          ))}
         </Space>
       )
     },
     {
       title: (
-        <Space>
-          <span>报警频率</span>
-          <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>（仅 Pod 开启后生效）</Text>
-          <Tooltip title="设置告警通知的发送频率">
+        <Space size={6}>
+          <span>报警规则</span>
+          <Tooltip title="Pod 故障：Pod 异常期间按所选频率重复报警；Pod 重启：时间窗口内重启次数达到阈值即报警。两类告警可分别开关">
             <QuestionCircleOutlined style={{ color: 'rgba(0, 0, 0, 0.45)', cursor: 'help' }} />
           </Tooltip>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>（可分别开关）</Text>
         </Space>
       ),
-      dataIndex: 'frequency',
-      key: 'frequency',
-        width: 140,
-        render: (frequency: string, record: AlertConfig) => (
-          <div className="alert-frequency-cell">
-            <span className="alert-frequency-cell-value">{frequency}</span>
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: frequencyOptions.map(v => ({ key: v, label: v })),
-                onClick: ({ key }) => handleChangeFrequencyInline(record.id, key as string)
-              }}
-            >
-              <Button
-                type="text"
-          size="small"
-                className="alert-frequency-switch"
-                icon={<DownOutlined />}
-              />
-            </Dropdown>
-          </div>
-        )
-      }
-    ]
-
-    // 动态追加“通知渠道参与者”列：按类别分组（人员 / 机器人）
-    const personActors = actors.filter(actor => actor.kind === 'person')
-    const webhookActors = actors.filter(actor => actor.kind === 'webhook')
-
-    const renderActorChecklist = (actorList: AlertActor[], layout: 'vertical' | 'horizontal') => {
-      function ActorChecklistCell(_: unknown, record: AlertConfig): React.ReactElement {
-        const content = actorList.map(actor => (
-          <div key={actor.id} style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
-            <Checkbox
-              checked={getActorCheckedForApp(record.id, actor.id)}
-              onChange={e => handleToggleActorForApp(record.id, actor.id, e.target.checked)}
-            >
-              {actor.name}
-            </Checkbox>
-          </div>
-        ))
-
-        if (layout === 'horizontal') {
-          return (
-            <Space size={12} wrap style={{ display: 'flex', paddingBlock: 4 }}>
-              {content}
-            </Space>
-          )
-        }
-
-        return (
-          <Space direction="vertical" size={6} style={{ display: 'flex', paddingBlock: 4 }}>
-            {content}
-          </Space>
-        )
-      }
-
-      ActorChecklistCell.displayName = `ActorChecklistCell(${layout})`
-      return ActorChecklistCell
+      key: 'rules',
+      width: 460,
+      render: (_: unknown, record: AlertConfig) => (
+        <Space direction="vertical" size={10} style={{ display: 'flex', paddingBlock: 2 }}>
+          {renderRuleLine(record, 'failure')}
+          {renderRuleLine(record, 'restart')}
+        </Space>
+      )
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 120,
+      render: (_: unknown, record: AlertConfig) => (
+        <Popconfirm
+          title="确定删除这条报警配置？"
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => handleDeleteAlert(record.id)}
+        >
+          <Button type="link" style={{ padding: 0 }}>删除</Button>
+        </Popconfirm>
+      )
     }
-
-    const groupedActorCols: ColumnsType<AlertConfig> = []
-
-    if (webhookActors.length > 0) {
-      groupedActorCols.push({
-        title: '接收渠道',
-        key: 'channels',
-        width: 220,
-        render: renderActorChecklist(webhookActors, 'vertical')
-      })
-    }
-
-    if (personActors.length > 0) {
-      groupedActorCols.push({
-        title: '联系人',
-        key: 'contacts',
-        width: 260,
-        render: renderActorChecklist(personActors, 'horizontal')
-      })
-    }
-
-    return [...base, ...groupedActorCols]
-  }, [actors, frequencyOptions, handleChangeFrequencyInline, handleDeleteAlert, getActorCheckedForApp, handleToggleActorForApp])
-
+  ]
   // FAQ 数据
   const faqItems = [
     {
@@ -356,6 +267,8 @@ initializeFaro({
       children: (
         <div>
           <Text><strong>故障报警：</strong>系统自动监测应用运行状态的功能。当检测到应用异常、服务中断或性能问题时，系统会立即向相关人员发送告警通知，帮助团队快速响应和处理问题。</Text>
+          <br />
+          <Text><strong>Pod 故障 / Pod 重启：</strong>Pod 故障监测 Pod 存活与就绪状态，异常期间按所选频率重复报警；Pod 重启监测容器重启次数（如 OOMKilled、存活探针失败），在时间窗口内重启次数达到阈值即报警。两类告警可在列表中分别开关。</Text>
           <br />
           <Text><strong>人员配置：</strong>用于管理接收告警通知的人员信息，包括钉钉账号等联系方式。当系统检测到异常时，会向配置的人员发送通知。</Text>
         </div>
@@ -451,83 +364,27 @@ initializeFaro({
             key: 'pod-alert',
             label: '故障报警',
             children: (
-      <Card title="故障报警">
-        {/* 顶部：全局前置控制区（快速开关） */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12,
-            padding: '12px 16px',
-            background: '#fafafa',
-            borderRadius: 8,
-            marginBottom: 16,
-            border: '1px solid #f0f0f0'
-          }}
-        >
-          <Space align="center" size={16}>
-            <SettingOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-            <div>
-              <div style={{ fontSize: 13, color: '#666', marginBottom: 4 }}>
-                Pod 故障告警
-              </div>
-              <Space align="center">
-                <Switch
-                  checked={podMonitorEnabled}
-                  onChange={handlePodMonitorSwitch}
-                  checkedChildren="ON"
-                  unCheckedChildren="OFF"
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  开启后将监控所有 K8s Pod 存活状态
-                </Text>
-              </Space>
-            </div>
-          </Space>
+      <Card
+        title="故障报警"
+        extra={
           <Space>
-            <Button
-              type="default"
-              icon={<SettingOutlined />}
-              onClick={handleOpenConfigDrawer}
-              disabled={!podMonitorEnabled}
-            >
-              配置应用
+            <Button icon={<ExportOutlined />} onClick={handleGoToAlertPage}>
+              更多设置
             </Button>
-            <Button type="link" icon={<SettingOutlined />} onClick={handleGoToAlertPage}>
-              更多告警配置
+            <Button type="primary" icon={<SettingOutlined />} onClick={handleOpenConfigDrawer}>
+              编辑
             </Button>
           </Space>
-        </div>
-
-        {/* Pod 关闭时的提示 */}
-        {!podMonitorEnabled && (
-          <div
-            style={{
-              padding: '12px 16px',
-              background: '#fff7e6',
-              border: '1px solid #ffd591',
-              borderRadius: 8,
-              marginBottom: 16,
-              color: '#d46b08'
-            }}
-          >
-            Pod 监控已关闭，无法配置应用级告警频率
-          </div>
-        )}
-
-        {/* 应用列表表格 */}
-        <div style={{ opacity: podMonitorEnabled ? 1 : 0.5, pointerEvents: podMonitorEnabled ? 'auto' : 'none' }}>
-          <Table
-            rowKey="id"
-            columns={alertColumns}
-            dataSource={alertConfigs}
-            pagination={false}
-            scroll={{ x: 740 }}
-            style={{ minWidth: '100%' }}
-          />
-        </div>
+        }
+      >
+        <Table
+          rowKey="id"
+          columns={alertColumns}
+          dataSource={alertConfigs}
+          pagination={false}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: '暂无报警配置，点击右上角「编辑」添加应用' }}
+        />
       </Card>
             ),
           },
@@ -547,7 +404,7 @@ initializeFaro({
         ]}
       />
 
-      {/* 故障报警配置抽屉：配置应用与报警频率 */}
+      {/* 故障报警配置抽屉：配置应用、Pod 故障报警频率、Pod 重启阈值 */}
       <Drawer
         title="故障报警配置"
         placement="right"
@@ -556,74 +413,107 @@ initializeFaro({
         onClose={() => setConfigDrawerOpen(false)}
         destroyOnClose
         footer={
-          <div style={{ textAlign: 'right' }}>
-            <Space>
-              <Button onClick={() => setConfigDrawerOpen(false)}>取消</Button>
-              <Button type="primary" onClick={handleSaveConfigs}>
-                确定
-              </Button>
-            </Space>
-          </div>
+          <Space>
+            <Button type="primary" onClick={handleSaveConfigs}>
+              确定
+            </Button>
+            <Button onClick={() => setConfigDrawerOpen(false)}>关闭</Button>
+          </Space>
         }
       >
-        <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+        <Alert
+          type="info"
+          showIcon
+          message="请选择需要监控的游戏应用并设置报警规则；告警关闭时也可修改规则，在列表开启后按最新配置生效"
+          style={{ marginBottom: 4 }}
+        />
+
+        {editingConfigs.map(config => (
           <div
+            key={config.id}
             style={{
-              padding: '8px 12px',
-              borderRadius: 4,
-              background: '#f0f5ff',
-              color: '#1d39c4'
+              padding: '16px 0 20px',
+              borderBottom: '1px dashed #e5e5e5',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14
             }}
           >
-            请选择需要监控故障报警的游戏应用，并设置报警频率。
-          </div>
-
-          {editingConfigs.map(config => (
-            <div
-              key={config.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                columnGap: 12,
-                rowGap: 8
-              }}
-            >
-              {/* 左侧：* 应用 */}
-              <div style={{ width: 80, textAlign: 'right', paddingRight: 8 }}>
+            {/* 应用 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 72, flexShrink: 0 }}>
                 <span style={{ color: '#ff4d4f', marginRight: 4 }}>*</span>
                 <Text strong>应用</Text>
               </div>
-              <div style={{ flex: 1 }}>
-                <Select
-                  placeholder="请选择应用"
-                  value={config.appName || undefined}
-                  onChange={value => handleChangeAppName(config.id, value)}
-                  options={appNameOptions}
-                  allowClear
-                  showSearch
-                  style={{ width: '100%' }}
+              <Select
+                mode="multiple"
+                placeholder="请选择应用"
+                value={config.appNames}
+                onChange={(value: string[]) => handlePatchEditing(config.id, { appNames: value })}
+                options={appNameOptions}
+                allowClear
+                showSearch
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <Tooltip title="删除该配置">
+                <Button
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  aria-label="删除该配置"
+                  onClick={() => handleRemoveEditingRow(config.id)}
                 />
-              </div>
-              {/* 右侧：报警频率 */}
-              <div style={{ width: 80, textAlign: 'right', paddingRight: 8 }}>
-                <Text strong>报警频率</Text>
-              </div>
-              <div style={{ width: 160 }}>
-                <Select
-                  placeholder="请选择频率"
-                  value={config.frequency}
-                  onChange={value => handleChangeFrequency(config.id, value)}
-                  options={frequencyOptions.map(v => ({ label: v, value: v }))}
-                  style={{ width: '100%' }}
-                />
-              </div>
+              </Tooltip>
             </div>
-          ))}
 
-          <Button type="dashed" onClick={handleAddConfigRow}>
-            + 添加配置
+            {/* Pod 故障：报警频率 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 84 }}>
+              <span style={config.podFailureEnabled ? RULE_TAG_STYLE.failure : RULE_TAG_STYLE.off}>Pod 故障</span>
+              <Select
+                value={config.frequency}
+                onChange={(value: string) => handlePatchEditing(config.id, { frequency: value })}
+                options={FREQUENCY_OPTIONS.map(v => ({ label: v, value: v }))}
+                style={{ width: 120 }}
+              />
+              <Text type="secondary">报警一次</Text>
+              {!config.podFailureEnabled && (
+                <Text type="secondary" style={{ fontSize: 12 }}></Text>
+              )}
+            </div>
+
+            {/* Pod 重启：时间窗口 + 次数阈值 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 84 }}>
+              <span style={config.podRestartEnabled ? RULE_TAG_STYLE.restart : RULE_TAG_STYLE.off}>Pod 重启</span>
+              <Select
+                value={config.restartWindow}
+                onChange={(value: string) => handlePatchEditing(config.id, { restartWindow: value })}
+                options={RESTART_WINDOW_OPTIONS.map(v => ({ label: v, value: v }))}
+                style={{ width: 120 }}
+              />
+              <Text type="secondary">内重启 ≥</Text>
+              <Select
+                value={config.restartThreshold}
+                onChange={(value: number) => handlePatchEditing(config.id, { restartThreshold: value })}
+                options={RESTART_THRESHOLD_OPTIONS.map(n => ({ label: `${n} 次`, value: n }))}
+                style={{ width: 88 }}
+              />
+              <Text type="secondary">报警</Text>
+              {!config.podRestartEnabled && (
+                <Text type="secondary" style={{ fontSize: 12 }}>（）</Text>
+              )}
+            </div>
+          </div>
+        ))}
+
+        <div style={{ paddingTop: 20 }}>
+          <Button icon={<PlusOutlined />} onClick={handleAddConfigRow}>
+            添加配置
           </Button>
-        </Space>
+          <div style={{ marginTop: 10 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              新增配置时 Pod 故障与 Pod 重启告警默认开启，重启阈值默认 15 分钟内重启 ≥ 3 次
+            </Text>
+          </div>
+        </div>
       </Drawer>
 
       {/* Faro 配置说明 Drawer（与客户端告警一致） */}

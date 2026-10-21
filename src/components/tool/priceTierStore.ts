@@ -100,3 +100,11 @@ export function checkMissingJpyTiers(pricesJpy: number[]): MissingJpyCheck[] {
     masterTiers: PLATFORM_MASTER_TIERS.filter(t => t.jpy === jpy)
   }))
 }
+
+/** 汇率表中与给定 JPY 最接近的可用价格（低于 / 高于各一个），用于提示用户改用其他档位 */
+export function findNearestJpy(jpy: number): { lower?: number; higher?: number } {
+  const all = Array.from(new Set(PLATFORM_MASTER_TIERS.map(t => t.jpy))).sort((a, b) => a - b)
+  const lower = all.filter(p => p < jpy).pop()
+  const higher = all.find(p => p > jpy)
+  return { lower, higher }
+}

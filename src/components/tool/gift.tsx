@@ -2,10 +2,10 @@
 
 import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image, Drawer, Tag, Divider, Modal, message } from 'antd'
+import { Tabs, Card, Typography, Space, Button, Input, Table, Alert, Image, Drawer, Tag, Divider, Modal, Checkbox, message } from 'antd'
 import type { TabsProps } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { addGamePriceTiers, checkMissingJpyTiers } from './priceTierStore'
+import { addGamePriceTiers, checkMissingJpyTiers, findNearestJpy } from './priceTierStore'
 import type { MissingJpyCheck, PriceTier } from './priceTierStore'
 
 const { Title, Text, Link } = Typography
@@ -62,6 +62,9 @@ const REMOTE_GIFTS: GiftRow[] = [
   { key: '100007新手礼包', display_id: '100007', gift_name: '新手礼包', ai_supported: false, description: '新手首充', items: '金币: 1000', price_jpy: 120, price_value_ratio: 300, purchase_limit_type: '永久限购', purchase_limit_amount: 1, amount_to_diamond: 1200, vip_points: 1200, payload: '31' },
   { key: '100008月卡礼包', display_id: '100008', gift_name: '月卡礼包', ai_supported: true, description: '30天每日领取', items: '钻石: 100\n体力: 50', price_jpy: 610, price_value_ratio: 800, purchase_limit_type: '每月限购', purchase_limit_amount: 1, amount_to_diamond: 6100, vip_points: 6100, payload: '41' }
 ]
+
+/** mock：原型演示用，接口返回中额外包含一个不在汇率表中的价格（¥888） */
+const REMOTE_GIFT_OUT_OF_TABLE: GiftRow = { key: '100009限定礼包', display_id: '100009', gift_name: '限定礼包', ai_supported: false, description: '活动限定', items: '钻石: 300', price_jpy: 888, price_value_ratio: 600, purchase_limit_type: '永久限购', purchase_limit_amount: 1, amount_to_diamond: 8880, vip_points: 8880, payload: '51' }
 
 const formatNow = (): string => {
   const d = new Date()
@@ -122,6 +125,8 @@ export default function GiftDataPage(): React.ReactElement {
   const [tierModalOpen, setTierModalOpen] = useState(false)
   const [tierAdding, setTierAdding] = useState(false)
   const [pendingGifts, setPendingGifts] = useState<GiftRow[]>([])
+  // 原型演示开关：勾选后接口返回含汇率表外价格，用于查看「请使用其他档位」提示
+  const [mockOutOfTable, setMockOutOfTable] = useState(false)
 
   /** 写入礼包数据并记录成功时间 */
   const commitGifts = (remote: GiftRow[], addedCount: number): void => {
@@ -136,7 +141,7 @@ export default function GiftDataPage(): React.ReactElement {
   const handleGiftSync = (): void => {
     setGiftSync(prev => ({ ...prev, loading: true }))
     window.setTimeout(() => {
-      const remote = REMOTE_GIFTS
+      const remote = mockOutOfTable ? [...REMOTE_GIFTS, REMOTE_GIFT_OUT_OF_TABLE] : REMOTE_GIFTS
       const missing = checkMissingJpyTiers(remote.map(g => g.price_jpy))
       if (missing.length === 0) {
         commitGifts(remote, 0)
@@ -182,7 +187,12 @@ export default function GiftDataPage(): React.ReactElement {
       title: 'CNY档位', key: 'cny',
       render: (_: unknown, row: MissingTierRow) => row.tier
         ? row.tier.cnyTier
-        : <Text type="danger">主表中无可用档位，请联系运营</Text>
+        : (() => {
+          // 价格不在汇率表中：提示用户把礼包价格改为汇率表中的其他档位，并给出相近可用价格
+          const { lower, higher } = findNearestJpy(row.jpy)
+          const near = [lower, higher].filter((v): v is number => v !== undefined).map(v => `¥${v}`).join('、')
+          return <Text type="danger">不在汇率表中，请使用其他档位{near ? `（相近可用：${near}）` : ''}</Text>
+        })()
     }
   ]
 
@@ -339,7 +349,12 @@ export default function GiftDataPage(): React.ReactElement {
               <Divider style={{ margin: '12px 0' }} />
 
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Text type="secondary">拉取礼包资源列表</Text>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text type="secondary">拉取礼包资源列表</Text>
+                  <Checkbox checked={mockOutOfTable} onChange={e => setMockOutOfTable(e.target.checked)}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>原型演示：接口返回含汇率表外价格（¥888）</Text>
+                  </Checkbox>
+                </div>
                 <Card size="small" style={{ borderRadius: 12, background: '#f9fafb' }}>
                   <Space direction="vertical" size={6} style={{ width: '100%' }}>
                     <Space size={8} wrap>
@@ -416,7 +431,7 @@ export default function GiftDataPage(): React.ReactElement {
       >
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           {hasUnmatched ? (
-            <Alert type="error" showIcon message="部分礼包价格在平台主表中无可用档位，无法继续同步，请联系运营补充主表后重试。" />
+            <Alert type="error" showIcon message="部分礼包价格不在汇率表中，无法同步。请在游戏侧将这些礼包改为汇率表中的其他价格档位后，重新点击【立即同步】。" />
           ) : (
             <Alert
               type="info"
