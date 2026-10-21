@@ -149,6 +149,8 @@ type ConfigAutoLaunchModalProps = {
   partitionDimension: PartitionDimension
   onClose: () => void
   onConfirm: (result: ConfigConfirmResult) => void
+  // 是否展示分区 / AI 开服相关内容
+  showZoneAndAi?: boolean
 }
 
 export default function ConfigAutoLaunchModal({
@@ -159,6 +161,7 @@ export default function ConfigAutoLaunchModal({
   partitionDimension: initialDimension,
   onClose,
   onConfirm,
+  showZoneAndAi = true,
 }: ConfigAutoLaunchModalProps) {
   const [form] = Form.useForm<ConfigFormValues>()
   const [current, setCurrent] = useState<Step>(0)
@@ -310,13 +313,15 @@ export default function ConfigAutoLaunchModal({
         {/* 步骤一：配置开服策略 */}
         {current === 0 ? (
           <Flex vertical gap={12}>
-            <Alert
-              type="info"
-              showIcon
-              message="默认服策略（全局兜底）"
-              description="未自定义的分区将继承此默认服策略。"
-              style={{ marginBottom: 4 }}
-            />
+            {showZoneAndAi ? (
+              <Alert
+                type="info"
+                showIcon
+                message="默认服策略（全局兜底）"
+                description="未自定义的分区将继承此默认服策略。"
+                style={{ marginBottom: 4 }}
+              />
+            ) : null}
             <AutoLaunchStrategyForm />
             {strategyType === 'cron' ? (
               <Flex vertical gap={4}>
@@ -337,6 +342,8 @@ export default function ConfigAutoLaunchModal({
             ) : null}
 
             {/* AI 开服：纯提示，策略由运营人员配置脚本维护；实际启停由运营脚本，不影响导流服触发，本页不提供开关 */}
+            {showZoneAndAi ? (
+            <>
             <Alert
               type="info"
               showIcon
@@ -399,6 +406,8 @@ export default function ConfigAutoLaunchModal({
                 },
               ]}
             />
+            </>
+            ) : null}
           </Flex>
         ) : null}
 
@@ -417,6 +426,7 @@ export default function ConfigAutoLaunchModal({
             zoneLaunchEnabled={zoneLaunchEnabled}
             zones={localZones}
             customStrategies={customStrategies}
+            showZoneAndAi={showZoneAndAi}
           />
         ) : null}
       </Form>
@@ -551,6 +561,7 @@ const ConfirmStep = ({
   zoneLaunchEnabled,
   zones,
   customStrategies,
+  showZoneAndAi = true,
 }: {
   strategyType?: StrategyType
   cron?: ConfigFormValues['autoLaunchCron']
@@ -561,6 +572,7 @@ const ConfirmStep = ({
   zoneLaunchEnabled?: boolean
   zones?: ZoneLaunch[]
   customStrategies?: Record<string, StrategyFormValues>
+  showZoneAndAi?: boolean
 }) => {
   const rows: { label: string; children: React.ReactNode }[] = []
   rows.push({
@@ -590,16 +602,16 @@ const ConfirmStep = ({
     rows.push({ label: '新建预备服应用', children: (stepConfigures?.[3]?.gameAppNames ?? []).join('、') || '-' })
   }
   // AI 开服摘要：纯提示，实际启停由运营脚本，本页不提供开关
-  rows.push({
+  if (showZoneAndAi) rows.push({
     label: 'AI 开服',
     children: <Text type="secondary" style={{ fontSize: 12 }}>由运营配置脚本维护，本页不提供开关；导流服始终按策略触发</Text>,
   })
   // 分区开服摘要
-  rows.push({ label: '分区开服', children: zoneLaunchEnabled ? '已开启' : '未开启' })
-  if (zoneLaunchEnabled) {
+  if (showZoneAndAi) rows.push({ label: '分区开服', children: zoneLaunchEnabled ? '已开启' : '未开启' })
+  if (showZoneAndAi && zoneLaunchEnabled) {
     rows.push({ label: '分区维度', children: formatDimensionLabel(partitionDimension ?? 'lang') })
   }
-  if (zoneLaunchEnabled && zones?.length) {
+  if (showZoneAndAi && zoneLaunchEnabled && zones?.length) {
     rows.push({
       label: '分区清单',
       children: (

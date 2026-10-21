@@ -145,6 +145,10 @@ interface DBInstance {
   redisNotifyKeyspaceEventsEnabled?: boolean
   /** Redis：notify-keyspace-events 参数值，仅在开关开启时有效（对应 Redis CONFIG SET notify-keyspace-events） */
   redisNotifyKeyspaceEvents?: string
+  /** Redis：共用该实例的游戏（测试环境可能多游戏共用一个实例；参数为实例级，改了对所有游戏生效） */
+  redisSharedGameIds?: string[]
+  /** Redis：notify-keyspace-events 最近一次由哪个游戏、何时修改 */
+  redisNotifyModifiedBy?: { gameId: string; at: string }
   // Mock相关字段
   domainUsed?: boolean // 公网域名是否已被使用
 }
@@ -334,7 +338,7 @@ const AUTO_GAME_ID = 'gamedemo'
 const mockData: DBInstance[] = [
   { id: '1', type: 'MySQL', alias: 'mysql-test', spec: '2核8GB', arch: '集群版', username: 'gamedemo_test', status: 'running', password: 'admin123', gameId: AUTO_GAME_ID, version: 'MySQL 5.7', connectionCount: 10000, defaultPort: 3306, capacity: '100GB', backupTime: '2024/09/01 12:30:00' },
   { id: '2', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '双机主备架构', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00', redisNotifyKeyspaceEventsEnabled: true, redisNotifyKeyspaceEvents: 'xE' },
-  { id: '3', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '分片集群', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00'},
+  { id: '3', type: 'Redis', alias: 'redis-test', spec: '4核16GB', arch: '分片集群', username: 'gamedemo_test', status: 'running', password: 'password', gameId: AUTO_GAME_ID, version: 'Redis 6.0', connectionCount: 20000, defaultPort: 6379, capacity: '50GB', qos: '3000000', bandwidth: '96MB/s', evictionPolicy: 'volatile-lru', backupTime: '2024/09/02 08:10:00', redisNotifyKeyspaceEventsEnabled: true, redisNotifyKeyspaceEvents: 'AKE', redisSharedGameIds: [AUTO_GAME_ID, 'othergame'], redisNotifyModifiedBy: { gameId: 'othergame', at: '2026/10/09 15:20' } },
   { 
     id: '4', 
     type: 'Mongo', 
@@ -1073,18 +1077,49 @@ export default function ContainerDatabase({ accountType = 'cp' }: ContainerDatab
     setRedisKeyspaceModalOpen(true)
   }
 
+  // 「参数被其他游戏修改」提示：用户点【我知道了】后本次会话内不再展示（按实例 + 修改时间记录）
+  const [redisNotifyHintAcked, setRedisNotifyHintAcked] = useState<Record<string, string>>({})
+
+  /** 该实例的通知场景是否被其他游戏修改过（且未被本游戏确认） */
+  const getRedisNotifyForeignChange = (inst: DBInstance): { gameId: string; at: string } | null => {
+    const m = inst.redisNotifyModifiedBy
+    if (!m || m.gameId === AUTO_GAME_ID) return null
+    if (redisNotifyHintAcked[inst.id] === m.at) return null
+    return m
+  }
+
+  /** 卡片「通知场景」下方的提示：参数为实例级，被共用该实例的其他游戏改过 */
+  const renderRedisNotifyForeignHint = (inst: DBInstance): React.ReactNode => {
+    const m = getRedisNotifyForeignChange(inst)
+    if (!m) return null
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, padding: '6px 10px', background: '#fffbe6', borderRadius: 6, fontSize: 12, color: 'rgba(0,0,0,0.75)', lineHeight: '20px', width: '100%' }}>
+        <ExclamationCircleFilled style={{ color: '#faad14', marginTop: 4 }} />
+        <span style={{ flex: 1 }}>
+          该参数已被其他游戏（{m.gameId}）于 {m.at} 修改为「{formatRedisNotifySummary(inst)}」，可能影响本游戏依赖的通知（如 Key 过期落盘），请确认是否需要调整。
+        </span>
+        <Typography.Link style={{ fontSize: 12, whiteSpace: 'nowrap' }} onClick={() => setRedisNotifyHintAcked((prev) => ({ ...prev, [inst.id]: m.at }))}>
+          我知道了
+        </Typography.Link>
+      </div>
+    )
+  }
+
   const saveRedisKeyspaceModal = async (): Promise<void> => {
     try {
       const vals = await redisKeyspaceForm.validateFields()
       if (!redisKeyspaceTarget) return
       const patch = redisNotifyFormToStorage(vals)
+      // 保存后记录为本游戏修改，「被其他游戏修改」提示随之消失
+      const modifiedBy = { gameId: AUTO_GAME_ID, at: dayjs().format('YYYY/MM/DD HH:mm') }
       setData((prev) =>
         prev.map((d) =>
           d.id === redisKeyspaceTarget.id
             ? {
                 ...d,
                 redisNotifyKeyspaceEventsEnabled: patch.redisNotifyKeyspaceEventsEnabled,
-                redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents
+                redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents,
+                redisNotifyModifiedBy: modifiedBy
               }
             : d
         )
@@ -1094,7 +1129,8 @@ export default function ContainerDatabase({ accountType = 'cp' }: ContainerDatab
           ? {
               ...prev,
               redisNotifyKeyspaceEventsEnabled: patch.redisNotifyKeyspaceEventsEnabled,
-              redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents
+              redisNotifyKeyspaceEvents: patch.redisNotifyKeyspaceEvents,
+              redisNotifyModifiedBy: modifiedBy
             }
           : prev
       )
@@ -2492,6 +2528,7 @@ export default function ContainerDatabase({ accountType = 'cp' }: ContainerDatab
                                   <Button type="default" size="small" icon={<SlidersOutlined />} onClick={() => openRedisKeyspaceModal(inst)}>
                                     修改
                                   </Button>
+                                  {renderRedisNotifyForeignHint(inst)}
                                 </div>
                               </Descriptions.Item>
                             )}
@@ -3041,6 +3078,20 @@ export default function ContainerDatabase({ accountType = 'cp' }: ContainerDatab
         destroyOnClose
       >
         <Alert type="info" showIcon style={{ marginBottom: 16 }} message="按业务场景选择即可；「关闭通知」表示本实例不下发该配置。" />
+        {redisKeyspaceTarget && (redisKeyspaceTarget.redisSharedGameIds?.length ?? 0) > 1 && (
+          // 共用实例：参数为实例级，修改会同时影响共用该实例的其他游戏
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={`该 Redis 实例由 ${redisKeyspaceTarget.redisSharedGameIds?.length} 个游戏共用（${redisKeyspaceTarget.redisSharedGameIds?.join('、')}），修改后对所有游戏生效。`}
+            description={
+              redisKeyspaceTarget.redisNotifyModifiedBy && redisKeyspaceTarget.redisNotifyModifiedBy.gameId !== AUTO_GAME_ID
+                ? `最近一次修改：${redisKeyspaceTarget.redisNotifyModifiedBy.gameId}，${redisKeyspaceTarget.redisNotifyModifiedBy.at}`
+                : undefined
+            }
+          />
+        )}
         <Form form={redisKeyspaceForm} layout="vertical">
           <RedisNotifyKeyspaceEditorFields templateWatch={redisKeyspaceModalTemplateWatch} />
         </Form>

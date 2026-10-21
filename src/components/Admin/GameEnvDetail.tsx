@@ -42,6 +42,7 @@ import {
 } from '@ant-design/icons'
 import BannedBanner from './credential-ban/BannedBanner'
 import CredentialBanPanel from './credential-ban/CredentialBanPanel'
+import ApiAssetPanel from '../SecurityScan/ApiAssetPanel'
 import { useCredential } from './credential-ban/mock'
 
 const { Title, Text } = Typography
@@ -3103,6 +3104,11 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
         </Card>
               </Space>
             )
+          },
+          {
+            key: 'api-asset',
+            label: 'API 资产',
+            children: <ApiAssetPanel appId={gameConfig.appId} />
           },
           {
             key: 'credential',
