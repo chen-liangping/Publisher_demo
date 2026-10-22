@@ -1,8 +1,8 @@
 /**
- * 安全扫描 / API 资产 —— 类型定义
+ * 安全扫描 —— 类型定义
  *
  * 用户侧（监控 → 安全扫描）：CP 开启后，平台在应用部署时解析镜像，列出各应用的 API（入参、作用），CP 确认作用。
- * 管理后台（平台游戏详情 → API 资产）：只读查看每个 API 的鉴权、暴露、风险等级与命中原因，用于封禁决策。
+ * 管理后台（平台游戏详情 → 安全扫描）：只读查看每个 API 的鉴权、暴露、风险等级与命中原因，用于封禁决策。
  */
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -149,6 +149,11 @@ export interface ScanState {
   manualApis: ApiAsset[]
   /** CP 上传的 API 文档，按上传顺序；后上传的覆盖先上传的 */
   uploadedDocs: UploadedDoc[]
+  /** 管理后台扫描：仅在管理员点击「开启扫描」时发起 */
+  adminStatus: 'never' | 'scanning' | 'done'
+  adminScanStartedAt: string
+  /** 最近一次扫描完成时间 */
+  adminScannedAt: string
 }
 
 export type ScanStore = Record<string, ScanState>

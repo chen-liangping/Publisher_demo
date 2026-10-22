@@ -3107,7 +3107,7 @@ export default function GameEnvDetail(props: GameEnvDetailProps) {
           },
           {
             key: 'api-asset',
-            label: 'API 资产',
+            label: '安全扫描',
             children: <ApiAssetPanel appId={gameConfig.appId} />
           },
           {

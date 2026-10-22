@@ -18,11 +18,25 @@ This is a **pure frontend prototype** (no backend, no database, no Docker) for a
 
 ### Key routes
 
+每个菜单都有独立路由，直接打开/分享 URL 会自动定位到对应菜单并展开所在分组。路由表统一维护在 `src/components/Console/routes.ts`（新增菜单时在这里加一行）。
+
 | Route | Description |
 |-------|-------------|
-| `/` | Main dashboard — toggle between VM mode (`mode=vm`) and Container mode (`mode=container`) via the top nav |
-| `/admin` | Admin console — game management, resources, announcements, YAML backup |
+| `/`、`/workbench` | 我的工作台 |
+| `/client/version`、`/client/cdn` | 客户端 · 版本 / CDN |
+| `/server/vm`、`/server/security-group`、`/server/load-balancer`、`/server/command` | 服务端（虚机模式，打开时自动切到虚机） |
+| `/server/app`、`/server/app/<appId>`、`/server/shared-files`、`/server/task` | 服务端（容器模式，打开时自动切到容器；`/server/app/<appId>` 为应用详情） |
+| `/server/storage` | 存储（两种模式通用，容器模式带 `?mode=container`） |
+| `/monitor/client-alert`、`/monitor/server`、`/monitor/security-scan` | 监控 |
+| `/integration/data-push`、`/integration/message-push`、`/integration/i18n` | 接入 |
+| `/operations/activity`、`/operations/gift` | 运营 |
+| `/people-config`、`/message-notification`（支持 `?tab=`） | 顶栏入口 |
+| `/admin/<key>` | 管理台，如 `/admin/ssl-management`；`/admin` 默认游戏管理 |
+| `/management-center/<...>` | 管理中心：`operation-log`、`site-notice`、`notice-config/site-notice`、`notice-config/owner`、`notice-config/channel` |
 | `/api-test` | API testing tool (Postman-like prototype, calls external staging URLs — optional) |
+
+- 旧链接 `/?menu=xxx&mode=yyy`、`/management-center?key=xxx` 会自动跳转到新路由。
+- 外壳（顶栏 + 菜单）挂在 layout 上（`src/app/(console)/layout.tsx`、`src/app/admin/layout.tsx`），切换菜单不会丢失顶栏状态。
 
 ### Notes
 

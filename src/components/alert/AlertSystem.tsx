@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { menuPath } from '../Console/routes'
 import { Alert, Card, Collapse, Table, Button, Space, Typography, Select, Tooltip, Drawer, Popconfirm, message, Switch, Tabs } from 'antd'
 import { RightOutlined, CloseOutlined, SettingOutlined, QuestionCircleOutlined, ExportOutlined, CopyOutlined, DeleteOutlined, PlusOutlined, HddOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -115,10 +116,11 @@ export default function AlertSystem(): React.ReactElement {
 
   // 跳转到“消息中心”的“消息配置”Tab（即 alert.tsx 消息配置页面）
   const handleGoToAlertPage = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('menu', 'message-notification')
-    params.set('tab', 'message-config')
-    const url = `${pathname}?${params.toString()}`
+    // 每个菜单都有独立路由，见 components/Console/routes.ts
+    const url = menuPath('message-notification', {
+      mode: searchParams.get('mode') === 'container' ? 'container' : undefined,
+      query: { tab: 'message-config' }
+    })
     router.push(url)
   }, [pathname, router, searchParams])
 

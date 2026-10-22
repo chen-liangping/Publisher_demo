@@ -5,6 +5,7 @@
 
 import React, { useMemo, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { menuPath } from '../Console/routes'
 import {
   Card, Space, Button, Typography, Table, Checkbox, Tag, Input,
   Modal, message, Tabs, Drawer, Switch, Select, Tooltip
@@ -350,10 +351,11 @@ export default function AlertPage(props: AlertPageProps): React.ReactElement {
 
   // 前往人员配置（维护联系人与渠道的归属关系）
   const goToPeopleConfig = () => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('menu', 'people-config')
-    params.set('tab', 'people')
-    router.push(`${pathname}?${params.toString()}`)
+    // 每个菜单都有独立路由，见 components/Console/routes.ts
+    router.push(menuPath('people-config', {
+      mode: searchParams.get('mode') === 'container' ? 'container' : undefined,
+      query: { tab: 'people' }
+    }))
   }
 
   const columns: ColumnsType<MessageRow> = useMemo(() => [

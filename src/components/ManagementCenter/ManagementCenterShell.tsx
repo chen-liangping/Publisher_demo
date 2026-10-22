@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
-import { Button, Layout, Menu, Typography, Empty } from 'antd'
+import React, { useEffect, useMemo } from 'react'
+import { Button, Layout, Menu, Typography, Empty, Result } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
@@ -11,53 +11,40 @@ import {
   CloseOutlined
 } from '@ant-design/icons'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import LogPage from '../../components/log'
-import MessageNotification from '../../components/nofication/MessageNotification'
-import PeopleManagement from '../../components/nofication/PeopleManagement'
-import SiteNoticeConfig from '../../components/nofication/SiteNoticeConfig'
+import LogPage from '../log'
+import MessageNotification from '../nofication/MessageNotification'
+import PeopleManagement from '../nofication/PeopleManagement'
+import SiteNoticeConfig from '../nofication/SiteNoticeConfig'
+import {
+  MANAGEMENT_CENTER_ROUTES,
+  type ManagementCenterKey,
+  isManagementCenterKey,
+  resolveManagementCenterPath
+} from '../Console/routes'
 
 const { Sider, Content } = Layout
 const { Title } = Typography
 
-type ManagementCenterKey =
-  | 'operation-log'
-  | 'site-notice'
-  | 'notice-config-site-notice'
-  | 'notice-owner'
-  | 'notice-channel'
-
-function isManagementCenterKey(v: string): v is ManagementCenterKey {
-  return (
-    v === 'operation-log' ||
-    v === 'site-notice' ||
-    v === 'notice-config-site-notice' ||
-    v === 'notice-owner' ||
-    v === 'notice-channel'
-  )
-}
-
-export default function ManagementCenterPage(): React.ReactElement {
+/**
+ * 管理中心外壳：挂在 app/management-center/layout.tsx 上，每个菜单对应独立路由。
+ */
+export default function ManagementCenterShell(): React.ReactElement {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const initialKey = ((): ManagementCenterKey => {
-    const k = searchParams.get('key')
-    // 兼容：历史 key=notice-config（旧"通知配置"页面）已移除菜单入口，默认落到"站内通知配置"
-    if (k === 'notice-config') return 'notice-config-site-notice'
-    if (
-      k === 'operation-log' ||
-      k === 'site-notice' ||
-      k === 'notice-config-site-notice' ||
-      k === 'notice-owner' ||
-      k === 'notice-channel'
-    ) {
-      return k
-    }
-    return 'site-notice'
-  })()
+  // 当前菜单由 URL 决定：/management-center/<...>，见 components/Console/routes.ts
+  const resolvedKey = resolveManagementCenterPath(pathname)
+  const activeKey: ManagementCenterKey = resolvedKey ?? 'site-notice'
 
-  const [activeKey, setActiveKey] = useState<ManagementCenterKey>(initialKey)
+  // 兼容旧链接：/management-center?key=xxx → 新路由
+  useEffect(() => {
+    const k = searchParams.get('key')
+    if (!k) return
+    // 历史 key=notice-config（旧"通知配置"页面）已移除菜单入口，落到"站内通知配置"
+    const target = k === 'notice-config' ? 'notice-config-site-notice' : k
+    if (isManagementCenterKey(target)) router.replace(MANAGEMENT_CENTER_ROUTES[target])
+  }, [searchParams, router])
 
   const items: MenuProps['items'] = useMemo(
     () => [
@@ -87,6 +74,16 @@ export default function ManagementCenterPage(): React.ReactElement {
   )
 
   const renderContent = (): React.ReactElement => {
+    if (resolvedKey === null) {
+      return (
+        <Result
+          status="404"
+          title="页面不存在"
+          subTitle={`没有与 ${pathname} 对应的管理中心菜单`}
+          extra={<Button type="primary" onClick={() => syncUrl('site-notice')}>返回站内通知</Button>}
+        />
+      )
+    }
     switch (activeKey) {
       case 'operation-log':
         // 需求：日志页面内容不变，仅作为"管理中心"中的一个入口收拢。
@@ -106,9 +103,7 @@ export default function ManagementCenterPage(): React.ReactElement {
   }
 
   const syncUrl = (k: ManagementCenterKey): void => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('key', k)
-    router.push(`${pathname}?${params.toString()}`)
+    router.push(MANAGEMENT_CENTER_ROUTES[k])
   }
 
   return (
@@ -195,7 +190,6 @@ export default function ManagementCenterPage(): React.ReactElement {
                 onClick={({ key }) => {
                   // 交互逻辑：点击左侧菜单切换右侧内容区（收拢后的信息架构入口）。
                   if (!isManagementCenterKey(key)) return
-                  setActiveKey(key)
                   syncUrl(key)
                 }}
               />

@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer, Dropdown, Modal, Switch, Progress, Popover } from 'antd'
+import { Layout, Menu, Typography, Segmented, Button, Tooltip, Drawer, Dropdown, Modal, Switch, Progress, Popover, Result } from 'antd'
 import { Suspense, useEffect, useState } from 'react'
 import {
   CloudServerOutlined,
@@ -22,51 +22,61 @@ import {
   QuestionCircleOutlined,
   PlayCircleOutlined
 } from '@ant-design/icons'
-import PlausibleLikeDashboard from '../components/Analytics/PlausibleLikeDashboard'
-import VirtualMachineList, { type SystemServerGroup, type SystemForwardingPolicy } from '../components/VirtualMachineServices/VirtualMachine/VirtualMachineList'
-import KeyManagement from '../components/VirtualMachineServices/KeyManagement/KeyManagement'
+import PlausibleLikeDashboard from '../Analytics/PlausibleLikeDashboard'
+import VirtualMachineList, { type SystemServerGroup, type SystemForwardingPolicy } from '../VirtualMachineServices/VirtualMachine/VirtualMachineList'
+import KeyManagement from '../VirtualMachineServices/KeyManagement/KeyManagement'
 // 详情由组件内部自管理
-import FileManagement from '../components/VirtualMachineServices/FileManagement/FileManagement'
-import CommandManagement from '../components/VirtualMachineServices/CommandManagement/CommandManagement'
+import FileManagement from '../VirtualMachineServices/FileManagement/FileManagement'
+import CommandManagement from '../VirtualMachineServices/CommandManagement/CommandManagement'
 // 命令详情由列表组件内部自管理
-import UserAvatarMenu from '../components/Common/UserAvatarMenu'
-import DataSyncModal from '../components/Common/DataSyncModal'
-import SecurityGroupManagement from '../components/VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
-import LoadBalancerManagement from '../components/VirtualMachineServices/LoadBalancer/LoadBalancerManagement'
-import AlertSystem from '../components/alert/AlertSystem'
+import UserAvatarMenu from '../Common/UserAvatarMenu'
+import DataSyncModal from '../Common/DataSyncModal'
+import SecurityGroupManagement from '../VirtualMachineServices/SecurityGroup/SecurityGroupManagement'
+import LoadBalancerManagement from '../VirtualMachineServices/LoadBalancer/LoadBalancerManagement'
+import AlertSystem from '../alert/AlertSystem'
 // 详情由组件内部自管理
-import WorkbenchDashboard from '../components/Workbench/WorkbenchDashboard'
-import ContainerApplication from '../components/ContainerServices/Application/ContainerApplication'
-import { apps as demoApps } from '../components/ContainerServices/Application/apps'
-import Deployment from '../components/ContainerServices/Application/deployment'
-import DeploymentOther from '../components/ContainerServices/Application/deployment_other'
-import ContainerDatabase from '../components/ContainerServices/Database/ContainerDatabase'
-import DatabaseDetails from '../components/ContainerServices/Database/DatabaseDetails'
-import ClientPage from '../components/Client/ClientPage'
-import ClientVersionPage from '../components/Client/ClientVersionPage'
-import Task from '../components/task/task'
-import GiftManagment from '../components/tool/gift_managment'
-import MessagePush from '../components/message/MessagePush'
-import ActivityPage from '../components/tool/activity'
-import GiftDataPage from '../components/tool/gift'
-import I18nPage from '../components/tool/i18n'
-import AlertPage from '../components/nofication/alert'
-import AlertHistory from '../components/nofication/alert_history'
-import AdminNotificationGate from '../components/nofication/AdminNotificationGate'
-import LogPage from '../components/log'
-import PeopleManagement from '../components/nofication/PeopleManagement'
-import MessageNotification from '../components/nofication/MessageNotification'
-import CdnAlert from '../components/alert/CdnAlert'
-import SecurityScanPage from '../components/SecurityScan/SecurityScanPage'
+import WorkbenchDashboard from '../Workbench/WorkbenchDashboard'
+import ContainerApplication from '../ContainerServices/Application/ContainerApplication'
+import { apps as demoApps } from '../ContainerServices/Application/apps'
+import Deployment from '../ContainerServices/Application/deployment'
+import DeploymentOther from '../ContainerServices/Application/deployment_other'
+import ContainerDatabase from '../ContainerServices/Database/ContainerDatabase'
+import DatabaseDetails from '../ContainerServices/Database/DatabaseDetails'
+import ClientPage from '../Client/ClientPage'
+import ClientVersionPage from '../Client/ClientVersionPage'
+import Task from '../task/task'
+import GiftManagment from '../tool/gift_managment'
+import MessagePush from '../message/MessagePush'
+import ActivityPage from '../tool/activity'
+import GiftDataPage from '../tool/gift'
+import I18nPage from '../tool/i18n'
+import AlertPage from '../nofication/alert'
+import AlertHistory from '../nofication/alert_history'
+import AdminNotificationGate from '../nofication/AdminNotificationGate'
+import LogPage from '../log'
+import PeopleManagement from '../nofication/PeopleManagement'
+import MessageNotification from '../nofication/MessageNotification'
+import CdnAlert from '../alert/CdnAlert'
+import SecurityScanPage from '../SecurityScan/SecurityScanPage'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import BlockedOverlay from '../components/Admin/credential-ban/BlockedOverlay'
-import { hydrateFromStorage, useCredential } from '../components/Admin/credential-ban/mock'
-import { DEMO_APP_IDS } from '../components/Admin/credential-ban/types'
+import BlockedOverlay from '../Admin/credential-ban/BlockedOverlay'
+import { hydrateFromStorage, useCredential } from '../Admin/credential-ban/mock'
+import { DEMO_APP_IDS } from '../Admin/credential-ban/types'
+import {
+  type MenuKey,
+  type Mode,
+  MANAGEMENT_CENTER_ROUTES,
+  containerAppPath,
+  counterpartMenu,
+  getMenuRoute,
+  isMenuKey,
+  menuPath,
+  resolvePathname
+} from './routes'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
 
-type MenuKey = 'workbench' | 'vm-management' | 'key-management' | 'file-management' | 'command-management' | 'security-group' | 'load-balancer' | 'container-app' | 'container-database' | 'client-page' | 'client-version' | 'cron-job' | 'gift-management' | 'play' | 'gift-data' | 'message-push' | 'i18n' | 'alert' | 'alert-history' | 'log' | 'people-config' | 'message-notification' | 'cdn-alert' | 'alert-system' | 'security-scan'
 
 
 // 组件内自管理，无需在页面声明 VM 类型/状态
@@ -84,25 +94,35 @@ interface Command {
 
 // 组件内自管理，无需在页面声明 SecurityGroup 类型/状态
 
-export default function Home() {
+/**
+ * 用户侧控制台外壳（顶栏 + 左侧菜单 + 内容区）。
+ * 挂在 app/(console)/layout.tsx 上：菜单之间切换只改变 URL，外壳内的状态（appId、账号视角、环境等）不会丢失。
+ * 当前菜单完全由 URL 决定，见 ./routes.ts。
+ */
+export default function ConsoleShell() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  type Mode = 'container' | 'vm'
-  const initialMode: Mode = ((): Mode => {
-    const m = (searchParams.get('mode') as Mode | null)
-    return m ?? 'vm'
-  })()
+  // 当前菜单 / 容器应用详情 appId 由 pathname 决定；无法识别的路径展示 404
+  const resolved = resolvePathname(pathname)
+  const isUnknownRoute = resolved === null
+  const selectedMenu: MenuKey = resolved?.menu ?? 'workbench'
+  const selectedAppId: string | null = resolved?.appId ?? null
+  const routeMode = getMenuRoute(selectedMenu).mode
 
-  const initialMenu = ((): MenuKey => {
-    const m = searchParams.get('menu') as MenuKey | null
-    return m ?? 'workbench'
-  })()
-  const [selectedMenu, setSelectedMenu] = useState<MenuKey>(initialMenu)
-  const [mode, setMode] = useState<Mode>(initialMode)
-  // 命令列表/详情由组件内部自管理
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
+  // 模式：菜单自带模式时以菜单为准；否则读取 ?mode=，默认虚机
+  const modeFromUrl = (): Mode => {
+    if (routeMode) return routeMode
+    const m = searchParams.get('mode')
+    return m === 'container' || m === 'vm' ? m : 'vm'
+  }
+  const [mode, setMode] = useState<Mode>(modeFromUrl)
+  // 左侧菜单展开项：受控，打开某个 URL 时自动展开它所在的分组
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    const parent = getMenuRoute(selectedMenu).parent
+    return Array.from(new Set(['service', 'command', ...(parent ? [parent] : [])]))
+  })
   // 开启公网时生成的系统托管虚拟机组，同步到负载均衡的虚拟机组列表
   const [systemManagedServerGroups, setSystemManagedServerGroups] = useState<SystemServerGroup[]>([])
   // 开启公网时生成的系统托管转发策略
@@ -203,16 +223,9 @@ export default function Home() {
     setTimeout(step, 300)
   }
 
-  // 菜单点击处理：切换页面内容
-  const handleMenuClick = (key: MenuKey): void => {
-    setSelectedMenu(key)
-    // 命令列表/详情由组件内部自管理
-    setSelectedAppId(null)
-    // 将菜单写入 URL 的查询参数，避免新建路由文件
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('menu', key)
-    params.set('mode', mode)
-    router.push(`${pathname}?${params.toString()}`)
+  // 菜单点击处理：每个菜单对应独立路由，切换菜单 = 跳转 URL
+  const handleMenuClick = (key: MenuKey, query?: Record<string, string>): void => {
+    router.push(menuPath(key, { mode, query }))
   }
 
 
@@ -222,13 +235,31 @@ export default function Home() {
 
   // 安全组列表/详情由组件内部自管理
 
-  // 监听 URL 变化（前进/后退）以同步选中菜单
+  // 兼容旧链接：/?menu=xxx&mode=yyy → 新路由
   useEffect(() => {
-    const m = searchParams.get('menu') as MenuKey | null
-    if (m && m !== selectedMenu) setSelectedMenu(m)
-    const mm = searchParams.get('mode') as Mode | null
-    if (mm && mm !== mode) setMode(mm)
-  }, [searchParams])
+    if (pathname !== '/') return
+    const legacyMenu = searchParams.get('menu')
+    if (!isMenuKey(legacyMenu)) return
+    const legacyMode = searchParams.get('mode') === 'container' ? 'container' : 'vm'
+    const query: Record<string, string> = {}
+    searchParams.forEach((v, k) => {
+      if (k !== 'menu' && k !== 'mode') query[k] = v
+    })
+    router.replace(menuPath(legacyMenu, { mode: legacyMode, query }))
+  }, [pathname, searchParams, router])
+
+  // 监听 URL 变化（含前进/后退）：同步模式与菜单展开项
+  useEffect(() => {
+    const next = modeFromUrl()
+    setMode((prev) => (prev === next ? prev : next))
+    const parent = getMenuRoute(selectedMenu).parent
+    if (parent) setOpenKeys((prev) => (prev.includes(parent) ? prev : [...prev, parent]))
+    // 浏览器标签标题带上当前菜单，便于分享/多标签区分
+    if (typeof document !== 'undefined') {
+      document.title = isUnknownRoute ? '页面不存在 - publisher_demo' : `${getMenuRoute(selectedMenu).label} - publisher_demo`
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams])
 
   useEffect(() => {
     const syncTestInitStatus = (): void => {
@@ -251,13 +282,23 @@ export default function Home() {
 
   // 渲染右侧内容区域
   const renderContent = (): React.ReactElement => {
+    if (isUnknownRoute) {
+      return (
+        <Result
+          status="404"
+          title="页面不存在"
+          subTitle={`没有与 ${pathname} 对应的菜单`}
+          extra={<Button type="primary" onClick={() => handleMenuClick('workbench')}>返回工作台</Button>}
+        />
+      )
+    }
     switch (selectedMenu) {
       case 'workbench':
         return <WorkbenchDashboard />
       case 'vm-management':
         return (
           <VirtualMachineList
-            onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')}
+            onNavigateToLoadBalancer={() => handleMenuClick('load-balancer')}
             onServerGroupCreatedFromPublic={(g) => setSystemManagedServerGroups((prev) => [...prev, g])}
             onForwardingPolicyCreatedFromPublic={(p) => setSystemManagedPolicies((prev) => [...prev, p])}
           />
@@ -298,7 +339,7 @@ export default function Home() {
           return <Deployment appId={selectedAppId} />
         }
         // 恢复原有行为：当 selectedAppId 存在时展示 Deployment，否则展示应用卡片列表
-        return <ContainerApplication onOpenDeployment={(id: string) => { setSelectedAppId(id); setSelectedMenu('container-app') }} />
+        return <ContainerApplication onOpenDeployment={(id: string) => router.push(containerAppPath(id))} />
       case 'container-database':
         return <ContainerDatabase accountType={accountType} />
       case 'client-page':
@@ -345,7 +386,7 @@ export default function Home() {
       default:
         return (
           <VirtualMachineList
-            onNavigateToLoadBalancer={() => setSelectedMenu('load-balancer')}
+            onNavigateToLoadBalancer={() => handleMenuClick('load-balancer')}
             onServerGroupCreatedFromPublic={(g) => setSystemManagedServerGroups((prev) => [...prev, g])}
             onForwardingPolicyCreatedFromPublic={(p) => setSystemManagedPolicies((prev) => [...prev, p])}
           />
@@ -425,13 +466,20 @@ export default function Home() {
                 { label: '虚机', value: 'vm' }
               ]}
               onChange={(val) => {
-                // 产品意图：用同一页面承载两套资源形态（容器/虚机），减少路由与文件数量。
+                // 产品意图：用同一页面承载两套资源形态（容器/虚机）。
+                // 当前菜单只属于另一种模式时，跳到新模式下的对应入口；通用菜单保持不变，仅更新 ?mode=
                 const v = val as Mode
                 setMode(v)
-                const params = new URLSearchParams(searchParams.toString())
-                params.set('mode', v)
-                // 保持当前菜单不变，仅写入模式
-                router.push(`${pathname}?${params.toString()}`)
+                const query: Record<string, string> = {}
+                searchParams.forEach((value, k) => {
+                  if (k !== 'mode') query[k] = value
+                })
+                const target = counterpartMenu(selectedMenu, v)
+                if (target !== selectedMenu) {
+                  router.push(menuPath(target, { mode: v }))
+                } else if (!getMenuRoute(selectedMenu).mode) {
+                  router.replace(menuPath(selectedMenu, { mode: v, query }))
+                }
               }}
             />
           </div>
@@ -568,7 +616,7 @@ export default function Home() {
                 icon={<FileSearchOutlined />}
                 onClick={() => {
                   // 交互：跳转到“管理中心”全页，并定位到“操作日志”
-                  router.push('/management-center?key=operation-log')
+                  router.push(MANAGEMENT_CENTER_ROUTES['operation-log'])
                 }}
                 aria-label="日志"
                 style={headerIconBtnStyle}
@@ -612,7 +660,7 @@ export default function Home() {
                 icon={<MessageOutlined />}
                 onClick={() => {
                   // 交互：跳转到“管理中心”全页，并定位到“站内通知”
-                  router.push('/management-center?key=site-notice')
+                  router.push(MANAGEMENT_CENTER_ROUTES['site-notice'])
                 }}
                 aria-label="消息通知"
                 style={headerIconBtnStyle}
@@ -686,7 +734,7 @@ export default function Home() {
                   cancelText: '取消',
                   onOk: () => {
                     // 交互：确认后打开新标签页（真实业务效果：window.open）
-                    window.open('/', '_blank')
+                    window.open('/workbench', '_blank')
                   }
                 })
               }}
@@ -763,8 +811,9 @@ export default function Home() {
         <Sider width={200} style={{ background: 'transparent' }}>
           <Menu
             mode="inline"
-            selectedKeys={[selectedMenu]}
-            defaultOpenKeys={['service', 'command']}
+            selectedKeys={isUnknownRoute ? [] : [selectedMenu]}
+            openKeys={openKeys}
+            onOpenChange={(keys) => setOpenKeys(keys as string[])}
             style={{ height: '100%', borderRight: 0 }}
             items={[
               {
@@ -844,7 +893,7 @@ export default function Home() {
                     },
                   ] : []),
                   {
-                    key: 'storage',
+                    key: 'container-database',
                     icon: <CloudServerOutlined />,
                     label: '存储',
                     onClick: () => handleMenuClick('container-database')

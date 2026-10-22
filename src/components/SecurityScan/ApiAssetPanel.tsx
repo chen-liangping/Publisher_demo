@@ -1,9 +1,10 @@
 'use client'
 
 /**
- * 管理后台 · 平台游戏详情 →【API 资产】（只读）
+ * 管理后台 · 平台游戏详情 →【安全扫描】（只读）
  *
- * 平台在每次部署时自动解析，管理后台始终可见，不依赖 CP 是否开启；
+ * 管理员点击「开启扫描」（二次确认）后才发起扫描，扫描中展示 loading 页；完成后展示结果与最近一次扫描时间。
+ * 管理后台的扫描不依赖 CP 是否开启；
  * CP 在用户侧「监控 → 安全扫描」开启，只是让 CP 也能看到并确认作用、上传 API 文档。
  * 按应用展示每个 API 的作用、入参、鉴权、暴露、风险等级与命中原因，用于封禁决策。
  * 管理员不编辑作用；作用优先级：CP 修改 > CP 上传文档 > 系统推断。
@@ -12,14 +13,14 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Card, Col, Collapse, Descriptions, Drawer, Empty, Input, Row, Segmented, Select, Space, Statistic, Table, Typography } from 'antd'
+import { Button, Card, Col, Collapse, Descriptions, Drawer, Empty, Input, Modal, Progress, Row, Segmented, Select, Space, Statistic, Steps, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined } from '@ant-design/icons'
+import { LoadingOutlined, ReloadOutlined, SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons'
 
-import { PLATFORM_PARSED_AT, credentials, scannedApps } from './mock'
+import { credentials, scannedApps } from './mock'
 import CallGraph from './CallGraph'
 import { evaluateRisk, suggestAction } from './risk'
-import { allApis, hydrateScanStore, purposeOf, useScanState } from './store'
+import { ADMIN_SCAN_DURATION_MS, allApis, hydrateScanStore, purposeOf, startAdminScan, useScanState } from './store'
 import type { ApiAsset, AuthType, Credential, Exposure, PurposeRecord, RiskLevel, RiskResult } from './types'
 import { AuthTags, ImageTag, MethodTag, NewTag, ParamsTable, Pill, PublicTag, RISK_STYLE, RiskTag, authLabel, formatParams } from './ui'
 
@@ -50,6 +51,56 @@ const purposeSource = (api: ApiAsset, p: PurposeRecord): { text: string; bg: str
   return { text: 'AI 推断', bg: 'rgba(250, 173, 20, 0.16)', color: '#d48806' }
 }
 
+/** 扫描二次确认：扫描耗时较长，提前告知（受控弹窗，保证在当前页面稳定可见） */
+function ScanConfirmModal({ open, rescan, onOk, onCancel }: { open: boolean; rescan: boolean; onOk: () => void; onCancel: () => void }): React.ReactElement {
+  return (
+    <Modal open={open} title={rescan ? '重新扫描？' : '开启扫描？'} okText="开始扫描" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+      <Space direction="vertical" size={4}>
+        <span>将解析该游戏所有应用的部署镜像，分析接口、鉴权、凭证与应用间调用关系。</span>
+        <span>扫描耗时较长（约 10～30 分钟），期间可以离开本页，完成后结果自动更新。</span>
+        {rescan && <span>扫描完成后将覆盖上一次的结果。</span>}
+      </Space>
+    </Modal>
+  )
+}
+
+const SCAN_STEPS = ['解析应用镜像', '识别接口与入参', '分析鉴权与凭证', '分析应用调用关系', '评估风险']
+
+/** 扫描中：loading 页，按耗时推进步骤（mock） */
+function ScanningView({ startedAt }: { startedAt: string }): React.ReactElement {
+  const [elapsed, setElapsed] = useState<number>(0)
+  useEffect(() => {
+    const started = Date.now()
+    const timer = setInterval(() => setElapsed(Date.now() - started), 400)
+    return () => clearInterval(timer)
+  }, [])
+  const ratio = Math.min(0.95, elapsed / ADMIN_SCAN_DURATION_MS)
+  const current = Math.min(SCAN_STEPS.length - 1, Math.floor(ratio * SCAN_STEPS.length))
+  return (
+    <Card style={{ borderRadius: 12, boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)' }} styles={{ body: { padding: '48px 32px' } }}>
+      <Space direction="vertical" align="center" size={16} style={{ width: '100%' }}>
+        <LoadingOutlined style={{ fontSize: 36, color: '#1677ff' }} />
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          正在扫描，请耐心等待…
+        </Typography.Title>
+        <Text type="secondary" style={{ textAlign: 'center' }}>
+          扫描需要解析所有应用镜像，耗时较长（约 10～30 分钟）。可以先离开本页，完成后结果自动更新。
+        </Text>
+        <Progress percent={Math.round(ratio * 100)} status="active" style={{ width: 420, maxWidth: '100%' }} />
+        <Steps
+          size="small"
+          current={current}
+          style={{ maxWidth: 820, marginTop: 8 }}
+          items={SCAN_STEPS.map(t => ({ title: t }))}
+        />
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          开始于 {startedAt}
+        </Text>
+      </Space>
+    </Card>
+  )
+}
+
 export default function ApiAssetPanel({ appId }: ApiAssetPanelProps): React.ReactElement {
   useEffect(() => {
     hydrateScanStore()
@@ -62,6 +113,7 @@ export default function ApiAssetPanel({ appId }: ApiAssetPanelProps): React.Reac
   const [keyword, setKeyword] = useState<string>('')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<AssetView>('list')
+  const [confirmOpen, setConfirmOpen] = useState<boolean>(false)
 
   const rows: AssetRow[] = useMemo(
     () =>
@@ -72,6 +124,46 @@ export default function ApiAssetPanel({ appId }: ApiAssetPanelProps): React.Reac
       })),
     [scan]
   )
+
+  const confirmModal = (
+    <ScanConfirmModal
+      open={confirmOpen}
+      rescan={scan.adminStatus === 'done'}
+      onCancel={() => setConfirmOpen(false)}
+      onOk={() => {
+        // 交互：确认后才真正发起扫描
+        startAdminScan(appId)
+        setConfirmOpen(false)
+      }}
+    />
+  )
+
+  // 未扫描过：只展示「开启扫描」入口，不自动扫描
+  if (scan.adminStatus === 'never') {
+    return (
+      <Card style={cardStyle} styles={{ body: { padding: 48 } }}>
+        <Empty
+          image={<SafetyCertificateOutlined style={{ fontSize: 48, color: '#1677ff' }} />}
+          imageStyle={{ height: 56 }}
+          description={
+            <Space direction="vertical" size={4}>
+              <Text strong>尚未扫描</Text>
+              <Text type="secondary">扫描该游戏所有应用的接口、鉴权、凭证与调用关系，评估风险等级。</Text>
+            </Space>
+          }
+        >
+          <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={() => setConfirmOpen(true)}>
+            开启扫描
+          </Button>
+        </Empty>
+        {confirmModal}
+      </Card>
+    )
+  }
+
+  if (scan.adminStatus === 'scanning') {
+    return <ScanningView startedAt={scan.adminScanStartedAt} />
+  }
 
   const count = (level: RiskLevel): number => rows.filter(r => r.risk.level === level).length
 
@@ -144,23 +236,21 @@ export default function ApiAssetPanel({ appId }: ApiAssetPanelProps): React.Reac
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <Space size={8} wrap>
-        <Text type="secondary">平台在部署时自动解析 · 最近一次 {PLATFORM_PARSED_AT}</Text>
+        <Text type="secondary">最近一次扫描：{scan.adminScannedAt}</Text>
         {scan.status === 'disabled' ? (
           <Pill bg="rgba(0, 0, 0, 0.05)" color="rgba(0, 0, 0, 0.55)">
             CP 侧未开启（作用均为系统推断）
           </Pill>
-        ) : (
-          <Pill bg="rgba(82, 196, 26, 0.12)" color="#389e0d">
-            CP 侧已开启 · {scan.enabledAt}
-          </Pill>
-        )}
-        {scan.uploadedDocs.length > 0 && (
-          <Pill bg="rgba(19, 194, 194, 0.12)" color="#08979c">
-            CP 已上传 {scan.uploadedDocs.length} 份 API 文档
-          </Pill>
-        )}
+        ) : null
+        }
       </Space>
+      <Button icon={<ReloadOutlined />} onClick={() => setConfirmOpen(true)}>
+        重新扫描
+      </Button>
+      {confirmModal}
+      </div>
 
       <Row gutter={12}>
         {(

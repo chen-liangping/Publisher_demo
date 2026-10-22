@@ -22,7 +22,10 @@ const createState = (appId: string): ScanState => ({
   lastParsedAt: '',
   purposes: {},
   manualApis: [],
-  uploadedDocs: []
+  uploadedDocs: [],
+  adminStatus: 'never',
+  adminScanStartedAt: '',
+  adminScannedAt: ''
 })
 
 let store: ScanStore = {}
@@ -71,6 +74,23 @@ const finishParse = (appId: string): void => {
   const state = ensure(appId)
   if (state.status !== 'scanning') return
   commit(appId, { ...state, status: 'ready', lastParsedAt: now() })
+}
+
+/** 管理后台扫描耗时（mock）；真实场景需要解析所有应用镜像，耗时较长 */
+export const ADMIN_SCAN_DURATION_MS = 8000
+
+const finishAdminScan = (appId: string): void => {
+  const state = ensure(appId)
+  if (state.adminStatus !== 'scanning') return
+  commit(appId, { ...state, adminStatus: 'done', adminScannedAt: now() })
+}
+
+/** 管理后台发起扫描：只有点击时才扫描，扫描中重复点击无效 */
+export const startAdminScan = (appId: string): void => {
+  const state = ensure(appId)
+  if (state.adminStatus === 'scanning') return
+  commit(appId, { ...state, adminStatus: 'scanning', adminScanStartedAt: now() })
+  setTimeout(() => finishAdminScan(appId), ADMIN_SCAN_DURATION_MS)
 }
 
 /** 开启安全扫描：进入解析中，完成后展示应用 API */
@@ -147,6 +167,7 @@ export const hydrateScanStore = (): void => {
       // 刷新时若停在「解析中」，补一个完成定时器
       Object.values(store).forEach(s => {
         if (s.status === 'scanning') setTimeout(() => finishParse(s.appId), PARSE_DURATION_MS)
+        if (s.adminStatus === 'scanning') setTimeout(() => finishAdminScan(s.appId), ADMIN_SCAN_DURATION_MS)
       })
       emit()
     }

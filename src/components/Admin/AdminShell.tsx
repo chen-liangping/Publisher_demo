@@ -1,7 +1,9 @@
 'use client'
 
-import { Layout, Typography, Button, Menu } from 'antd'
-import { useState } from 'react'
+import { Layout, Typography, Button, Menu, Result } from 'antd'
+import { useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { ADMIN_MENU_PARENT, type AdminMenuKey, adminPath, resolveAdminPath } from '../Console/routes'
 import {
   ArrowLeftOutlined,
   AppstoreOutlined,
@@ -15,40 +17,42 @@ import {
   MonitorOutlined
 } from '@ant-design/icons'
 import { NotificationOutlined } from '@ant-design/icons'
-import GameManagement from '../../components/Admin/GameManagement'
-import ResourceConfiguration from '../../components/Admin/ResourceConfiguration'
-import TestInitialization from '../../components/Admin/TestInitialization'
-import Announcement from '../../components/Admin/Announcement'
-import YamlViewer from '../../components/Admin/yaml'
-import NotificationControl from '../../components/Admin/NotificationControl'
-import GlobalNoticeConfig from '../../components/Admin/GlobalNoticeConfig'
-import { SAPermissions } from '../../components/Admin/sa-permissions'
-import OperationLog from '../../components/Admin/OperationLog'
-import GameFaroConfig from '../../components/Admin/GameFaroConfig'
-import SSLManagement from '../../components/Admin/SSLManagement'
-import ProcessManagerMonitor from '../../components/Admin/ProcessManagerMonitor'
-import PlatformResourceMonitor from '../../components/Admin/PlatformResourceMonitor'
+import GameManagement from './GameManagement'
+import ResourceConfiguration from './ResourceConfiguration'
+import TestInitialization from './TestInitialization'
+import Announcement from './Announcement'
+import YamlViewer from './yaml'
+import NotificationControl from './NotificationControl'
+import GlobalNoticeConfig from './GlobalNoticeConfig'
+import { SAPermissions } from './sa-permissions'
+import OperationLog from './OperationLog'
+import GameFaroConfig from './GameFaroConfig'
+import SSLManagement from './SSLManagement'
+import ProcessManagerMonitor from './ProcessManagerMonitor'
+import PlatformResourceMonitor from './PlatformResourceMonitor'
 
 const { Header, Content, Sider } = Layout
 const { Title } = Typography
 
-type AdminMenuKey =
-  | 'game-management'
-  | 'resource-configuration'
-  | 'test-initialization'
-  | 'announcement'
-  | 'global-notice-config'
-  | 'yaml'
-  | 'notification-control'
-  | 'sa-permissions'
-  | 'operation-log'
-  | 'game-faro-config'
-  | 'ssl-management'
-  | 'process-manager-monitor'
-  | 'platform-resource-monitor'
+/**
+ * 管理台外壳：挂在 app/admin/layout.tsx 上，每个菜单对应 /admin/<key>，当前菜单由 URL 决定。
+ */
+export default function AdminShell() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const resolved = resolveAdminPath(pathname)
+  const isUnknownRoute = resolved === null
+  const selectedMenu: AdminMenuKey = resolved ?? 'game-management'
 
-export default function AdminPage() {
-  const [selectedMenu, setSelectedMenu] = useState<AdminMenuKey>('game-management')
+  // 左侧菜单展开项：受控，打开某个 URL 时自动展开它所在的分组
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    const parent = ADMIN_MENU_PARENT[selectedMenu]
+    return Array.from(new Set(['game-env', 'permission-config', 'message-notice', 'audit', ...(parent ? [parent] : [])]))
+  })
+  useEffect(() => {
+    const parent = ADMIN_MENU_PARENT[selectedMenu]
+    if (parent) setOpenKeys((prev) => (prev.includes(parent) ? prev : [...prev, parent]))
+  }, [selectedMenu])
 
   // 返回主页面
   const handleBackToMain = (): void => {
@@ -61,11 +65,21 @@ export default function AdminPage() {
 
   // 菜单点击处理
   const handleMenuClick = (key: AdminMenuKey): void => {
-    setSelectedMenu(key)
+    router.push(adminPath(key))
   }
 
   // 渲染右侧内容区域
   const renderContent = (): React.ReactElement => {
+    if (isUnknownRoute) {
+      return (
+        <Result
+          status="404"
+          title="页面不存在"
+          subTitle={`没有与 ${pathname} 对应的管理台菜单`}
+          extra={<Button type="primary" onClick={() => handleMenuClick('game-management')}>返回游戏管理</Button>}
+        />
+      )
+    }
     switch (selectedMenu) {
       case 'game-management':
         return <GameManagement />
@@ -130,8 +144,9 @@ export default function AdminPage() {
         <Sider width={200} style={{ background: 'transparent' }}>
           <Menu
             mode="inline"
-            selectedKeys={[selectedMenu]}
-            defaultOpenKeys={['game-env', 'permission-config', 'message-notice', 'audit']}
+            selectedKeys={isUnknownRoute ? [] : [selectedMenu]}
+            openKeys={openKeys}
+            onOpenChange={(keys) => setOpenKeys(keys as string[])}
             style={{ height: '100%', borderRight: 0 }}
             items={[
               {
